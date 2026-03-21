@@ -255,64 +255,200 @@ const Modal = ({ title, onClose, children }) => (
 
 function SidebarProfile({ currentUser, handleLogout }) {
   const [photo, setPhoto] = useState(null);
-  const fileRef = useRef(null);
+  const [showPhotoMenu, setShowPhotoMenu] = useState(false);
+  const galleryRef = useRef(null);
+  const cameraRef = useRef(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem(`profile_photo_${currentUser.id}`);
-    if (saved) setPhoto(saved);
+    try {
+      const saved = localStorage.getItem(`bsc_photo_${currentUser.id}`);
+      if (saved) setPhoto(saved);
+    } catch {}
   }, [currentUser.id]);
 
-  const handlePhoto = (e) => {
-    const file = e.target.files?.[0];
+  const processFile = (file) => {
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) { alert("Photo must be under 2MB."); return; }
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Photo must be under 5MB. Please choose a smaller image.");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => {
       const data = ev.target.result;
-      setPhoto(data);
-      localStorage.setItem(`profile_photo_${currentUser.id}`, data);
+      // Compress image
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX = 300;
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > MAX) { h = h * MAX / w; w = MAX; } }
+        else { if (h > MAX) { w = w * MAX / h; h = MAX; } }
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        const compressed = canvas.toDataURL("image/jpeg", 0.7);
+        setPhoto(compressed);
+        try { localStorage.setItem(`bsc_photo_${currentUser.id}`, compressed); } catch {}
+      };
+      img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
   };
 
+  const handleRemovePhoto = () => {
+    setPhoto(null);
+    try { localStorage.removeItem(`bsc_photo_${currentUser.id}`); } catch {}
+    setShowPhotoMenu(false);
+  };
+
   return (
-    <div style={{padding:"12px",borderTop:"1px solid var(--border)",marginTop:"auto"}}>
-      {/* Profile card */}
-      <div style={{background:"var(--bg3)",borderRadius:12,padding:"10px 12px",marginBottom:10,border:"1px solid var(--border)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-          {/* Avatar with upload */}
-          <div style={{position:"relative",flexShrink:0}} onClick={()=>fileRef.current?.click()}>
-            <div style={{width:44,height:44,borderRadius:"50%",background:"var(--amber-dim)",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--amber-glow)",overflow:"hidden",cursor:"pointer"}}>
+    <div style={{padding:"12px",borderTop:"1px solid var(--border)"}}>
+      <div style={{background:"var(--bg3)",borderRadius:12,padding:"12px",border:"1px solid var(--border)"}}>
+
+        {/* Profile row */}
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+
+          {/* Avatar — tap to open menu */}
+          <div style={{position:"relative",flexShrink:0}}>
+            <div
+              onClick={()=>setShowPhotoMenu(s=>!s)}
+              style={{width:48,height:48,borderRadius:"50%",background:"var(--amber-dim)",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                border:"2px solid var(--amber-glow)",overflow:"hidden",
+                cursor:"pointer",WebkitTapHighlightColor:"transparent"}}>
               {photo
                 ? <img src={photo} alt="profile" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                : <Icon name="user" size={20} color="var(--amber2)"/>
+                : <Icon name="user" size={22} color="var(--amber2)"/>
               }
             </div>
             {/* Camera badge */}
-            <div style={{position:"absolute",bottom:0,right:0,width:16,height:16,borderRadius:"50%",background:"var(--amber)",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--bg2)",cursor:"pointer"}}>
-              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#0b0f1a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <div style={{position:"absolute",bottom:0,right:0,width:18,height:18,borderRadius:"50%",
+              background:"var(--amber)",display:"flex",alignItems:"center",justifyContent:"center",
+              border:"2px solid var(--bg3)",pointerEvents:"none"}}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#0b0f1a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                 <circle cx="12" cy="13" r="4"/>
               </svg>
             </div>
-            <input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} style={{display:"none"}} capture="user"/>
           </div>
 
+          {/* Name and role */}
           <div style={{overflow:"hidden",flex:1,minWidth:0}}>
-            <div style={{fontSize:13,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.name}</div>
-            <div style={{fontSize:10,color:"var(--text3)",textTransform:"capitalize",marginTop:1}}>{currentUser.role}</div>
+            <div style={{fontSize:14,fontWeight:700,color:"var(--text)",
+              whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+              {currentUser.name}
+            </div>
+            <div style={{fontSize:11,color:"var(--text3)",textTransform:"capitalize",marginTop:2}}>
+              {currentUser.role}
+            </div>
             {currentUser.userId&&(
-              <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"var(--amber-dim)",padding:"1px 7px",borderRadius:999,marginTop:3}}>
+              <div style={{display:"inline-flex",alignItems:"center",gap:4,
+                background:"var(--amber-dim)",padding:"2px 8px",borderRadius:999,marginTop:4}}>
                 <Icon name="key" size={9} color="var(--amber2)"/>
-                <span style={{fontSize:10,fontWeight:700,fontFamily:"'Syne',sans-serif",color:"var(--amber2)"}}>{currentUser.userId}</span>
+                <span style={{fontSize:11,fontWeight:700,fontFamily:"'Syne',sans-serif",color:"var(--amber2)"}}>
+                  {currentUser.userId}
+                </span>
               </div>
             )}
           </div>
         </div>
 
-        <p style={{fontSize:10,color:"var(--text3)",textAlign:"center",marginBottom:8}}>Tap photo to change</p>
+        {/* Photo options menu */}
+        {showPhotoMenu&&(
+          <div style={{marginBottom:12,background:"var(--bg2)",borderRadius:10,overflow:"hidden",
+            border:"1px solid var(--border)"}}>
+            <div style={{padding:"8px 12px",fontSize:11,color:"var(--text3)",
+              fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em",
+              textTransform:"uppercase",borderBottom:"1px solid var(--border)"}}>
+              Profile Photo
+            </div>
 
-        <button onClick={handleLogout} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"9px",borderRadius:8,background:"var(--red-dim)",color:"var(--red)",border:"1px solid rgba(239,68,68,0.2)",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",minHeight:40}}>
+            {/* Choose from gallery */}
+            <label style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",
+              cursor:"pointer",borderBottom:"1px solid rgba(30,45,69,0.5)",
+              WebkitTapHighlightColor:"transparent",minHeight:48}}>
+              <div style={{width:32,height:32,borderRadius:8,background:"var(--blue-dim)",
+                display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <polyline points="21 15 16 10 5 21"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{fontSize:14,color:"var(--text)",fontWeight:500}}>Choose from Gallery</div>
+                <div style={{fontSize:11,color:"var(--text3)"}}>Pick any photo from your phone</div>
+              </div>
+              <input
+                ref={galleryRef}
+                type="file"
+                accept="image/*"
+                onChange={e=>{ processFile(e.target.files?.[0]); setShowPhotoMenu(false); e.target.value=""; }}
+                style={{display:"none"}}
+              />
+            </label>
+
+            {/* Take a photo */}
+            <label style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",
+              cursor:"pointer",borderBottom:"1px solid rgba(30,45,69,0.5)",
+              WebkitTapHighlightColor:"transparent",minHeight:48}}>
+              <div style={{width:32,height:32,borderRadius:8,background:"var(--green-dim)",
+                display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                </svg>
+              </div>
+              <div>
+                <div style={{fontSize:14,color:"var(--text)",fontWeight:500}}>Take a Photo</div>
+                <div style={{fontSize:11,color:"var(--text3)"}}>Use your camera directly</div>
+              </div>
+              <input
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
+                capture="user"
+                onChange={e=>{ processFile(e.target.files?.[0]); setShowPhotoMenu(false); e.target.value=""; }}
+                style={{display:"none"}}
+              />
+            </label>
+
+            {/* Remove photo — only show if photo exists */}
+            {photo&&(
+              <button
+                onClick={handleRemovePhoto}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"13px 14px",
+                  background:"none",border:"none",cursor:"pointer",minHeight:48,
+                  WebkitTapHighlightColor:"transparent"}}>
+                <div style={{width:32,height:32,borderRadius:8,background:"var(--red-dim)",
+                  display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <Icon name="x" size={16} color="var(--red)"/>
+                </div>
+                <div style={{textAlign:"left"}}>
+                  <div style={{fontSize:14,color:"var(--red)",fontWeight:500}}>Remove Photo</div>
+                  <div style={{fontSize:11,color:"var(--text3)"}}>Reset to default avatar</div>
+                </div>
+              </button>
+            )}
+
+            {/* Cancel */}
+            <button
+              onClick={()=>setShowPhotoMenu(false)}
+              style={{width:"100%",padding:"13px 14px",background:"none",border:"none",
+                fontSize:14,color:"var(--text3)",cursor:"pointer",minHeight:48,
+                WebkitTapHighlightColor:"transparent"}}>
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Sign out button */}
+        <button onClick={handleLogout} style={{width:"100%",display:"flex",alignItems:"center",
+          justifyContent:"center",gap:8,padding:"11px",borderRadius:9,
+          background:"var(--red-dim)",color:"var(--red)",
+          border:"1px solid rgba(239,68,68,0.2)",fontSize:13,cursor:"pointer",
+          fontFamily:"'DM Sans',sans-serif",minHeight:44,
+          WebkitTapHighlightColor:"transparent"}}>
           <Icon name="logout" size={14} color="var(--red)"/>Sign Out
         </button>
       </div>
@@ -697,6 +833,7 @@ function LoginPage({ onLogin }) {
   <div style={{position:"relative"}}>
     <input
       type={showPass?"text":"password"}
+      className="pin-input"
       value={password}
       onChange={e=>{
         const v = e.target.value.replace(/\D/g,"").slice(0,4);
