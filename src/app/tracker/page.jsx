@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const API = "https://brightsky-api.sahilswarajjena456.workers.dev/";
+
 
 const authFetch = async (path, opts = {}) => {
   let token = localStorage.getItem("accessToken");
