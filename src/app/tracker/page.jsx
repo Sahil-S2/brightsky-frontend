@@ -478,7 +478,7 @@ export default function App() {
               <div style={{width:26,height:26,borderRadius:6,background:"var(--amber)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 <Icon name="hard_hat" size={13} color="#0b0f1a"/>
               </div>
-              <span style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>Bright Sky Construction</span>
+              <span style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}}>Bright Sky Construction</span>
             </div>
             <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading||settings.latitude==null}/>
           </header>
@@ -1118,12 +1118,22 @@ function SettingsPage({ settings, addToast, refreshSettings }) {
   };
 
   const Field = ({label,type="text",value,onChange,note,placeholder})=>(
-    <div>
-      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</label>
-      <input type={type} value={value} onChange={onChange} placeholder={placeholder||label}/>
-      {note&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{note}</p>}
-    </div>
-  );
+  <div>
+    <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</label>
+    <input
+      type="text"
+      inputMode={type==="number" ? "decimal" : type==="time" ? "none" : "text"}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder||label}
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
+      spellCheck={false}
+    />
+    {note&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{note}</p>}
+  </div>
+);
 
   const Toggle = ({label,value,onChange,desc})=>(
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid rgba(30,45,69,0.4)"}}>
