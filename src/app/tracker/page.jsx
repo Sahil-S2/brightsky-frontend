@@ -706,7 +706,7 @@ function LoginPage({ onLogin }) {
       autoComplete="current-password"
       inputMode="numeric"
       maxLength={4}
-      style={{fontSize:24,letterSpacing:"0.3em",textAlign:"center",paddingRight:48}}
+      style={{fontSize:28,letterSpacing:"0.3em",textAlign:"center"}}
       required
     />
     <button type="button" onClick={()=>setShowPass(s=>!s)} style={{
