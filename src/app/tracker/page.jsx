@@ -59,10 +59,10 @@ const GlobalStyle = () => (
     .fade-up-d4{animation:fadeUp 0.35s 0.20s ease both;}
     .spin{animation:spin 1s linear infinite;}
     input,select,textarea{
-      font-family:'DM Sans',sans-serif;background:var(--bg3);border:1px solid var(--border);
-      color:var(--text);border-radius:8px;padding:10px 14px;font-size:16px;width:100%;outline:none;
-      transition:border-color 0.2s,box-shadow 0.2s;-webkit-appearance:none;
-    }
+  font-family:'DM Sans',sans-serif;background:var(--bg3);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:10px 14px;font-size:16px;width:100%;outline:none;
+  transition:border-color 0.2s,box-shadow 0.2s;-webkit-appearance:none;
+}
     input:focus,select:focus,textarea:focus{border-color:var(--amber);box-shadow:0 0 0 3px var(--amber-dim);}
     input::placeholder{color:var(--text3);}
     select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px;}
@@ -1117,23 +1117,46 @@ function SettingsPage({ settings, addToast, refreshSettings }) {
     setSaving(false);
   };
 
-  const Field = ({label,type="text",value,onChange,note,placeholder})=>(
-  <div>
-    <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</label>
-    <input
-      type="text"
-      inputMode={type==="number" ? "decimal" : type==="time" ? "none" : "text"}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder||label}
-      autoComplete="off"
-      autoCorrect="off"
-      autoCapitalize="off"
-      spellCheck={false}
-    />
-    {note&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{note}</p>}
-  </div>
-);
+  const Field = ({label,type="text",value,onChange,note,placeholder})=>{
+  const isNumber = type === "number";
+  const isTime = type === "time";
+  return (
+    <div>
+      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</label>
+      {isTime ? (
+        <input
+          type="time"
+          value={value}
+          onChange={onChange}
+          style={{fontSize:16,WebkitAppearance:"none"}}
+        />
+      ) : (
+        <input
+          type="text"
+          inputMode={isNumber ? "decimal" : "text"}
+          value={value ?? ""}
+          onChange={e => {
+            if (isNumber) {
+              const v = e.target.value;
+              if (v === "" || v === "-" || /^-?\d*\.?\d*$/.test(v)) {
+                onChange(e);
+              }
+            } else {
+              onChange(e);
+            }
+          }}
+          placeholder={placeholder || label}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          style={{fontSize:16}}
+        />
+      )}
+      {note&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{note}</p>}
+    </div>
+  );
+};
 
   const Toggle = ({label,value,onChange,desc})=>(
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid rgba(30,45,69,0.4)"}}>
