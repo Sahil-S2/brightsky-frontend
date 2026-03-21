@@ -1085,66 +1085,90 @@ function ReportsPage({ adminData }) {
 
 // ── SETTINGS ──────────────────────────────────────────────────────────────────
 function SettingsPage({ settings, addToast, refreshSettings }) {
-  const [s, setS] = useState({
-    ...settings,
-    latitude: settings.latitude??'',
-    longitude: settings.longitude??'',
-    radiusFeet: settings.radiusFeet??'',
-  });
   const [saving, setSaving] = useState(false);
+  const [renderKey, setRenderKey] = useState(0);
 
-  useEffect(()=>{
-    setS({...settings, latitude:settings.latitude??'', longitude:settings.longitude??'', radiusFeet:settings.radiusFeet??''});
-  },[settings]);
+  const refs = {
+    companyName: useRef(null),
+    siteName: useRef(null),
+    latitude: useRef(null),
+    longitude: useRef(null),
+    radiusFeet: useRef(null),
+    workStart: useRef(null),
+    workEnd: useRef(null),
+    maxBreaksPerDay: useRef(null),
+    minBreakMinutes: useRef(null),
+  };
 
-  const handleSave = async()=>{
-    if (!s.latitude||!s.longitude||!s.radiusFeet) { addToast("Latitude, longitude and radius are required.", "error"); return; }
+  const [toggles, setToggles] = useState({
+    autoClockInEnabled: settings.autoClockInEnabled ?? true,
+    autoBreakOnExitEnabled: settings.autoBreakOnExitEnabled ?? true,
+    autoCorrectionEnabled: settings.autoCorrectionEnabled ?? true,
+  });
+
+  useEffect(() => {
+    setToggles({
+      autoClockInEnabled: settings.autoClockInEnabled ?? true,
+      autoBreakOnExitEnabled: settings.autoBreakOnExitEnabled ?? true,
+      autoCorrectionEnabled: settings.autoCorrectionEnabled ?? true,
+    });
+  }, [settings]);
+
+  const handleSave = async () => {
+    const lat = refs.latitude.current?.value;
+    const lon = refs.longitude.current?.value;
+    const radius = refs.radiusFeet.current?.value;
+    if (!lat || !lon || !radius) {
+      addToast("Latitude, longitude and radius are required.", "error");
+      return;
+    }
     setSaving(true);
-    const res=await authFetch("/api/settings",{method:"PUT",body:JSON.stringify({
-      companyName:s.companyName, siteName:s.siteName,
-      latitude:parseFloat(s.latitude), longitude:parseFloat(s.longitude),
-      radiusFeet:parseFloat(s.radiusFeet),
-      workingHoursStart:s.workStart, workingHoursEnd:s.workEnd,
-      autoClockInEnabled:s.autoClockInEnabled,
-      autoBreakOnExitEnabled:s.autoBreakOnExitEnabled,
-      autoCorrectionEnabled:s.autoCorrectionEnabled,
-    })});
-    const d=await res.json();
-    if(!res.ok){addToast(d.error||"Failed to save.","error");setSaving(false);return;}
+    const res = await authFetch("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        companyName: refs.companyName.current?.value,
+        siteName: refs.siteName.current?.value,
+        latitude: parseFloat(lat),
+        longitude: parseFloat(lon),
+        radiusFeet: parseFloat(radius),
+        workingHoursStart: refs.workStart.current?.value,
+        workingHoursEnd: refs.workEnd.current?.value,
+        autoClockInEnabled: toggles.autoClockInEnabled,
+        autoBreakOnExitEnabled: toggles.autoBreakOnExitEnabled,
+        autoCorrectionEnabled: toggles.autoCorrectionEnabled,
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      addToast(d.error || "Failed to save.", "error");
+      setSaving(false);
+      return;
+    }
     localStorage.removeItem("bsc_settings");
     await refreshSettings();
-    addToast("Settings saved and applied successfully.","success");
+    addToast("Settings saved and applied successfully.", "success");
     setSaving(false);
   };
 
-  const Field = ({label,type="text",value,onChange,note,placeholder})=>{
-  const isNumber = type === "number";
-  const isTime = type === "time";
-  return (
+  const Field = ({ label, refKey, type="text", note, placeholder, defaultVal }) => (
     <div>
-      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>{label}</label>
-      {isTime ? (
+      <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,
+        fontFamily:"'Syne',sans-serif",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+        {label}
+      </label>
+      {type === "time" ? (
         <input
           type="time"
-          value={value}
-          onChange={onChange}
-          style={{fontSize:16,WebkitAppearance:"none"}}
+          ref={refs[refKey]}
+          defaultValue={defaultVal}
+          style={{fontSize:16}}
         />
       ) : (
         <input
           type="text"
-          inputMode={isNumber ? "decimal" : "text"}
-          value={value ?? ""}
-          onChange={e => {
-            if (isNumber) {
-              const v = e.target.value;
-              if (v === "" || v === "-" || /^-?\d*\.?\d*$/.test(v)) {
-                onChange(e);
-              }
-            } else {
-              onChange(e);
-            }
-          }}
+          inputMode={type === "number" ? "decimal" : "text"}
+          ref={refs[refKey]}
+          defaultValue={defaultVal}
           placeholder={placeholder || label}
           autoComplete="off"
           autoCorrect="off"
@@ -1153,19 +1177,23 @@ function SettingsPage({ settings, addToast, refreshSettings }) {
           style={{fontSize:16}}
         />
       )}
-      {note&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{note}</p>}
+      {note && <p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{note}</p>}
     </div>
   );
-};
 
-  const Toggle = ({label,value,onChange,desc})=>(
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid rgba(30,45,69,0.4)"}}>
+  const Toggle = ({ label, value, onChange, desc }) => (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+      padding:"12px 0",borderBottom:"1px solid rgba(30,45,69,0.4)"}}>
       <div style={{flex:1,paddingRight:12}}>
         <div style={{fontSize:13,color:"var(--text)",fontWeight:500}}>{label}</div>
-        {desc&&<div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{desc}</div>}
+        {desc && <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{desc}</div>}
       </div>
-      <button onClick={()=>onChange(!value)} style={{width:44,height:26,borderRadius:13,border:"none",cursor:"pointer",background:value?"var(--amber)":"var(--border)",position:"relative",transition:"background 0.2s",flexShrink:0,minWidth:44}}>
-        <div style={{width:20,height:20,borderRadius:"50%",background:"white",position:"absolute",top:3,transition:"left 0.2s",left:value?21:3,boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+      <button onClick={() => onChange(!value)} style={{width:44,height:26,borderRadius:13,
+        border:"none",cursor:"pointer",background:value?"var(--amber)":"var(--border)",
+        position:"relative",transition:"background 0.2s",flexShrink:0,minWidth:44}}>
+        <div style={{width:20,height:20,borderRadius:"50%",background:"white",
+          position:"absolute",top:3,transition:"left 0.2s",
+          left:value?21:3,boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
       </button>
     </div>
   );
@@ -1180,14 +1208,15 @@ function SettingsPage({ settings, addToast, refreshSettings }) {
           <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700}}>Site Location</h3>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <Field label="Company Name" value={s.companyName} onChange={e=>setS({...s,companyName:e.target.value})}/>
-          <Field label="Site Name" value={s.siteName} onChange={e=>setS({...s,siteName:e.target.value})} placeholder="e.g. Main Construction Site"/>
+          <Field label="Company Name" refKey="companyName" defaultVal={settings.companyName||""}/>
+          <Field label="Site Name" refKey="siteName" defaultVal={settings.siteName||""} placeholder="e.g. Main Construction Site"/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <Field label="Latitude" type="number" value={s.latitude} onChange={e=>setS({...s,latitude:e.target.value})} placeholder="e.g. 20.8365"/>
-            <Field label="Longitude" type="number" value={s.longitude} onChange={e=>setS({...s,longitude:e.target.value})} placeholder="e.g. 85.1647"/>
+            <Field label="Latitude" refKey="latitude" type="number" defaultVal={settings.latitude??""} placeholder="e.g. 33.9495"/>
+            <Field label="Longitude" refKey="longitude" type="number" defaultVal={settings.longitude??""} placeholder="e.g. -83.7656"/>
           </div>
-          <Field label="Geofence Radius (feet)" type="number" value={s.radiusFeet} onChange={e=>setS({...s,radiusFeet:e.target.value})}
-            note="200 ft for on-site mobile use. Use 999999999 for remote testing." placeholder="e.g. 200"/>
+          <Field label="Geofence Radius (feet)" refKey="radiusFeet" type="number"
+            defaultVal={settings.radiusFeet??""} placeholder="e.g. 200"
+            note="200 ft for on-site mobile. 999999999 for remote testing."/>
         </div>
       </Card>
 
@@ -1197,10 +1226,12 @@ function SettingsPage({ settings, addToast, refreshSettings }) {
           <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700}}>Work Schedule</h3>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
-          <Field label="Start Time" type="time" value={s.workStart} onChange={e=>setS({...s,workStart:e.target.value})}/>
-          <Field label="End Time" type="time" value={s.workEnd} onChange={e=>setS({...s,workEnd:e.target.value})}/>
-          <Field label="Max Breaks/Day" type="number" value={s.maxBreaksPerDay} onChange={e=>setS({...s,maxBreaksPerDay:parseInt(e.target.value)||1})} placeholder="3"/>
-          <Field label="Min Break (min)" type="number" value={s.minBreakMinutes} onChange={e=>setS({...s,minBreakMinutes:parseInt(e.target.value)||5})} placeholder="5"/>
+          <Field label="Start Time" refKey="workStart" type="time" defaultVal={settings.workStart||"07:00"}/>
+          <Field label="End Time" refKey="workEnd" type="time" defaultVal={settings.workEnd||"17:00"}/>
+          <Field label="Max Breaks/Day" refKey="maxBreaksPerDay" type="number"
+            defaultVal={settings.maxBreaksPerDay??3} placeholder="3"/>
+          <Field label="Min Break (min)" refKey="minBreakMinutes" type="number"
+            defaultVal={settings.minBreakMinutes??5} placeholder="5"/>
         </div>
       </Card>
 
@@ -1209,9 +1240,15 @@ function SettingsPage({ settings, addToast, refreshSettings }) {
           <Icon name="refresh" size={15} color="var(--green)"/>
           <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700}}>Automation</h3>
         </div>
-        <Toggle label="Auto Clock-In" value={s.autoClockInEnabled} onChange={v=>setS({...s,autoClockInEnabled:v})} desc="Clock in automatically when entering the geofence"/>
-        <Toggle label="Auto Break on Exit" value={s.autoBreakOnExitEnabled} onChange={v=>setS({...s,autoBreakOnExitEnabled:v})} desc="Start break automatically when leaving the geofence"/>
-        <Toggle label="Auto Punch Correction" value={s.autoCorrectionEnabled} onChange={v=>setS({...s,autoCorrectionEnabled:v})} desc="Fix missing punches automatically"/>
+        <Toggle label="Auto Clock-In" value={toggles.autoClockInEnabled}
+          onChange={v=>setToggles(t=>({...t,autoClockInEnabled:v}))}
+          desc="Clock in automatically when entering the geofence"/>
+        <Toggle label="Auto Break on Exit" value={toggles.autoBreakOnExitEnabled}
+          onChange={v=>setToggles(t=>({...t,autoBreakOnExitEnabled:v}))}
+          desc="Start break automatically when leaving the geofence"/>
+        <Toggle label="Auto Punch Correction" value={toggles.autoCorrectionEnabled}
+          onChange={v=>setToggles(t=>({...t,autoCorrectionEnabled:v}))}
+          desc="Fix missing punches automatically"/>
       </Card>
 
       <Btn onClick={handleSave} loading={saving} size="lg" style={{width:"100%"}}>
