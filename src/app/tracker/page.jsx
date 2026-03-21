@@ -840,7 +840,7 @@ function LoginPage({ onLogin }) {
         setPassword(v); setError("");
       }}
       placeholder="0000"
-      autoComplete="current-password"
+      autoComplete="off"
       inputMode="numeric"
       maxLength={4}
       style={{fontSize:28,letterSpacing:"0.3em",textAlign:"center"}}
