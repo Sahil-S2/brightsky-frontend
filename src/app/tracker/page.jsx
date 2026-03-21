@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
-const API = "https://brightsky-api.sahilswarajjena456.workers.dev/";
+const API = "https://brightsky-api.sahilswarajjena456.workers.dev";
 
 
 const authFetch = async (path, opts = {}) => {
