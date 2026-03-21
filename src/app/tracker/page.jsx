@@ -73,8 +73,8 @@ const GlobalStyle = () => (
     tr:last-child td{border-bottom:none;}
     .pin-input{letter-spacing:0.3em;font-size:24px;font-family:'Syne',sans-serif;font-weight:700;text-align:center;padding:12px;background:var(--bg3);border:2px solid var(--border);border-radius:12px;color:var(--text);width:100%;outline:none;transition:border-color 0.2s,box-shadow 0.2s;}
     .pin-input:focus{border-color:var(--amber);box-shadow:0 0 0 3px var(--amber-dim);}
-    .pin-dot{width:16px;height:16px;border-radius:50%;background:var(--amber);display:inline-block;margin:0 4px;transition:all 0.2s;}
-    .pin-dot.empty{background:transparent;border:2px solid var(--border);}
+    .pin-dot{width:14px;height:14px;border-radius:50%;background:var(--amber);display:inline-block;flex-shrink:0;transition:all 0.25s;box-shadow:0 0 8px var(--amber-glow);}
+    .pin-dot.empty{background:transparent;border:2px solid var(--text3);box-shadow:none;}
   `}</style>
 );
 
@@ -253,6 +253,72 @@ const Modal = ({ title, onClose, children }) => (
   </div>
 );
 
+function SidebarProfile({ currentUser, handleLogout }) {
+  const [photo, setPhoto] = useState(null);
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem(`profile_photo_${currentUser.id}`);
+    if (saved) setPhoto(saved);
+  }, [currentUser.id]);
+
+  const handlePhoto = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert("Photo must be under 2MB."); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const data = ev.target.result;
+      setPhoto(data);
+      localStorage.setItem(`profile_photo_${currentUser.id}`, data);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div style={{padding:"12px",borderTop:"1px solid var(--border)",marginTop:"auto"}}>
+      {/* Profile card */}
+      <div style={{background:"var(--bg3)",borderRadius:12,padding:"10px 12px",marginBottom:10,border:"1px solid var(--border)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          {/* Avatar with upload */}
+          <div style={{position:"relative",flexShrink:0}} onClick={()=>fileRef.current?.click()}>
+            <div style={{width:44,height:44,borderRadius:"50%",background:"var(--amber-dim)",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--amber-glow)",overflow:"hidden",cursor:"pointer"}}>
+              {photo
+                ? <img src={photo} alt="profile" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                : <Icon name="user" size={20} color="var(--amber2)"/>
+              }
+            </div>
+            {/* Camera badge */}
+            <div style={{position:"absolute",bottom:0,right:0,width:16,height:16,borderRadius:"50%",background:"var(--amber)",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid var(--bg2)",cursor:"pointer"}}>
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#0b0f1a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" onChange={handlePhoto} style={{display:"none"}} capture="user"/>
+          </div>
+
+          <div style={{overflow:"hidden",flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.name}</div>
+            <div style={{fontSize:10,color:"var(--text3)",textTransform:"capitalize",marginTop:1}}>{currentUser.role}</div>
+            {currentUser.userId&&(
+              <div style={{display:"inline-flex",alignItems:"center",gap:4,background:"var(--amber-dim)",padding:"1px 7px",borderRadius:999,marginTop:3}}>
+                <Icon name="key" size={9} color="var(--amber2)"/>
+                <span style={{fontSize:10,fontWeight:700,fontFamily:"'Syne',sans-serif",color:"var(--amber2)"}}>{currentUser.userId}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <p style={{fontSize:10,color:"var(--text3)",textAlign:"center",marginBottom:8}}>Tap photo to change</p>
+
+        <button onClick={handleLogout} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"9px",borderRadius:8,background:"var(--red-dim)",color:"var(--red)",border:"1px solid rgba(239,68,68,0.2)",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",minHeight:40}}>
+          <Icon name="logout" size={14} color="var(--red)"/>Sign Out
+        </button>
+      </div>
+    </div>
+  );
+}
 // ── MAIN APP ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -462,7 +528,7 @@ export default function App() {
               <Icon name="close" size={18}/>
             </button>
           </div>
-          <nav style={{flex:1,padding:"10px 8px"}}>
+          <nav style={{flex:1,padding:"10px 8px",overflowY:"auto",paddingBottom:4}}>
             {navItems.map(item=>(
               <button key={item.id} onClick={()=>{setPage(item.id);setSidebarOpen(false);}} style={{
                 width:"100%",display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:9,
@@ -475,20 +541,7 @@ export default function App() {
               </button>
             ))}
           </nav>
-          <div style={{padding:"12px",borderTop:"1px solid var(--border)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,padding:"8px",background:"var(--bg3)",borderRadius:10}}>
-              <div style={{width:32,height:32,borderRadius:"50%",background:"var(--amber-dim)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:"2px solid var(--amber-glow)"}}>
-                <Icon name="user" size={14} color="var(--amber2)"/>
-              </div>
-              <div style={{overflow:"hidden",flex:1}}>
-                <div style={{fontSize:13,fontWeight:600,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.name}</div>
-                <div style={{fontSize:10,color:"var(--text3)",textTransform:"capitalize"}}>{currentUser.role} {currentUser.userId ? `· ID: ${currentUser.userId}` : ""}</div>
-              </div>
-            </div>
-            <button onClick={handleLogout} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"10px",borderRadius:8,background:"var(--red-dim)",color:"var(--red)",border:"none",fontSize:13,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",minHeight:40}}>
-              <Icon name="logout" size={14} color="var(--red)"/>Sign Out
-            </button>
-          </div>
+          <SidebarProfile currentUser={currentUser} handleLogout={handleLogout}/>
         </aside>
 
         <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,width:"100%"}}>
@@ -626,11 +679,12 @@ function LoginPage({ onLogin }) {
                   />
                 )}
                 {!useEmail && (
-                  <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:10}}>
-                    {[0,1,2,3].map(i=>(
-                      <div key={i} className={`pin-dot${userId.length>i?"":" empty"}`}/>
-                    ))}
-                  </div>
+                  <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:10,marginTop:8,height:20}}>
+  {[0,1,2,3].map(i=>(
+    <div key={i} className={`pin-dot${userId.length>i?"":" empty"}`}
+      style={{transform:userId.length>i?"scale(1.15)":"scale(1)"}}/>
+  ))}
+</div>
                 )}
               </div>
 
@@ -663,11 +717,12 @@ function LoginPage({ onLogin }) {
     </button>
   </div>
   {/* Password dots indicator */}
-  <div style={{display:"flex",justifyContent:"center",gap:8,marginTop:10}}>
-    {[0,1,2,3].map(i=>(
-      <div key={i} className={`pin-dot${password.length>i?"":" empty"}`}/>
-    ))}
-  </div>
+  <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:10,marginTop:8,height:20}}>
+  {[0,1,2,3].map(i=>(
+    <div key={i} className={`pin-dot${password.length>i?"":" empty"}`}
+      style={{transform:password.length>i?"scale(1.15)":"scale(1)"}}/>
+  ))}
+</div>
 </div>
 
               {/* Error */}
