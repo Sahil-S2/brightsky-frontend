@@ -182,18 +182,29 @@ const Toast = ({ toasts, removeToast }) => (
   </div>
 );
 
-const LocationIndicator = ({ onSite, distance, loading }) => (
-  <div style={{display:"flex",alignItems:"center",gap:6,
-    background:onSite?"var(--green-dim)":"var(--red-dim)",
-    border:`1px solid ${onSite?"rgba(16,185,129,0.25)":"rgba(239,68,68,0.25)"}`,
-    borderRadius:8,padding:"6px 10px",fontSize:11.5,color:onSite?"var(--green)":"var(--red)",whiteSpace:"nowrap"}}>
-    {loading
-      ? <span className="spin" style={{width:11,height:11,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block"}}/>
-      : <Icon name={onSite?"wifi":"wifiOff"} size={12}/>}
-    <span style={{fontWeight:600}}>{loading?"Locating…":onSite?"On Site":"Off Site"}</span>
-    {distance!=null&&!loading&&<span style={{opacity:0.7}}>· {Math.round(distance)}ft</span>}
-  </div>
-);
+const LocationIndicator = ({ onSite, distance, loading }) => {
+  if (loading) {
+    return (
+      <div style={{display:"flex",alignItems:"center",gap:6,
+        background:"rgba(100,116,139,0.1)",
+        border:"1px solid rgba(100,116,139,0.2)",
+        borderRadius:8,padding:"6px 10px",fontSize:11.5,color:"var(--text3)",whiteSpace:"nowrap"}}>
+        <span className="spin" style={{width:10,height:10,border:"2px solid currentColor",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block",flexShrink:0}}/>
+        <span style={{fontWeight:500,fontSize:11}}>Locating…</span>
+      </div>
+    );
+  }
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:6,
+      background:onSite?"var(--green-dim)":"var(--red-dim)",
+      border:`1px solid ${onSite?"rgba(16,185,129,0.25)":"rgba(239,68,68,0.25)"}`,
+      borderRadius:8,padding:"6px 10px",fontSize:11.5,color:onSite?"var(--green)":"var(--red)",whiteSpace:"nowrap"}}>
+      <Icon name={onSite?"wifi":"wifiOff"} size={12}/>
+      <span style={{fontWeight:600}}>{onSite?"On Site":"Off Site"}</span>
+      {distance!=null&&<span style={{opacity:0.7}}>· {Math.round(distance)}ft</span>}
+    </div>
+  );
+};
 
 const Icon = ({ name, size=18, color="currentColor", style={} }) => {
   const icons = {
@@ -493,14 +504,32 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!navigator.geolocation) { setGpsLoading(false); return; }
-    const id = navigator.geolocation.watchPosition(
-      pos => { setUserLat(pos.coords.latitude); setUserLon(pos.coords.longitude); setGpsLoading(false); },
-      () => setGpsLoading(false),
-      { enableHighAccuracy:true, maximumAge:15000, timeout:10000 }
-    );
-    return () => navigator.geolocation.clearWatch(id);
-  }, []);
+  if (!navigator.geolocation) { setGpsLoading(false); return; }
+
+  // Step 1 — get a quick rough position immediately (fast, low accuracy)
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      setUserLat(pos.coords.latitude);
+      setUserLon(pos.coords.longitude);
+      setGpsLoading(false); // Show On Site / Off Site immediately
+    },
+    () => setGpsLoading(false), // If quick position fails, stop loading
+    { enableHighAccuracy: false, maximumAge: 60000, timeout: 5000 }
+  );
+
+  // Step 2 — watch for accurate position in background (updates silently)
+  const watchId = navigator.geolocation.watchPosition(
+    pos => {
+      setUserLat(pos.coords.latitude);
+      setUserLon(pos.coords.longitude);
+      setGpsLoading(false);
+    },
+    () => {}, // Silent fail on watch — rough position already shown
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 }
+  );
+
+  return () => navigator.geolocation.clearWatch(watchId);
+}, []);
 
   const refreshSettings = useCallback(async () => {
     try {
@@ -691,16 +720,17 @@ export default function App() {
               </div>
               <span style={{fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:12,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:140}}>BSC Tracker</span>
             </div>
-            <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading||settings.latitude==null}/>
+            <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading&&userLat==null&&settings.latitude!=null}/>
           </header>
 
           <main style={{flex:1,padding:"16px 14px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {page==="dashboard"&&(isAdmin
               ? <AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData}/>
               : <EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus}
-                  onSite={onSite} settings={settings} punchLoading={punchLoading}
-                  handleClockIn={handleClockIn} handleClockOut={handleClockOut}
-                  handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd}/>
+  onSite={onSite} settings={settings} punchLoading={punchLoading}
+  gpsLoading={gpsLoading} userLat={userLat}
+  handleClockIn={handleClockIn} handleClockOut={handleClockOut}
+  handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd}/>
             )}
             {page==="my_attendance"&&<MyAttendance/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast}/>}
@@ -900,8 +930,7 @@ function LoginPage({ onLogin }) {
 }
 
 // ── EMPLOYEE DASHBOARD ────────────────────────────────────────────────────────
-function EmployeeDashboard({ user, todayData, empStatus, onSite, settings, punchLoading, handleClockIn, handleClockOut, handleBreakStart, handleBreakEnd }) {
-  const [now, setNow] = useState(new Date());
+function EmployeeDashboard({ user, todayData, empStatus, onSite, settings, punchLoading, gpsLoading, userLat, handleClockIn, handleClockOut, handleBreakStart, handleBreakEnd }) {  const [now, setNow] = useState(new Date());
   useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(t);},[]);
 
   const session = todayData?.session;
@@ -967,12 +996,18 @@ function EmployeeDashboard({ user, todayData, empStatus, onSite, settings, punch
           </>}
           {empStatus==="on_break"&&<Btn onClick={handleBreakEnd} disabled={punchLoading} loading={punchLoading} variant="green" size="lg" style={{width:"100%"}}><Icon name="play" size={16}/>End Break</Btn>}
         </div>
-        {!onSite&&settings.latitude!=null&&(
-          <div style={{marginTop:12,padding:"9px 12px",borderRadius:8,background:"var(--red-dim)",border:"1px solid rgba(239,68,68,0.2)",display:"flex",gap:7,alignItems:"center"}}>
-            <Icon name="alert" size={13} color="var(--red)"/>
-            <span style={{fontSize:12,color:"var(--red)"}}>Must be within {settings.radiusFeet} ft of the worksite.</span>
-          </div>
-        )}
+        {gpsLoading&&userLat==null&&settings.latitude!=null&&(
+  <div style={{marginTop:12,padding:"9px 12px",borderRadius:8,background:"var(--amber-dim)",border:"1px solid rgba(245,158,11,0.2)",display:"flex",gap:7,alignItems:"center"}}>
+    <span className="spin" style={{width:12,height:12,border:"2px solid var(--amber)",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block",flexShrink:0}}/>
+    <span style={{fontSize:12,color:"var(--amber)"}}>Getting your location… please wait a moment.</span>
+  </div>
+)}
+{!gpsLoading&&!onSite&&settings.latitude!=null&&userLat!=null&&(
+  <div style={{marginTop:12,padding:"9px 12px",borderRadius:8,background:"var(--red-dim)",border:"1px solid rgba(239,68,68,0.2)",display:"flex",gap:7,alignItems:"center"}}>
+    <Icon name="alert" size={13} color="var(--red)"/>
+    <span style={{fontSize:12,color:"var(--red)"}}>Must be within {settings.radiusFeet} ft of the worksite.</span>
+  </div>
+)}
       </Card>
 
       <div className="fade-up-d2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
