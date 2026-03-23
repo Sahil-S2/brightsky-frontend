@@ -497,11 +497,17 @@ export default function App() {
 
   const [userLat, setUserLat] = useState(null);
   const [userLon, setUserLon] = useState(null);
-  let onSite = false, distanceFt = null;
-  if (userLat!=null && settings.latitude!=null && settings.longitude!=null) {
-    distanceFt = distanceFeet(userLat, userLon, settings.latitude, settings.longitude);
-    onSite = settings.radiusFeet!=null && distanceFt <= settings.radiusFeet;
-  }
+  // Use employee's assigned worksite for geofencing, fall back to global settings
+const [employeeWorksite, setEmployeeWorksite] = useState(null);
+
+let onSite = false, distanceFt = null;
+const geoTarget = employeeWorksite || (settings.latitude!=null ? {
+  latitude: settings.latitude, longitude: settings.longitude, radius_feet: settings.radiusFeet
+} : null);
+if (userLat!=null && geoTarget?.latitude!=null) {
+  distanceFt = distanceFeet(userLat, userLon, geoTarget.latitude, geoTarget.longitude);
+  onSite = geoTarget.radius_feet!=null && distanceFt <= geoTarget.radius_feet;
+}
 
   useEffect(() => {
   if (!navigator.geolocation) { setGpsLoading(false); return; }
@@ -574,16 +580,45 @@ export default function App() {
   }, [currentUser]);
 
   const refreshWorksites = useCallback(async () => {
-    if (!currentUser) return;
-    try { const r=await authFetch("/api/worksites"); if(r.ok){const d=await r.json();setWorksites(Array.isArray(d)?d:[]);} } catch {}
-  }, [currentUser]);
+  if (!currentUser) return;
+  try {
+    const r = await authFetch("/api/worksites");
+    if (r.ok) {
+      const d = await r.json();
+      setWorksites(Array.isArray(d) ? d : []);
+    }
+  } catch {}
+}, [currentUser]);
+
+// Fetch employee's own assigned worksite for geofencing
+const refreshEmployeeWorksite = useCallback(async () => {
+  if (!currentUser || currentUser.role !== "employee") return;
+  try {
+    // Get employee's default assigned worksite
+    const r = await authFetch("/api/worksites");
+    if (r.ok) {
+      const all = await r.json();
+      if (Array.isArray(all) && all.length > 0) {
+        // Check employee_worksites for this user's default
+        const er = await authFetch(`/api/worksites/my-assignment`);
+        if (er.ok) {
+          const ew = await er.json();
+          if (ew) { setEmployeeWorksite(ew); return; }
+        }
+        // Fallback: use first worksite
+        setEmployeeWorksite(all[0]);
+      }
+    }
+  } catch {}
+}, [currentUser]);
 
   useEffect(() => {
-    if (currentUser) {
-      refreshTodayData(); refreshSettings(); refreshWorksites();
-      if (currentUser.role==="admin"||currentUser.role==="manager") refreshAdminData();
-    }
-  }, [currentUser, refreshTodayData, refreshSettings, refreshAdminData, refreshWorksites]);
+  if (currentUser) {
+    refreshTodayData(); refreshSettings(); refreshWorksites();
+    refreshEmployeeWorksite();
+    if (currentUser.role==="admin"||currentUser.role==="manager") refreshAdminData();
+  }
+}, [currentUser, refreshTodayData, refreshSettings, refreshAdminData, refreshWorksites, refreshEmployeeWorksite]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -1134,9 +1169,12 @@ function AdminDashboard({ adminData, refreshAdminData }) {
 
 // ── WORKSITES PAGE ────────────────────────────────────────────────────────────
 function WorksitesPage({ worksites, refreshWorksites, adminData, addToast }) {
-  const [showAdd, setShowAdd] = useState(false);
+  const [view, setView] = useState("worksites"); // "worksites" | "assignments"
+  const [showAddWorksite, setShowAddWorksite] = useState(false);
   const [editingWorksite, setEditingWorksite] = useState(null);
-  const [showAssign, setShowAssign] = useState(null);
+  const [assigningTo, setAssigningTo] = useState(null); // worksite being assigned
+  const [assignments, setAssignments] = useState([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
 
   const nameRef = useRef(null);
   const latRef = useRef(null);
@@ -1144,7 +1182,27 @@ function WorksitesPage({ worksites, refreshWorksites, adminData, addToast }) {
   const radiusRef = useRef(null);
   const notesRef = useRef(null);
 
-  const handleSave = async () => {
+  // Load all assignments
+  const loadAssignments = useCallback(async () => {
+    setLoadingAssignments(true);
+    try {
+      const r = await authFetch("/api/worksites/assignments");
+      if (r.ok) { const d = await r.json(); setAssignments(Array.isArray(d)?d:[]); }
+    } catch {}
+    setLoadingAssignments(false);
+  }, []);
+
+  useEffect(() => { loadAssignments(); }, [loadAssignments]);
+
+  // Get employees assigned to a worksite
+  const getAssignedEmployees = (worksiteId) =>
+    assignments.filter(a => a.worksite_id === worksiteId);
+
+  // Get employee's current worksite
+  const getEmployeeWorksite = (employeeId) =>
+    assignments.find(a => a.employee_id === employeeId && a.is_default);
+
+  const handleSaveWorksite = async () => {
     const body = {
       name: nameRef.current?.value,
       latitude: parseFloat(latRef.current?.value),
@@ -1152,140 +1210,415 @@ function WorksitesPage({ worksites, refreshWorksites, adminData, addToast }) {
       radiusFeet: parseFloat(radiusRef.current?.value)||200,
       notes: notesRef.current?.value,
     };
-    if (!body.name||!body.latitude||!body.longitude) { addToast("Name, lat, lon required.", "error"); return; }
-
+    if (!body.name||!body.latitude||!body.longitude) {
+      addToast("Name, latitude and longitude required.", "error"); return;
+    }
     const url = editingWorksite ? `/api/worksites/${editingWorksite.id}` : "/api/worksites";
     const method = editingWorksite ? "PUT" : "POST";
     const res = await authFetch(url, { method, body: JSON.stringify(body) });
     if (!res.ok) { addToast("Failed to save worksite.", "error"); return; }
     addToast(editingWorksite?"Worksite updated.":"Worksite created.", "success");
-    setShowAdd(false); setEditingWorksite(null);
-    refreshWorksites();
+    setShowAddWorksite(false); setEditingWorksite(null);
+    refreshWorksites(); loadAssignments();
   };
 
-  const handleDelete = async (id) => {
-    if (!confirm("Delete this worksite?")) return;
+  const handleDeleteWorksite = async (id) => {
+    if (!confirm("Delete this worksite? All assignments will be removed.")) return;
     await authFetch(`/api/worksites/${id}`, { method:"DELETE" });
     addToast("Worksite deleted.", "info");
-    refreshWorksites();
+    refreshWorksites(); loadAssignments();
   };
 
-  const handleAssign = async (worksiteId, employeeId, isDefault) => {
+  const handleAssign = async (worksiteId, employeeId) => {
     const res = await authFetch(`/api/worksites/${worksiteId}/assign`, {
-      method:"POST", body: JSON.stringify({ employeeId, isDefault }),
+      method:"POST",
+      body: JSON.stringify({ employeeId, isDefault: true }),
     });
     if (!res.ok) { addToast("Failed to assign.", "error"); return; }
-    addToast("Employee assigned to worksite.", "success");
-    refreshWorksites();
+    addToast("Employee assigned.", "success");
+    loadAssignments(); refreshWorksites();
   };
 
   const handleRemove = async (worksiteId, employeeId) => {
     await authFetch(`/api/worksites/${worksiteId}/remove/${employeeId}`, { method:"DELETE" });
-    addToast("Employee removed from worksite.", "info");
-    refreshWorksites();
+    addToast("Assignment removed.", "info");
+    loadAssignments(); refreshWorksites();
   };
+
+  const employees = adminData.employees.filter(e => e.role === "employee");
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <SectionHeader title="Worksites" subtitle={`${worksites.length} configured`}
-        action={<Btn onClick={()=>{setShowAdd(true);setEditingWorksite(null);}} size="sm">
-          <Icon name="plus" size={14} color="#0b0f1a"/>Add Worksite
+      <SectionHeader title="Worksites" subtitle="Manage locations and employee assignments"
+        action={<Btn onClick={()=>{setShowAddWorksite(true);setEditingWorksite(null);}} size="sm">
+          <Icon name="plus" size={13} color="#0b0f1a"/>New Site
         </Btn>}/>
 
-      {worksites.length===0 ? (
-        <Card style={{textAlign:"center",padding:32,color:"var(--text3)"}}>
-          No worksites configured yet. Add one to get started.
-        </Card>
-      ) : worksites.map(w=>(
-        <Card key={w.id}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                <div style={{width:32,height:32,borderRadius:8,background:"var(--amber-dim)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <Icon name="pin" size={15} color="var(--amber)"/>
+      {/* Tab switcher */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        {[["worksites","Worksites","map"],["assignments","Assignments","users"]].map(([v,l,icon])=>(
+          <button key={v} onClick={()=>setView(v)} style={{
+            padding:"10px",borderRadius:10,border:"1px solid",
+            borderColor:view===v?"var(--amber)":"var(--border)",
+            background:view===v?"var(--amber-dim)":"var(--bg3)",
+            color:view===v?"var(--amber)":"var(--text3)",
+            fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:600,
+            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+            gap:7,minHeight:44}}>
+            <Icon name={icon} size={14} color={view===v?"var(--amber)":"var(--text3)"}/>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* ── WORKSITES VIEW ── */}
+      {view==="worksites"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {worksites.length===0 ? (
+            <Card style={{textAlign:"center",padding:32}}>
+              <Icon name="map" size={32} color="var(--text3)" style={{marginBottom:12}}/>
+              <p style={{color:"var(--text3)",fontSize:13}}>No worksites yet.</p>
+              <p style={{color:"var(--text3)",fontSize:12,marginTop:4}}>Add your first worksite to get started.</p>
+            </Card>
+          ) : worksites.map(w => {
+            const assigned = getAssignedEmployees(w.id);
+            return (
+              <Card key={w.id}>
+                {/* Worksite header */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
+                    <div style={{width:40,height:40,borderRadius:10,background:"var(--amber-dim)",
+                      display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <Icon name="pin" size={18} color="var(--amber)"/>
+                    </div>
+                    <div style={{minWidth:0}}>
+                      <div style={{fontWeight:700,color:"var(--text)",fontSize:15,
+                        overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.name}</div>
+                      <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>
+                        {w.latitude?.toFixed(4)}°, {w.longitude?.toFixed(4)}°
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    <button onClick={()=>{setEditingWorksite(w);setShowAddWorksite(true);}}
+                      style={{width:34,height:34,borderRadius:8,background:"var(--bg3)",
+                        border:"1px solid var(--border)",display:"flex",alignItems:"center",
+                        justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+                      <Icon name="edit" size={14} color="var(--text3)"/>
+                    </button>
+                    <button onClick={()=>handleDeleteWorksite(w.id)}
+                      style={{width:34,height:34,borderRadius:8,background:"var(--red-dim)",
+                        border:"1px solid rgba(239,68,68,0.2)",display:"flex",alignItems:"center",
+                        justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+                      <Icon name="x" size={14} color="var(--red)"/>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Worksite stats */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+                  <div style={{padding:"8px 10px",background:"var(--bg3)",borderRadius:8,
+                    border:"1px solid var(--border)"}}>
+                    <div style={{fontSize:10,color:"var(--text3)",marginBottom:2}}>GEOFENCE</div>
+                    <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{w.radius_feet} ft</div>
+                  </div>
+                  <div style={{padding:"8px 10px",background:"var(--bg3)",borderRadius:8,
+                    border:"1px solid var(--border)"}}>
+                    <div style={{fontSize:10,color:"var(--text3)",marginBottom:2}}>ASSIGNED</div>
+                    <div style={{fontSize:13,fontWeight:600,color:"var(--amber)"}}>
+                      {assigned.length} employee{assigned.length!==1?"s":""}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Assigned employees list */}
+                {assigned.length > 0 && (
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:11,color:"var(--text3)",marginBottom:6,
+                      fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>
+                      ASSIGNED EMPLOYEES
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {assigned.map(a=>(
+                        <div key={a.employee_id} style={{display:"flex",alignItems:"center",
+                          gap:10,padding:"8px 10px",background:"var(--bg3)",borderRadius:8,
+                          border:"1px solid var(--border)"}}>
+                          <div style={{width:28,height:28,borderRadius:"50%",
+                            background:"var(--green-dim)",display:"flex",alignItems:"center",
+                            justifyContent:"center",flexShrink:0}}>
+                            <Icon name="user" size={13} color="var(--green)"/>
+                          </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:600,color:"var(--text)",
+                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {a.employee_name||a.full_name}
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+                              <span style={{fontSize:10,color:"var(--text3)"}}>{a.designation||a.department||""}</span>
+                              {a.user_id&&<span style={{fontSize:10,fontWeight:700,color:"var(--amber)",
+                                fontFamily:"'Syne',sans-serif",background:"var(--amber-dim)",
+                                padding:"0 5px",borderRadius:4}}>{a.user_id}</span>}
+                              {a.is_default&&<span style={{fontSize:9,color:"var(--green)",
+                                background:"var(--green-dim)",padding:"1px 6px",borderRadius:999,
+                                fontWeight:600}}>Default</span>}
+                            </div>
+                          </div>
+                          <button onClick={()=>handleRemove(w.id, a.employee_id)}
+                            style={{width:28,height:28,borderRadius:6,background:"var(--red-dim)",
+                              border:"none",display:"flex",alignItems:"center",justifyContent:"center",
+                              cursor:"pointer",flexShrink:0}}>
+                            <Icon name="x" size={12} color="var(--red)"/>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Assign button */}
+                <Btn onClick={()=>setAssigningTo(w)} variant="blue" size="sm" style={{width:"100%"}}>
+                  <Icon name="plus" size={13}/>Assign Employee to {w.name}
+                </Btn>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── ASSIGNMENTS VIEW ── */}
+      {view==="assignments"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{padding:"10px 14px",borderRadius:10,background:"var(--blue-dim)",
+            border:"1px solid rgba(59,130,246,0.2)",fontSize:12,color:"var(--blue)",lineHeight:1.5}}>
+            This view shows every employee and their currently assigned worksite. Tap an employee to change their assignment.
+          </div>
+
+          {loadingAssignments ? (
+            <Card style={{textAlign:"center",padding:24,color:"var(--text3)"}}>Loading assignments...</Card>
+          ) : employees.length===0 ? (
+            <Card style={{textAlign:"center",padding:24,color:"var(--text3)"}}>No employees found.</Card>
+          ) : employees.map(emp => {
+            const current = getEmployeeWorksite(emp.id);
+            const allEmpAssignments = assignments.filter(a => a.employee_id === emp.id);
+            return (
+              <Card key={emp.id}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:current?12:0}}>
+                  <div style={{width:40,height:40,borderRadius:"50%",
+                    background:"var(--amber-dim)",display:"flex",alignItems:"center",
+                    justifyContent:"center",flexShrink:0,border:"2px solid var(--amber-glow)"}}>
+                    <Icon name="user" size={18} color="var(--amber2)"/>
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,color:"var(--text)",fontSize:14}}>
+                      {emp.name||emp.full_name}
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2,flexWrap:"wrap"}}>
+                      {emp.user_id&&<span style={{fontSize:10,fontWeight:700,color:"var(--amber)",
+                        fontFamily:"'Syne',sans-serif",background:"var(--amber-dim)",
+                        padding:"1px 6px",borderRadius:4}}>{emp.user_id}</span>}
+                      <span style={{fontSize:11,color:"var(--text3)"}}>{emp.department||""}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Current assignment */}
+                {current ? (
+                  <div style={{padding:"10px 12px",background:"var(--green-dim)",borderRadius:8,
+                    border:"1px solid rgba(16,185,129,0.2)",marginBottom:10}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                      <Icon name="pin" size={12} color="var(--green)"/>
+                      <span style={{fontSize:11,fontWeight:600,color:"var(--green)",
+                        fontFamily:"'Syne',sans-serif",letterSpacing:"0.04em"}}>
+                        CURRENT WORKSITE
+                      </span>
+                    </div>
+                    <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>
+                      {current.worksite_name}
+                    </div>
+                    <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>
+                      {parseFloat(current.latitude).toFixed(4)}°, {parseFloat(current.longitude).toFixed(4)}° · {current.radius_feet} ft radius
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{padding:"10px 12px",background:"var(--red-dim)",borderRadius:8,
+                    border:"1px solid rgba(239,68,68,0.2)",marginBottom:10}}>
+                    <div style={{fontSize:12,color:"var(--red)",fontWeight:500}}>
+                      ⚠ No worksite assigned — employee cannot clock in
+                    </div>
+                  </div>
+                )}
+
+                {/* Assign to different worksite */}
+                <div>
+                  <div style={{fontSize:11,color:"var(--text3)",marginBottom:6,
+                    fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>
+                    ASSIGN TO WORKSITE
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {worksites.map(w=>{
+                      const isCurrentlyAssigned = allEmpAssignments.some(a=>a.worksite_id===w.id&&a.is_default);
+                      return (
+                        <button key={w.id} onClick={()=>!isCurrentlyAssigned&&handleAssign(w.id,emp.id)}
+                          style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",
+                            borderRadius:8,border:`1px solid ${isCurrentlyAssigned?"rgba(16,185,129,0.3)":"var(--border)"}`,
+                            background:isCurrentlyAssigned?"var(--green-dim)":"var(--bg3)",
+                            cursor:isCurrentlyAssigned?"default":"pointer",textAlign:"left",
+                            width:"100%",minHeight:44}}>
+                          <div style={{width:28,height:28,borderRadius:8,
+                            background:isCurrentlyAssigned?"var(--green-dim)":"var(--amber-dim)",
+                            display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                            <Icon name="pin" size={13} color={isCurrentlyAssigned?"var(--green)":"var(--amber)"}/>
+                          </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:600,
+                              color:isCurrentlyAssigned?"var(--green)":"var(--text)",
+                              overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {w.name}
+                            </div>
+                            <div style={{fontSize:10,color:"var(--text3)"}}>
+                              {w.radius_feet} ft geofence
+                            </div>
+                          </div>
+                          {isCurrentlyAssigned ? (
+                            <span style={{fontSize:10,color:"var(--green)",fontWeight:700,
+                              background:"var(--green-dim)",padding:"2px 8px",borderRadius:999,flexShrink:0}}>
+                              ✓ Assigned
+                            </span>
+                          ) : (
+                            <span style={{fontSize:10,color:"var(--text3)",
+                              padding:"2px 8px",borderRadius:999,flexShrink:0,
+                              background:"var(--bg2)",border:"1px solid var(--border)"}}>
+                              Tap to assign
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                    {worksites.length===0&&(
+                      <div style={{fontSize:12,color:"var(--text3)",padding:"8px 0"}}>
+                        No worksites available. Create one first.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add/Edit Worksite Modal */}
+      {(showAddWorksite||editingWorksite)&&(
+        <Modal title={editingWorksite?"Edit Worksite":"Add New Worksite"}
+          onClose={()=>{setShowAddWorksite(false);setEditingWorksite(null);}}>
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div>
+              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,
+                fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em",textTransform:"uppercase"}}>
+                Worksite Name *
+              </label>
+              <input type="text" ref={nameRef} defaultValue={editingWorksite?.name||""}
+                placeholder="e.g. Main Site - Block A" style={{fontSize:16}} autoCorrect="off"/>
+            </div>
+            <div>
+              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,
+                fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em",textTransform:"uppercase"}}>
+                Location Coordinates *
+              </label>
+              <p style={{fontSize:11,color:"var(--text3)",marginBottom:8,lineHeight:1.4}}>
+                Open Google Maps, long-press on the exact worksite location, and copy the coordinates shown at the bottom.
+              </p>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:4}}>Latitude</label>
+                  <input type="text" inputMode="decimal" ref={latRef}
+                    defaultValue={editingWorksite?.latitude||""}
+                    placeholder="e.g. 33.9495" style={{fontSize:16}} autoCorrect="off"/>
                 </div>
                 <div>
-                  <div style={{fontWeight:600,color:"var(--text)",fontSize:14}}>{w.name}</div>
-                  <div style={{fontSize:11,color:"var(--text3)"}}>{w.latitude?.toFixed(4)}°, {w.longitude?.toFixed(4)}° · {w.radius_feet} ft</div>
+                  <label style={{fontSize:10,color:"var(--text3)",display:"block",marginBottom:4}}>Longitude</label>
+                  <input type="text" inputMode="decimal" ref={lonRef}
+                    defaultValue={editingWorksite?.longitude||""}
+                    placeholder="e.g. -83.7656" style={{fontSize:16}} autoCorrect="off"/>
                 </div>
               </div>
-              {w.notes&&<div style={{fontSize:11,color:"var(--text3)",marginBottom:8}}>{w.notes}</div>}
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{background:"var(--blue-dim)",color:"var(--blue)",padding:"2px 8px",borderRadius:999,fontSize:11,fontWeight:600}}>
-                  {w.assigned_count||0} employees
-                </span>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:6,flexShrink:0}}>
-              <Btn onClick={()=>setShowAssign(w)} variant="blue" size="sm">
-                <Icon name="users" size={13}/>Assign
-              </Btn>
-              <Btn onClick={()=>{setEditingWorksite(w);setShowAdd(true);}} variant="secondary" size="sm">
-                <Icon name="edit" size={13}/>
-              </Btn>
-              <Btn onClick={()=>handleDelete(w.id)} variant="danger" size="sm">
-                <Icon name="x" size={13}/>
-              </Btn>
-            </div>
-          </div>
-        </Card>
-      ))}
-
-      {/* Add/Edit Modal */}
-      {(showAdd||editingWorksite)&&(
-        <Modal title={editingWorksite?"Edit Worksite":"New Worksite"} onClose={()=>{setShowAdd(false);setEditingWorksite(null);}}>
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            <div>
-              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em",fontFamily:"'Syne',sans-serif",fontWeight:600}}>Worksite Name</label>
-              <input type="text" ref={nameRef} defaultValue={editingWorksite?.name||""} placeholder="e.g. Main Site Block A" style={{fontSize:16}} autoCorrect="off"/>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-              <div>
-                <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em",fontFamily:"'Syne',sans-serif",fontWeight:600}}>Latitude</label>
-                <input type="text" inputMode="decimal" ref={latRef} defaultValue={editingWorksite?.latitude||""} placeholder="e.g. 33.9495" style={{fontSize:16}} autoCorrect="off"/>
-              </div>
-              <div>
-                <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em",fontFamily:"'Syne',sans-serif",fontWeight:600}}>Longitude</label>
-                <input type="text" inputMode="decimal" ref={lonRef} defaultValue={editingWorksite?.longitude||""} placeholder="e.g. -83.7656" style={{fontSize:16}} autoCorrect="off"/>
-              </div>
             </div>
             <div>
-              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em",fontFamily:"'Syne',sans-serif",fontWeight:600}}>Radius (feet)</label>
-              <input type="text" inputMode="decimal" ref={radiusRef} defaultValue={editingWorksite?.radius_feet||200} placeholder="200" style={{fontSize:16}} autoCorrect="off"/>
+              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,
+                fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em",textTransform:"uppercase"}}>
+                Geofence Radius (feet)
+              </label>
+              <input type="text" inputMode="decimal" ref={radiusRef}
+                defaultValue={editingWorksite?.radius_feet||200}
+                placeholder="200" style={{fontSize:16}} autoCorrect="off"/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,marginTop:8}}>
+                {[["100 ft","100"],["200 ft","200"],["500 ft","500"]].map(([label,val])=>(
+                  <button key={val}
+                    onClick={()=>{ if(radiusRef.current) radiusRef.current.value=val; }}
+                    style={{padding:"7px",borderRadius:7,border:"1px solid var(--border)",
+                      background:"var(--bg3)",color:"var(--text3)",fontSize:12,cursor:"pointer",
+                      fontFamily:"'Syne',sans-serif",fontWeight:600}}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <p style={{fontSize:10,color:"var(--text3)",marginTop:6}}>
+                200 ft = on-site mobile use · 999999999 = remote testing
+              </p>
             </div>
             <div>
-              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em",fontFamily:"'Syne',sans-serif",fontWeight:600}}>Notes (optional)</label>
-              <input type="text" ref={notesRef} defaultValue={editingWorksite?.notes||""} placeholder="Any notes about this site" style={{fontSize:16}} autoCorrect="off"/>
+              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,
+                fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em",textTransform:"uppercase"}}>
+                Notes (optional)
+              </label>
+              <input type="text" ref={notesRef} defaultValue={editingWorksite?.notes||""}
+                placeholder="e.g. Entrance near gate B" style={{fontSize:16}} autoCorrect="off"/>
             </div>
-            <Btn onClick={handleSave} style={{width:"100%",marginTop:4}}>
-              <Icon name="check" size={14} color="#0b0f1a"/>{editingWorksite?"Update Worksite":"Create Worksite"}
+            <Btn onClick={handleSaveWorksite} style={{width:"100%"}} size="lg">
+              <Icon name="check" size={15} color="#0b0f1a"/>
+              {editingWorksite?"Update Worksite":"Create Worksite"}
             </Btn>
           </div>
         </Modal>
       )}
 
-      {/* Assign employees modal */}
-      {showAssign&&(
-        <Modal title={`Assign Employees — ${showAssign.name}`} onClose={()=>setShowAssign(null)}>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <p style={{fontSize:12,color:"var(--text3)",marginBottom:4}}>Select employees to assign to this worksite:</p>
-            {adminData.employees.filter(e=>e.role==="employee").map(emp=>{
-              const isAssigned = false; // Would need to fetch assignments
+      {/* Quick assign from worksite card */}
+      {assigningTo&&(
+        <Modal title={`Assign Employee to ${assigningTo.name}`} onClose={()=>setAssigningTo(null)}>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <p style={{fontSize:12,color:"var(--text3)",marginBottom:4,lineHeight:1.5}}>
+              Select an employee to assign to <strong style={{color:"var(--amber)"}}>{assigningTo.name}</strong>. Their geofencing and auto-punch will use this worksite's coordinates.
+            </p>
+            {employees.map(emp=>{
+              const currentWS = getEmployeeWorksite(emp.id);
+              const alreadyHere = assignments.some(a=>a.worksite_id===assigningTo.id&&a.employee_id===emp.id&&a.is_default);
               return (
-                <div key={emp.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",background:"var(--bg3)",borderRadius:8,border:"1px solid var(--border)"}}>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{emp.name}</div>
-                    <div style={{fontSize:11,color:"var(--text3)"}}>{emp.employee_code||""} · {emp.department||""}</div>
+                <button key={emp.id}
+                  onClick={()=>{ handleAssign(assigningTo.id, emp.id); setAssigningTo(null); }}
+                  style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
+                    borderRadius:10,border:`1px solid ${alreadyHere?"rgba(16,185,129,0.3)":"var(--border)"}`,
+                    background:alreadyHere?"var(--green-dim)":"var(--bg3)",
+                    cursor:"pointer",textAlign:"left",width:"100%",minHeight:52}}>
+                  <div style={{width:36,height:36,borderRadius:"50%",
+                    background:alreadyHere?"var(--green-dim)":"var(--amber-dim)",
+                    display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <Icon name="user" size={16} color={alreadyHere?"var(--green)":"var(--amber2)"}/>
                   </div>
-                  <div style={{display:"flex",gap:6}}>
-                    <Btn onClick={()=>handleAssign(showAssign.id, emp.id, true)} size="sm" variant="green">
-                      <Icon name="check" size={12}/>Default
-                    </Btn>
-                    <Btn onClick={()=>handleAssign(showAssign.id, emp.id, false)} size="sm" variant="blue">
-                      <Icon name="plus" size={12}/>Add
-                    </Btn>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:600,
+                      color:alreadyHere?"var(--green)":"var(--text)"}}>
+                      {emp.name||emp.full_name}
+                      {alreadyHere&&" ✓"}
+                    </div>
+                    <div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>
+                      {emp.user_id&&<span style={{color:"var(--amber)",fontWeight:700,marginRight:6}}>{emp.user_id}</span>}
+                      {currentWS
+                        ? <span>Currently: <span style={{color:"var(--text)"}}>{currentWS.worksite_name}</span></span>
+                        : <span style={{color:"var(--red)"}}>No worksite assigned</span>
+                      }
+                    </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -1804,26 +2137,20 @@ function SettingsPage({ settings, addToast, refreshSettings }) {
     });
   }, [settings]);
 
-  const refs = {
-    companyName: useRef(null), siteName: useRef(null),
-    latitude: useRef(null), longitude: useRef(null),
-    radiusFeet: useRef(null), workStart: useRef(null),
-    workEnd: useRef(null), maxBreaks: useRef(null), minBreak: useRef(null),
-  };
+  const companyRef = useRef(null);
+  const startRef = useRef(null);
+  const endRef = useRef(null);
 
   const handleSave = async () => {
-    const lat = refs.latitude.current?.value;
-    const lon = refs.longitude.current?.value;
-    const radius = refs.radiusFeet.current?.value;
-    if (!lat||!lon||!radius) { addToast("Latitude, longitude and radius are required.", "error"); return; }
     setSaving(true);
     const res = await authFetch("/api/settings", { method:"PUT", body:JSON.stringify({
-      companyName: refs.companyName.current?.value,
-      siteName: refs.siteName.current?.value,
-      latitude: parseFloat(lat), longitude: parseFloat(lon),
-      radiusFeet: parseFloat(radius),
-      workingHoursStart: refs.workStart.current?.value,
-      workingHoursEnd: refs.workEnd.current?.value,
+      companyName: companyRef.current?.value,
+      siteName: settings.siteName,
+      latitude: settings.latitude,
+      longitude: settings.longitude,
+      radiusFeet: settings.radiusFeet,
+      workingHoursStart: startRef.current?.value,
+      workingHoursEnd: endRef.current?.value,
       autoClockInEnabled: toggles.autoClockInEnabled,
       autoBreakOnExitEnabled: toggles.autoBreakOnExitEnabled,
       autoCorrectionEnabled: toggles.autoCorrectionEnabled,
@@ -1832,84 +2159,108 @@ function SettingsPage({ settings, addToast, refreshSettings }) {
     if (!res.ok) { addToast(d.error||"Failed.", "error"); setSaving(false); return; }
     localStorage.removeItem("bsc_settings");
     await refreshSettings();
-    addToast("Settings saved and applied.", "success");
+    addToast("Settings saved.", "success");
     setSaving(false);
   };
 
   const Toggle = ({ label, value, onChange, desc }) => (
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 0",borderBottom:"1px solid rgba(30,45,69,0.4)"}}>
-      <div style={{flex:1,paddingRight:12}}>
-        <div style={{fontSize:13,color:"var(--text)",fontWeight:500}}>{label}</div>
-        {desc&&<div style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{desc}</div>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+      padding:"14px 0",borderBottom:"1px solid rgba(30,45,69,0.4)"}}>
+      <div style={{flex:1,paddingRight:16}}>
+        <div style={{fontSize:14,color:"var(--text)",fontWeight:500}}>{label}</div>
+        {desc&&<div style={{fontSize:11,color:"var(--text3)",marginTop:3,lineHeight:1.4}}>{desc}</div>}
       </div>
-      <button onClick={()=>onChange(!value)} style={{width:44,height:26,borderRadius:13,border:"none",cursor:"pointer",background:value?"var(--amber)":"var(--border)",position:"relative",transition:"background 0.2s",flexShrink:0,minWidth:44}}>
-        <div style={{width:20,height:20,borderRadius:"50%",background:"white",position:"absolute",top:3,transition:"left 0.2s",left:value?21:3,boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+      <button onClick={()=>onChange(!value)} style={{width:48,height:28,borderRadius:14,
+        border:"none",cursor:"pointer",background:value?"var(--amber)":"var(--border)",
+        position:"relative",transition:"background 0.2s",flexShrink:0,minWidth:48}}>
+        <div style={{width:22,height:22,borderRadius:"50%",background:"white",
+          position:"absolute",top:3,transition:"left 0.2s",
+          left:value?23:3,boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
       </button>
     </div>
   );
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <SectionHeader title="Settings" subtitle="Configure worksite and rules"/>
+      <SectionHeader title="Settings" subtitle="Company info, schedule and automation"/>
+
+      {/* Info banner */}
+      <div style={{padding:"12px 14px",borderRadius:10,background:"var(--blue-dim)",
+        border:"1px solid rgba(59,130,246,0.2)",display:"flex",gap:10,alignItems:"flex-start"}}>
+        <Icon name="pin" size={15} color="var(--blue)" style={{marginTop:1,flexShrink:0}}/>
+        <div style={{fontSize:12,color:"var(--blue)",lineHeight:1.5}}>
+          <strong>Worksite locations</strong> are managed in the <strong>Worksites</strong> section.
+          Each employee can be assigned their own worksite with individual geofence settings.
+        </div>
+      </div>
+
+      {/* Company */}
       <Card>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-          <Icon name="pin" size={15} color="var(--amber)"/>
-          <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700}}>Site Location</h3>
+          <Icon name="hard_hat" size={15} color="var(--amber)"/>
+          <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700}}>Company</h3>
         </div>
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {[
-            ["COMPANY NAME","companyName","text",settings.companyName||"","Company name"],
-            ["SITE NAME","siteName","text",settings.siteName||"","Site address"],
-          ].map(([label,key,type,def,ph])=>(
-            <div key={key}>
-              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>{label}</label>
-              <input type={type} ref={refs[key]} defaultValue={def} placeholder={ph} style={{fontSize:16}} autoCorrect="off"/>
-            </div>
-          ))}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div>
-              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>LATITUDE</label>
-              <input type="text" inputMode="decimal" ref={refs.latitude} defaultValue={settings.latitude??""} placeholder="e.g. 33.9495" style={{fontSize:16}} autoCorrect="off"/>
-            </div>
-            <div>
-              <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>LONGITUDE</label>
-              <input type="text" inputMode="decimal" ref={refs.longitude} defaultValue={settings.longitude??""} placeholder="e.g. -83.7656" style={{fontSize:16}} autoCorrect="off"/>
-            </div>
-          </div>
-          <div>
-            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>GEOFENCE RADIUS (FEET)</label>
-            <input type="text" inputMode="decimal" ref={refs.radiusFeet} defaultValue={settings.radiusFeet??""} placeholder="200" style={{fontSize:16}} autoCorrect="off"/>
-            <p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>200 ft for on-site use · 999999999 for remote testing</p>
-          </div>
+        <div>
+          <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,
+            fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>
+            COMPANY NAME
+          </label>
+          <input type="text" ref={companyRef} defaultValue={settings.companyName||""}
+            placeholder="Company name" style={{fontSize:16}} autoCorrect="off"/>
         </div>
       </Card>
+
+      {/* Work Schedule */}
       <Card>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
           <Icon name="clock" size={15} color="var(--blue)"/>
-          <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700}}>Work Schedule</h3>
+          <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700}}>
+            Default Work Schedule
+          </h3>
         </div>
+        <p style={{fontSize:11,color:"var(--text3)",marginBottom:12,lineHeight:1.5}}>
+          This is the default schedule. You can set individual schedules per employee in the Employees section.
+        </p>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <div>
-            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>START TIME</label>
-            <input type="time" ref={refs.workStart} defaultValue={settings.workStart||"07:00"} style={{fontSize:16}}/>
+            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,
+              fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>
+              START TIME
+            </label>
+            <input type="time" ref={startRef} defaultValue={settings.workStart||"07:00"} style={{fontSize:16}}/>
           </div>
           <div>
-            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>END TIME</label>
-            <input type="time" ref={refs.workEnd} defaultValue={settings.workEnd||"17:00"} style={{fontSize:16}}/>
+            <label style={{fontSize:11,color:"var(--text3)",display:"block",marginBottom:5,
+              fontFamily:"'Syne',sans-serif",fontWeight:600,letterSpacing:"0.05em"}}>
+              END TIME
+            </label>
+            <input type="time" ref={endRef} defaultValue={settings.workEnd||"17:00"} style={{fontSize:16}}/>
           </div>
         </div>
       </Card>
+
+      {/* Automation */}
       <Card>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
           <Icon name="refresh" size={15} color="var(--green)"/>
-          <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700}}>Automation</h3>
+          <h3 style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:700}}>Automation Rules</h3>
         </div>
-        <Toggle label="Auto Clock-In" value={toggles.autoClockInEnabled} onChange={v=>setToggles(t=>({...t,autoClockInEnabled:v}))} desc="Clock in when entering the geofence"/>
-        <Toggle label="Auto Break on Exit" value={toggles.autoBreakOnExitEnabled} onChange={v=>setToggles(t=>({...t,autoBreakOnExitEnabled:v}))} desc="Start break when leaving the geofence"/>
-        <Toggle label="Auto Punch Correction" value={toggles.autoCorrectionEnabled} onChange={v=>setToggles(t=>({...t,autoCorrectionEnabled:v}))} desc="Fix missing punches automatically"/>
+        <Toggle label="Auto Clock-In"
+          value={toggles.autoClockInEnabled}
+          onChange={v=>setToggles(t=>({...t,autoClockInEnabled:v}))}
+          desc="Automatically clock in employees when they enter their assigned worksite geofence"/>
+        <Toggle label="Auto Break on Exit"
+          value={toggles.autoBreakOnExitEnabled}
+          onChange={v=>setToggles(t=>({...t,autoBreakOnExitEnabled:v}))}
+          desc="Start break automatically when an employee leaves their worksite geofence"/>
+        <Toggle label="Auto Punch Correction"
+          value={toggles.autoCorrectionEnabled}
+          onChange={v=>setToggles(t=>({...t,autoCorrectionEnabled:v}))}
+          desc="Fix missing punches automatically based on schedule and location"/>
       </Card>
+
       <Btn onClick={handleSave} loading={saving} size="lg" style={{width:"100%"}}>
-        <Icon name="check" size={15} color="#0b0f1a"/>Save All Settings
+        <Icon name="check" size={15} color="#0b0f1a"/>Save Settings
       </Btn>
     </div>
   );
