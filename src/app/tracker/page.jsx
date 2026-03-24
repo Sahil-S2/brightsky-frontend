@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
-const API = "https://brightsky-api.sahils2.workers.dev";
+const API = "https://brightsky-api.sahilswarajjena456.workers.dev";
 
 // ── Device fingerprint for security ──────────────────────────────────────────
 const getDeviceFingerprint = () => {
