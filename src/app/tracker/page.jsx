@@ -1021,7 +1021,16 @@ function LoginPage({onLogin,lang,setLang}){
                     onChange={e=>{const v=useEmail?e.target.value:e.target.value.replace(/\D/g,"").slice(0,4);setPassword(v);setError("");}}
                     placeholder={useEmail?"••••••••":"· · · ·"} autoComplete="off"
                     inputMode={useEmail?"text":"numeric"} maxLength={useEmail?undefined:4}
-                    style={{fontSize:useEmail?16:28,letterSpacing:useEmail?"normal":"0.4em",textAlign:useEmail?"left":"center",paddingRight:52,fontWeight:useEmail?400:700}} required/>
+                    style={{
+                      fontSize: useEmail ? 16 : 28,
+                      letterSpacing: useEmail ? "normal" : "0.4em",
+                      textAlign: useEmail ? "left" : "center",
+                      width: "100%",
+                      padding: "12px 14px",
+                      paddingRight: 52,
+                      paddingLeft: useEmail ? 14 : 52, /* This creates symmetrical padding to fix the centering */
+                      fontWeight: useEmail ? 400 : 700
+                    }} required/>
                   <button type="button" onClick={()=>setShowPass(s=>!s)} style={{
                     position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
                     background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text3)",cursor:"pointer",
