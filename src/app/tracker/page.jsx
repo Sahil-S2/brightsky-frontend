@@ -520,15 +520,18 @@ export default function App(){
           <header style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"0 16px",display:"flex",alignItems:"center",gap:10,position:"sticky",top:0,zIndex:100,height:56,boxShadow:"var(--shadow-sm)"}}>
             <button onClick={()=>setSidebarOpen(true)} style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",padding:7,borderRadius:"var(--radius-sm)",display:"flex",cursor:"pointer",minWidth:36,minHeight:36,alignItems:"center",justifyContent:"center"}}><Icon name="menu" size={18}/></button>
             <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
-              <div style={{width:28,height:28,borderRadius:"var(--radius-sm)",background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name="hard_hat" size={14} color="white"/></div>
-              <span style={{fontWeight:700,fontSize:13.5,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130,letterSpacing:"-0.01em"}}>BSC Tracker</span>
-              {isOvertime&&<span className="overtime-glow" style={{background:"var(--orange-light)",color:"var(--orange)",padding:"2px 9px",borderRadius:999,fontSize:11,fontWeight:700,flexShrink:0,border:"1px solid rgba(234,88,12,0.2)"}}>Overtime</span>}
-            </div>
+  <div style={{width:28,height:28,borderRadius:"var(--radius-sm)",background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name="hard_hat" size={14} color="white"/></div>
+  <div>
+    <span style={{fontWeight:700,fontSize:13.5,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130,letterSpacing:"-0.01em"}}>BSC Tracker</span>
+    <div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>{now.toLocaleDateString()} · {now.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</div>
+  </div>
+  {isOvertime&&<span className="overtime-glow" style={{background:"var(--orange-light)",color:"var(--orange)",padding:"2px 9px",borderRadius:999,fontSize:11,fontWeight:700,flexShrink:0,border:"1px solid rgba(234,88,12,0.2)"}}>Overtime</span>}
+</div>
             <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading&&userLat==null&&geoTarget?.latitude!=null}/>
           </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} handleClockIn={handleClockIn} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t}/>)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} handleClockIn={handleClockIn} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData}/>)}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t}/>}
             {page==="employees"&&isAdmin&&<EmployeeList adminData={adminData} refreshAdminData={refreshAdminData} addToast={addToast} worksites={worksites} t={t}/>}
@@ -658,95 +661,224 @@ function LoginPage({onLogin,lang,setLang}){
 }
 
 // ─── EMPLOYEE DASHBOARD ───────────────────────────────────────────────────────
-function EmployeeDashboard({user,todayData,empStatus,onSite,settings,punchLoading,gpsLoading,userLat,isOvertime,overtimeMins,employeeWorksite,handleClockIn,handleClockOut,handleBreakStart,handleBreakEnd,t}){
-  const[now,setNow]=useState(new Date());
-  useEffect(()=>{const i=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(i);},[]);
-  const session=todayData?.session;
-  const punches=todayData?.punches||[];
-  const breakCount=punches.filter(p=>p.punch_type==="break_start").length;
-  let liveWorked=session?.worked_minutes||0;
-  if((empStatus==="clocked_in"||empStatus==="on_break")&&session?.clock_in_time){
-    const elapsed=Math.round((now.getTime()-new Date(session.clock_in_time).getTime())/60000);
-    liveWorked=Math.max(0,elapsed-(session.break_minutes||0));
-  }else if(empStatus==="clocked_out"&&session?.worked_minutes){liveWorked=session.worked_minutes;}
-  const punchLabels={clock_in:t.clockedIn,clock_out:t.clockedOut,break_start:t.startBreak,break_end:t.endBreak,auto_clock_in:t.autoClockIn,auto_break:"Auto Break"};
-  const statusColor=empStatus==="clocked_in"?"var(--green)":empStatus==="on_break"?"var(--amber)":"var(--text3)";
-  const displayWS=employeeWorksite||{latitude:settings.latitude,longitude:settings.longitude,radius_feet:settings.radiusFeet,name:settings.siteName};
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <div className="fade-up">
-        <h1 style={{fontSize:22,fontWeight:800,color:"var(--text)",letterSpacing:"-0.02em"}}>{t[now.getHours()<12?"morning":now.getHours()<17?"afternoon":"evening"]}, {user.name.split(" ")[0]} 👋</h1>
-        <p style={{color:"var(--text3)",fontSize:13,marginTop:4,fontWeight:400}}>{now.toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})} · {now.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"})}</p>
-      </div>
-      {isOvertime&&<div className="fade-up overtime-glow" style={{padding:"12px 16px",borderRadius:"var(--radius-lg)",background:"var(--orange-light)",border:"1.5px solid rgba(234,88,12,0.25)",display:"flex",alignItems:"center",gap:12}}>
-        <div style={{width:36,height:36,borderRadius:"var(--radius)",background:"rgba(234,88,12,0.12)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name="zap" size={18} color="var(--orange)"/></div>
-        <div><div style={{fontSize:14,fontWeight:700,color:"var(--orange)"}}>{t.overtime}</div><div style={{fontSize:12,color:"var(--text3)",marginTop:1}}>Working {fmtMins(overtimeMins)} beyond scheduled hours</div></div>
-      </div>}
-      <Card className="fade-up-d1" style={{border:`1.5px solid ${empStatus==="clocked_in"?"rgba(5,150,105,0.25)":empStatus==="on_break"?"rgba(217,119,6,0.25)":isOvertime?"rgba(234,88,12,0.25)":"var(--border)"}`,background:empStatus==="clocked_in"?"var(--green-light)":empStatus==="on_break"?"var(--amber-light)":"var(--card)"}}>
-        {(empStatus==="clocked_in"||empStatus==="on_break")&&(
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-            <div style={{position:"relative",display:"inline-block"}}>
-              <div style={{width:10,height:10,borderRadius:"50%",background:statusColor,position:"relative",zIndex:2}}/>
-              {[1,2].map(i=><div key={i} style={{position:"absolute",inset:0,borderRadius:"50%",border:`2px solid ${statusColor}`,animation:`pulse-ring ${1.5+i*0.3}s ease-out infinite`,animationDelay:`${i*0.3}s`}}/>)}
+function EmployeeDashboard({
+  user, todayData, empStatus, onSite, settings,
+  punchLoading, gpsLoading, userLat,
+  isOvertime, overtimeMins, employeeWorksite,
+  handleClockIn, handleClockOut, handleBreakStart, handleBreakEnd,
+  t, addToast, refreshTodayData
+}) {
+  const [now, setNow] = useState(new Date());
+  const [showBreakModal, setShowBreakModal] = useState(false);
+  const [breakReason, setBreakReason] = useState("");
+  const [tasks, setTasks] = useState([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Fetch tasks for employee
+  const fetchTasks = useCallback(async () => {
+    try {
+      setLoadingTasks(true);
+      const res = await authFetch(`/api/tasks/employee/${user.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data);
+      }
+    } catch (err) {
+      console.error("Failed to load tasks", err);
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, [user.id]);
+
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  const handleMarkComplete = async (taskId) => {
+  try {
+    const res = await authFetch(`/api/tasks/${taskId}/complete`, { method: "PUT" });
+    if (res.ok) {
+      // Optimistically update local state
+      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "completed" } : t));
+      addToast("Task marked as complete.", "success");
+    } else {
+      addToast("Failed to update task", "error");
+    }
+  } catch (err) {
+    addToast("Error updating task", "error");
+  }
+};
+
+  const handleCustomBreak = async () => {
+  if (!breakReason.trim()) {
+    addToast("Please enter a reason for the break.", "error");
+    return;
+  }
+  const res = await authFetch("/api/attendance/custom-break-start", {
+    method: "POST",
+    body: JSON.stringify({ reason: breakReason, latitude: userLat || 0, longitude: userLon || 0 })
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    addToast(error.error || "Failed to start custom break.", "error");
+    return;
+  }
+  addToast("Work-related break started.", "success");
+  setShowBreakModal(false);
+  setBreakReason("");
+  await refreshTodayData(); // Refresh session data
+};
+
+  const session = todayData?.session;
+  const punches = todayData?.punches || [];
+  // Calculate today's totals from the session (using stored values or live)
+  let totalWorked = session?.worked_minutes || 0;
+  let totalBreak = session?.break_minutes || 0;
+  if ((empStatus === "clocked_in" || empStatus === "on_break") && session?.clock_in_time) {
+    const elapsed = Math.round((now.getTime() - new Date(session.clock_in_time).getTime()) / 60000);
+    totalWorked = Math.max(0, elapsed - (session.break_minutes || 0));
+    totalBreak = session?.break_minutes || 0;
+    // For break time, if on break, add ongoing break duration
+    if (empStatus === "on_break") {
+      const lastBreakStart = punches.findLast(p => p.punch_type === "break_start")?.punch_time;
+      if (lastBreakStart) {
+        const ongoing = Math.round((now.getTime() - new Date(lastBreakStart).getTime()) / 60000);
+        totalBreak = (session.break_minutes || 0) + ongoing;
+      }
+    }
+  }
+
+  const displayWS = employeeWorksite || { latitude: settings.latitude, longitude: settings.longitude, radius_feet: settings.radiusFeet, name: settings.siteName };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Assigned Worksite Card - moved higher */}
+      {employeeWorksite && (
+        <Card style={{ border: "1.5px solid var(--blue-mid)", background: "var(--blue-light)" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: "var(--radius)", background: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}>
+              <Icon name="pin" size={18} color="white" />
             </div>
-            <span style={{fontSize:12.5,fontWeight:600,color:statusColor}}>Live · {empStatus==="clocked_in"?"Working":"On Break"}</span>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>{t.assignedWorksite}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.01em" }}>{employeeWorksite.project_name || employeeWorksite.name}</div>
+              {employeeWorksite.address && <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 2, fontWeight: 400 }}>{employeeWorksite.address}</div>}
+              <div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 2 }}>{parseFloat(employeeWorksite.latitude).toFixed(4)}°, {parseFloat(employeeWorksite.longitude).toFixed(4)}° · {employeeWorksite.radius_feet}ft radius</div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Compact Time Summary */}
+      <div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
+        <div>
+          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>{fmtMins(totalWorked)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>{fmtMins(totalBreak)}</div>
+        </div>
+      </div>
+
+      {/* Main Action Card */}
+      <Card>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {empStatus === "clocked_out" && (
+            <Btn onClick={handleClockIn} disabled={!onSite || punchLoading} loading={punchLoading} size="lg" style={{ width: "100%" }}>
+              <Icon name="play" size={16} color="white" />{t.clockIn}
+            </Btn>
+          )}
+          {empStatus === "clocked_in" && (
+            <>
+              <Btn onClick={() => setShowBreakModal(true)} disabled={punchLoading} variant="secondary" size="md" style={{ width: "100%" }}>
+                <Icon name="coffee" size={15} color="var(--amber)" />Break
+              </Btn>
+              <Btn onClick={handleClockOut} disabled={punchLoading} loading={punchLoading} variant="danger" size="md" style={{ width: "100%" }}>
+                <Icon name="stop" size={15} color="var(--red)" />{t.clockOut}
+              </Btn>
+            </>
+          )}
+          {empStatus === "on_break" && (
+            <Btn onClick={handleBreakEnd} disabled={punchLoading} loading={punchLoading} variant="green" size="lg" style={{ width: "100%" }}>
+              <Icon name="play" size={16} color="var(--green)" />{t.endBreak}
+            </Btn>
+          )}
+        </div>
+        {gpsLoading && userLat == null && displayWS?.latitude != null && (
+          <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "rgba(255,255,255,0.7)", border: "1px solid rgba(217,119,6,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
+            <span className="spin" style={{ width: 12, height: 12, border: "2px solid var(--amber)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 500 }}>Getting your location…</span>
           </div>
         )}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10,marginBottom:14}}>
-          <div>
-            <div style={{fontSize:11.5,color:"var(--text3)",marginBottom:7,fontWeight:500}}>Current Status</div>
-            <StatusBadge status={isOvertime&&empStatus==="clocked_in"?"overtime":empStatus}/>
+        {!gpsLoading && !onSite && displayWS?.latitude != null && userLat != null && (
+          <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "var(--red-light)", border: "1.5px solid rgba(220,38,38,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
+            <Icon name="alert" size={14} color="var(--red)" />
+            <span style={{ fontSize: 12.5, color: "var(--red)", fontWeight: 450 }}>Must be within {displayWS.radius_feet} ft of your assigned worksite.</span>
           </div>
-          {(empStatus==="clocked_in"||empStatus==="on_break")&&<div style={{textAlign:"right"}}>
-            <div style={{fontSize:11.5,color:"var(--text3)",marginBottom:3,fontWeight:500}}>{t.today}</div>
-            <div style={{fontSize:28,fontWeight:800,color:isOvertime?"var(--orange)":statusColor,letterSpacing:"-0.02em"}}>{fmtMins(liveWorked)}</div>
-            {isOvertime&&<div style={{fontSize:11,color:"var(--orange)",fontWeight:600}}>+{fmtMins(overtimeMins)} OT</div>}
-          </div>}
-        </div>
-        {session?.clock_in_time&&<div style={{display:"flex",gap:16,marginBottom:14,flexWrap:"wrap",padding:"10px 14px",background:"rgba(255,255,255,0.6)",borderRadius:"var(--radius)",border:"1px solid rgba(0,0,0,0.06)"}}>
-          <div style={{fontSize:12.5}}><span style={{color:"var(--text3)"}}>In: </span><span style={{color:"var(--text)",fontWeight:600}}>{fmtTime(session.clock_in_time)}</span></div>
-          {session.clock_out_time&&<div style={{fontSize:12.5}}><span style={{color:"var(--text3)"}}>Out: </span><span style={{color:"var(--text)",fontWeight:600}}>{fmtTime(session.clock_out_time)}</span></div>}
-          <div style={{fontSize:12.5}}><span style={{color:"var(--text3)"}}>Break: </span><span style={{color:"var(--text)",fontWeight:600}}>{fmtMins(session.break_minutes)}</span></div>
-        </div>}
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {empStatus==="clocked_out"&&<Btn onClick={handleClockIn} disabled={!onSite||punchLoading} loading={punchLoading} size="lg" style={{width:"100%"}}><Icon name="play" size={16} color="white"/>{t.clockIn}</Btn>}
-          {empStatus==="clocked_in"&&<><Btn onClick={handleBreakStart} disabled={punchLoading} loading={punchLoading} variant="secondary" size="md" style={{width:"100%",borderColor:"rgba(217,119,6,0.3)",color:"var(--amber)"}}><Icon name="coffee" size={15} color="var(--amber)"/>{t.startBreak}</Btn><Btn onClick={handleClockOut} disabled={punchLoading} loading={punchLoading} variant="danger" size="md" style={{width:"100%"}}><Icon name="stop" size={15} color="var(--red)"/>{t.clockOut}</Btn></>}
-          {empStatus==="on_break"&&<Btn onClick={handleBreakEnd} disabled={punchLoading} loading={punchLoading} variant="green" size="lg" style={{width:"100%"}}><Icon name="play" size={16} color="var(--green)"/>{t.endBreak}</Btn>}
-        </div>
-        {gpsLoading&&userLat==null&&displayWS?.latitude!=null&&<div style={{marginTop:12,padding:"10px 14px",borderRadius:"var(--radius)",background:"rgba(255,255,255,0.7)",border:"1px solid rgba(217,119,6,0.2)",display:"flex",gap:8,alignItems:"center"}}><span className="spin" style={{width:12,height:12,border:"2px solid var(--amber)",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block",flexShrink:0}}/><span style={{fontSize:12.5,color:"var(--amber)",fontWeight:500}}>Getting your location…</span></div>}
-        {!gpsLoading&&!onSite&&displayWS?.latitude!=null&&userLat!=null&&<div style={{marginTop:12,padding:"10px 14px",borderRadius:"var(--radius)",background:"var(--red-light)",border:"1.5px solid rgba(220,38,38,0.2)",display:"flex",gap:8,alignItems:"center"}}><Icon name="alert" size={14} color="var(--red)"/><span style={{fontSize:12.5,color:"var(--red)",fontWeight:450}}>Must be within {displayWS.radius_feet} ft of your assigned worksite.</span></div>}
+        )}
       </Card>
-      <div className="fade-up-d2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <StatCard label={t.today} value={fmtMins(liveWorked)} icon="clock" color={isOvertime?"var(--orange)":"var(--green)"} flash={isOvertime}/>
-        <StatCard label={t.status} value={empStatus==="clocked_in"?t.active:empStatus==="on_break"?t.onBreak:t.inactive} icon="shield" color={empStatus==="clocked_in"?"var(--green)":empStatus==="on_break"?"var(--amber)":"var(--text3)"}/>
-        <StatCard label={t.breaks} value={breakCount} icon="coffee" color="var(--amber)" sub={`${fmtMins(session?.break_minutes||0)} total`}/>
-        <StatCard label={t.punches} value={punches.length} icon="log" color="var(--blue)"/>
-      </div>
-      <Card className="fade-up-d3">
-        <SectionHeader title="Today's Activity"/>
-        {punches.length===0?<div style={{textAlign:"center",padding:"24px 0",color:"var(--text4)",fontSize:13.5}}>{t.noActivity}</div>:
-        <div style={{display:"flex",flexDirection:"column"}}>
-          {punches.map((p,i)=>{
-            const dotColor={clock_in:"var(--green)",clock_out:"var(--red)",break_start:"var(--amber)",break_end:"var(--amber)",auto_clock_in:"var(--blue)",auto_break:"var(--blue)"}[p.punch_type]||"var(--text4)";
-            return(<div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 0",borderBottom:i<punches.length-1?"1px solid var(--border)":"none"}}>
-              <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,background:dotColor}}/>
-              <div style={{flex:1,minWidth:0}}><div style={{fontSize:13.5,color:"var(--text)",fontWeight:500}}>{punchLabels[p.punch_type]||p.punch_type}</div><div style={{fontSize:11.5,color:"var(--text4)"}}>via {p.source}</div></div>
-              <div style={{fontSize:13,color:"var(--text3)",fontWeight:600,flexShrink:0}}>{fmtTime(p.punch_time)}</div>
-            </div>);
-          })}
-        </div>}
-      </Card>
-      {employeeWorksite&&<Card className="fade-up-d4" style={{border:"1.5px solid var(--blue-mid)",background:"var(--blue-light)"}}>
-        <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
-          <div style={{width:40,height:40,borderRadius:"var(--radius)",background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(37,99,235,0.25)"}}><Icon name="pin" size={18} color="white"/></div>
-          <div style={{minWidth:0,flex:1}}>
-            <div style={{fontSize:11,color:"var(--blue)",fontWeight:600,letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:4}}>{t.assignedWorksite}</div>
-            <div style={{fontSize:15,fontWeight:700,color:"var(--text)",letterSpacing:"-0.01em"}}>{employeeWorksite.project_name||employeeWorksite.name}</div>
-            {employeeWorksite.address&&<div style={{fontSize:12.5,color:"var(--text3)",marginTop:2,fontWeight:400}}>{employeeWorksite.address}</div>}
-            <div style={{fontSize:11.5,color:"var(--text3)",marginTop:2}}>{parseFloat(employeeWorksite.latitude).toFixed(4)}°, {parseFloat(employeeWorksite.longitude).toFixed(4)}° · {employeeWorksite.radius_feet}ft radius</div>
+
+      {/* Tasks Section */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
+          {loadingTasks && <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />}
+        </div>
+        {tasks.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>No tasks assigned.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {tasks.map(task => (
+              <div key={task.id} style={{ padding: "12px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{task.title}</div>
+                    <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>{task.description}</div>
+                  </div>
+                  {task.status === "pending" ? (
+                    <button
+                      onClick={() => handleMarkComplete(task.id)}
+                      style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer" }}
+                    >
+                      Mark Complete
+                    </button>
+                  ) : (
+                    <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-      </Card>}
+        )}
+      </Card>
+
+      {/* Custom Break Modal */}
+      {showBreakModal && (
+        <Modal title="Work-Related Break" onClose={() => setShowBreakModal(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <p style={{ fontSize: 13, color: "var(--text3)" }}>You are about to start a work-related break. Please provide a reason:</p>
+            <textarea
+              rows={3}
+              value={breakReason}
+              onChange={e => setBreakReason(e.target.value)}
+              placeholder="e.g., Inspecting equipment at another site, delivering materials, etc."
+              style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn onClick={handleCustomBreak} loading={punchLoading} style={{ flex: 1 }}>
+                <Icon name="check" size={14} color="white" />Start Break
+              </Btn>
+              <Btn onClick={() => setShowBreakModal(false)} variant="secondary" style={{ flex: 1 }}>Cancel</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
