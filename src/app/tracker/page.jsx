@@ -813,40 +813,8 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
 }
 
 // ─── WORKSITES PAGE (Flash Cards) ─────────────────────────────────────────────
-function WorksitesPage({worksites,refreshWorksites,adminData,addToast,t}){
-  const[expandedId,setExpandedId]=useState(null);
-  const[showAddModal,setShowAddModal]=useState(false);
-  const[editingWS,setEditingWS]=useState(null);
-  const[assigningTo,setAssigningTo]=useState(null);
-  const[assignments,setAssignments]=useState([]);
-
-  const loadAssignments=useCallback(async()=>{
-    try{const r=await authFetch("/api/worksites/assignments");if(r.ok){const d=await r.json();setAssignments(Array.isArray(d)?d:[]);}}catch{}
-  },[]);
-
-  useEffect(()=>{loadAssignments();},[loadAssignments,worksites.length]);
-
-  const getAssigned=(wsId)=>assignments.filter(a=>a.worksite_id===wsId);
-  const getEmpWS=(empId)=>assignments.find(a=>a.employee_id===empId&&a.is_default);
-  const employees=adminData.employees.filter(e=>e.role==="employee");
-
-  const handleDelete=async(id)=>{
-    if(!confirm("Delete this worksite?"))return;
-    await authFetch(`/api/worksites/${id}`,{method:"DELETE"});
-    addToast("Deleted.","info");setExpandedId(null);await refreshWorksites();await loadAssignments();
-  };
-  const handleAssign=async(wsId,empId)=>{
-    const res=await authFetch(`/api/worksites/${wsId}/assign`,{method:"POST",body:JSON.stringify({employeeId:empId,isDefault:true})});
-    if(!res.ok){addToast("Failed to assign.","error");return;}
-    addToast("Assigned.","success");await refreshWorksites();await loadAssignments();
-  };
-  const handleRemove=async(wsId,empId)=>{
-    await authFetch(`/api/worksites/${wsId}/remove/${empId}`,{method:"DELETE"});
-    addToast("Removed.","info");await refreshWorksites();await loadAssignments();
-  };
-
   // ── Worksite Form — uses controlled state, never resets sibling fields ──────
-  function WorksiteForm({initial,onSave,onClose}){
+  function WorksiteForm({ initial, onSave, onClose, addToast }){
     // All state managed here — unaffected by address changes
     const[name,setName]=useState(initial?.name||"");
     const[projectName,setProjectName]=useState(initial?.project_name||initial?.name||"");
@@ -1004,6 +972,38 @@ function WorksitesPage({worksites,refreshWorksites,adminData,addToast,t}){
     );
   }
 
+  function WorksitesPage({worksites,refreshWorksites,adminData,addToast,t}){
+  const[expandedId,setExpandedId]=useState(null);
+  const[showAddModal,setShowAddModal]=useState(false);
+  const[editingWS,setEditingWS]=useState(null);
+  const[assigningTo,setAssigningTo]=useState(null);
+  const[assignments,setAssignments]=useState([]);
+
+  const loadAssignments=useCallback(async()=>{
+    try{const r=await authFetch("/api/worksites/assignments");if(r.ok){const d=await r.json();setAssignments(Array.isArray(d)?d:[]);}}catch{}
+  },[]);
+
+  useEffect(()=>{loadAssignments();},[loadAssignments,worksites.length]);
+
+  const getAssigned=(wsId)=>assignments.filter(a=>a.worksite_id===wsId);
+  const getEmpWS=(empId)=>assignments.find(a=>a.employee_id===empId&&a.is_default);
+  const employees=adminData.employees.filter(e=>e.role==="employee");
+
+  const handleDelete=async(id)=>{
+    if(!confirm("Delete this worksite?"))return;
+    await authFetch(`/api/worksites/${id}`,{method:"DELETE"});
+    addToast("Deleted.","info");setExpandedId(null);await refreshWorksites();await loadAssignments();
+  };
+  const handleAssign=async(wsId,empId)=>{
+    const res=await authFetch(`/api/worksites/${wsId}/assign`,{method:"POST",body:JSON.stringify({employeeId:empId,isDefault:true})});
+    if(!res.ok){addToast("Failed to assign.","error");return;}
+    addToast("Assigned.","success");await refreshWorksites();await loadAssignments();
+  };
+  const handleRemove=async(wsId,empId)=>{
+    await authFetch(`/api/worksites/${wsId}/remove/${empId}`,{method:"DELETE"});
+    addToast("Removed.","info");await refreshWorksites();await loadAssignments();
+  };
+
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <SectionHeader title={t.worksites} subtitle={`${worksites.length} configured`}
@@ -1102,15 +1102,16 @@ function WorksitesPage({worksites,refreshWorksites,adminData,addToast,t}){
       )}
 
       {/* Add/Edit Modal */}
-      {(showAddModal||editingWS)&&(
-        <Modal title={editingWS?"Edit Worksite":"Add New Worksite"} onClose={()=>{setShowAddModal(false);setEditingWS(null);}}>
-          <WorksiteForm
-            initial={editingWS}
-            onSave={async()=>{setShowAddModal(false);setEditingWS(null);await refreshWorksites();await loadAssignments();}}
-            onClose={()=>{setShowAddModal(false);setEditingWS(null);}}
-          />
-        </Modal>
-      )}
+      {(showAddModal || editingWS) && (
+  <Modal title={editingWS ? "Edit Worksite" : "Add New Worksite"} onClose={() => { setShowAddModal(false); setEditingWS(null); }}>
+    <WorksiteForm
+      initial={editingWS}
+      addToast={addToast}
+      onSave={async () => { setShowAddModal(false); setEditingWS(null); await refreshWorksites(); await loadAssignments(); }}
+      onClose={() => { setShowAddModal(false); setEditingWS(null); }}
+    />
+  </Modal>
+)}
 
       {/* Assign Modal */}
       {assigningTo&&(
