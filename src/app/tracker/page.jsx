@@ -391,6 +391,13 @@ export default function App(){
   const toastCounter=useRef(0);
   const missedWarned=useRef(false);
 
+  const [now, setNow] = useState(new Date());
+
+useEffect(() => {
+  const interval = setInterval(() => setNow(new Date()), 1000);
+  return () => clearInterval(interval);
+}, []);
+
   const addToast=useCallback((message,type="info")=>{
     const id=++toastCounter.current;setToasts(t=>[...t,{id,message,type}]);
     setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),5000);
@@ -668,19 +675,10 @@ function EmployeeDashboard({
   handleClockIn, handleClockOut, handleBreakStart, handleBreakEnd,
   t, addToast, refreshTodayData
 }) {
-  const [now, setNow] = useState(new Date());
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   const [showBreakModal, setShowBreakModal] = useState(false);
-
   const [breakReason, setBreakReason] = useState("");
-
   const [tasks, setTasks] = useState([]);
-
   const [loadingTasks, setLoadingTasks] = useState(false);
   
 
