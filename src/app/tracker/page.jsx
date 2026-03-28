@@ -535,10 +535,7 @@ useEffect(() => {
     </div>
   </div>
 
-  <div style={{display:"flex",alignItems:"center",gap:8}}>
-    {isOvertime && <span className="overtime-glow" style={{background:"var(--orange-light)",color:"var(--orange)",padding:"2px 9px",borderRadius:999,fontSize:11,fontWeight:700,whiteSpace:"nowrap",border:"1px solid rgba(234,88,12,0.2)"}}>Overtime</span>}
-    <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading&&userLat==null&&geoTarget?.latitude!=null}/>
-  </div>
+  <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading&&userLat==null&&geoTarget?.latitude!=null}/>
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
@@ -787,16 +784,22 @@ function EmployeeDashboard({
       )}
 
       {/* Compact Time Summary */}
-      <div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
-        <div>
-          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>{fmtMins(totalWorked)}</div>
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>{fmtMins(totalBreak)}</div>
-        </div>
+      {/* Compact Time Summary */}
+<div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
+  <div style={{ flex: 1 }}>
+    <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
+    <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>{fmtMins(totalWorked)}</div>
+    {isOvertime && (
+      <div style={{ fontSize: 10, color: "var(--orange)", fontWeight: 500, marginTop: 2 }}>
+        <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
       </div>
+    )}
+  </div>
+  <div>
+    <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
+    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>{fmtMins(totalBreak)}</div>
+  </div>
+</div>
 
       {/* Main Action Card */}
       <Card>
