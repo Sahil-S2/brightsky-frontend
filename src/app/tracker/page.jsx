@@ -525,17 +525,21 @@ useEffect(() => {
         </aside>
         <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,width:"100%"}}>
           <header style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"0 16px",display:"flex",alignItems:"center",gap:10,position:"sticky",top:0,zIndex:100,height:56,boxShadow:"var(--shadow-sm)"}}>
-            <button onClick={()=>setSidebarOpen(true)} style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",padding:7,borderRadius:"var(--radius-sm)",display:"flex",cursor:"pointer",minWidth:36,minHeight:36,alignItems:"center",justifyContent:"center"}}><Icon name="menu" size={18}/></button>
-            <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
-  <div style={{width:28,height:28,borderRadius:"var(--radius-sm)",background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name="hard_hat" size={14} color="white"/></div>
-  <div>
-    <span style={{fontWeight:700,fontSize:13.5,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130,letterSpacing:"-0.01em"}}>BSC Tracker</span>
-    <div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>{now.toLocaleDateString()} · {now.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</div>
+  <button onClick={()=>setSidebarOpen(true)} style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",padding:7,borderRadius:"var(--radius-sm)",display:"flex",cursor:"pointer",minWidth:36,minHeight:36,alignItems:"center",justifyContent:"center"}}><Icon name="menu" size={18}/></button>
+
+  <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
+    <div style={{width:28,height:28,borderRadius:"var(--radius-sm)",background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name="hard_hat" size={14} color="white"/></div>
+    <div>
+      <span style={{fontWeight:700,fontSize:13.5,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130,letterSpacing:"-0.01em"}}>BSC Tracker</span>
+      <div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>{now.toLocaleDateString()} · {now.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</div>
+    </div>
   </div>
-  {isOvertime&&<span className="overtime-glow" style={{background:"var(--orange-light)",color:"var(--orange)",padding:"2px 9px",borderRadius:999,fontSize:11,fontWeight:700,flexShrink:0,border:"1px solid rgba(234,88,12,0.2)"}}>Overtime</span>}
-</div>
-            <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading&&userLat==null&&geoTarget?.latitude!=null}/>
-          </header>
+
+  <div style={{display:"flex",alignItems:"center",gap:8}}>
+    {isOvertime && <span className="overtime-glow" style={{background:"var(--orange-light)",color:"var(--orange)",padding:"2px 9px",borderRadius:999,fontSize:11,fontWeight:700,whiteSpace:"nowrap",border:"1px solid rgba(234,88,12,0.2)"}}>Overtime</span>}
+    <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading&&userLat==null&&geoTarget?.latitude!=null}/>
+  </div>
+</header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
             {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} handleClockIn={handleClockIn} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData}/>)}
