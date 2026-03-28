@@ -265,6 +265,7 @@ const Icon=({name,size=18,color="currentColor",style={}})=>{
     chevronUp:<><polyline points="18 15 12 9 6 15"/></>,
     search:<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,
     globe:<><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></>,
+    briefcase: <><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></>,
   };
   return(<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline-block",flexShrink:0,...style}}>{icons[name]||null}</svg>);
 };
@@ -679,14 +680,14 @@ function EmployeeDashboard({
   const [now, setNow] = useState(new Date());
   const [showBreakModal, setShowBreakModal] = useState(false);
   const [breakReason, setBreakReason] = useState("");
+  const [breakType, setBreakType] = useState(null); // 'personal' or 'work'
   const [tasks, setTasks] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
 
   useEffect(() => {
-  const interval = setInterval(() => setNow(new Date()), 1000);
-  return () => clearInterval(interval);
-}, []);
-  
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch tasks for employee
   const fetchTasks = useCallback(async () => {
@@ -709,39 +710,55 @@ function EmployeeDashboard({
   }, [fetchTasks]);
 
   const handleMarkComplete = async (taskId) => {
-  try {
-    const res = await authFetch(`/api/tasks/${taskId}/complete`, { method: "PUT" });
-    if (res.ok) {
-      // Optimistically update local state
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "completed" } : t));
-      addToast("Task marked as complete.", "success");
-    } else {
-      addToast("Failed to update task", "error");
+    try {
+      const res = await authFetch(`/api/tasks/${taskId}/complete`, { method: "PUT" });
+      if (res.ok) {
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: "completed" } : t));
+        addToast("Task marked as complete.", "success");
+      } else {
+        addToast("Failed to update task", "error");
+      }
+    } catch (err) {
+      addToast("Error updating task", "error");
     }
-  } catch (err) {
-    addToast("Error updating task", "error");
-  }
-};
+  };
+
+  const handlePersonalBreak = async () => {
+    const res = await authFetch("/api/attendance/break-start", {
+      method: "POST",
+      body: JSON.stringify({ latitude: userLat || 0, longitude: userLon || 0 })
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      addToast(error.error || "Failed to start personal break.", "error");
+      return;
+    }
+    addToast("Personal break started.", "success");
+    setShowBreakModal(false);
+    setBreakType(null);
+    await refreshTodayData();
+  };
 
   const handleCustomBreak = async () => {
-  if (!breakReason.trim()) {
-    addToast("Please enter a reason for the break.", "error");
-    return;
-  }
-  const res = await authFetch("/api/attendance/custom-break-start", {
-    method: "POST",
-    body: JSON.stringify({ reason: breakReason, latitude: userLat || 0, longitude: userLon || 0 })
-  });
-  if (!res.ok) {
-    const error = await res.json();
-    addToast(error.error || "Failed to start custom break.", "error");
-    return;
-  }
-  addToast("Work-related break started.", "success");
-  setShowBreakModal(false);
-  setBreakReason("");
-  await refreshTodayData(); // Refresh session data
-};
+    if (!breakReason.trim()) {
+      addToast("Please enter a reason for the work-related break.", "error");
+      return;
+    }
+    const res = await authFetch("/api/attendance/custom-break-start", {
+      method: "POST",
+      body: JSON.stringify({ reason: breakReason, latitude: userLat || 0, longitude: userLon || 0 })
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      addToast(error.error || "Failed to start work-related break.", "error");
+      return;
+    }
+    addToast("Work-related break started.", "success");
+    setShowBreakModal(false);
+    setBreakReason("");
+    setBreakType(null);
+    await refreshTodayData();
+  };
 
   const session = todayData?.session;
   const punches = todayData?.punches || [];
@@ -766,7 +783,7 @@ function EmployeeDashboard({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Assigned Worksite Card - moved higher */}
+      {/* Assigned Worksite Card */}
       {employeeWorksite && (
         <Card style={{ border: "1.5px solid var(--blue-mid)", background: "var(--blue-light)" }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
@@ -784,22 +801,21 @@ function EmployeeDashboard({
       )}
 
       {/* Compact Time Summary */}
-      {/* Compact Time Summary */}
-<div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
-  <div style={{ flex: 1 }}>
-    <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
-    <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>{fmtMins(totalWorked)}</div>
-    {isOvertime && (
-      <div style={{ fontSize: 10, color: "var(--orange)", fontWeight: 500, marginTop: 2 }}>
-        <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
+      <div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>{fmtMins(totalWorked)}</div>
+          {isOvertime && (
+            <div style={{ fontSize: 10, color: "var(--orange)", fontWeight: 500, marginTop: 2 }}>
+              <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
+            </div>
+          )}
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>{fmtMins(totalBreak)}</div>
+        </div>
       </div>
-    )}
-  </div>
-  <div>
-    <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
-    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>{fmtMins(totalBreak)}</div>
-  </div>
-</div>
 
       {/* Main Action Card */}
       <Card>
@@ -873,24 +889,38 @@ function EmployeeDashboard({
         )}
       </Card>
 
-      {/* Custom Break Modal */}
+      {/* Break Modal */}
       {showBreakModal && (
-        <Modal title="Work-Related Break" onClose={() => setShowBreakModal(false)}>
+        <Modal title="Start Break" onClose={() => { setShowBreakModal(false); setBreakType(null); setBreakReason(""); }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <p style={{ fontSize: 13, color: "var(--text3)" }}>You are about to start a work-related break. Please provide a reason:</p>
-            <textarea
-              rows={3}
-              value={breakReason}
-              onChange={e => setBreakReason(e.target.value)}
-              placeholder="e.g., Inspecting equipment at another site, delivering materials, etc."
-              style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
-            />
+            <p style={{ fontSize: 13, color: "var(--text3)" }}>Choose break type:</p>
             <div style={{ display: "flex", gap: 8 }}>
-              <Btn onClick={handleCustomBreak} loading={punchLoading} style={{ flex: 1 }}>
-                <Icon name="check" size={14} color="white" />Start Break
+              <Btn onClick={handlePersonalBreak} loading={punchLoading} style={{ flex: 1 }}>
+                <Icon name="coffee" size={14} color="var(--amber)" />Personal Break
               </Btn>
-              <Btn onClick={() => setShowBreakModal(false)} variant="secondary" style={{ flex: 1 }}>Cancel</Btn>
+              <Btn onClick={() => setBreakType("work")} variant="blue" style={{ flex: 1 }}>
+                <Icon name="briefcase" size={14} color="var(--blue)" />Work‑Related
+              </Btn>
             </div>
+
+            {breakType === "work" && (
+              <div style={{ marginTop: 12 }}>
+                <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 8 }}>Reason for work‑related break:</p>
+                <textarea
+                  rows={3}
+                  value={breakReason}
+                  onChange={e => setBreakReason(e.target.value)}
+                  placeholder="e.g., Inspecting equipment at another site, delivering materials, etc."
+                  style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
+                />
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <Btn onClick={handleCustomBreak} loading={punchLoading} style={{ flex: 1 }}>
+                    <Icon name="check" size={14} color="white" />Start Break
+                  </Btn>
+                  <Btn onClick={() => setBreakType(null)} variant="secondary" style={{ flex: 1 }}>Back</Btn>
+                </div>
+              </div>
+            )}
           </div>
         </Modal>
       )}
@@ -919,19 +949,40 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
         <SectionHeader title="Employee Summary"/>
         <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
           <table style={{minWidth:500}}>
-            <thead><tr><th>Employee</th><th>ID</th><th>Total Hrs</th><th>This Week</th><th>Status</th></tr></thead>
-            <tbody>
-              {summary.length===0?<tr><td colSpan={5} style={{textAlign:"center",color:"var(--text4)",padding:24}}>No data yet.</td></tr>
-              :summary.map(s=>{const active=attendance.find(a=>a.user_id===s.id&&a.status==="active");return(
-                <tr key={s.id}>
-                  <td><div style={{fontWeight:600,color:"var(--text)",fontSize:13.5}}>{s.name}</div><div style={{fontSize:11.5,color:"var(--text3)",marginTop:1}}>{s.designation||s.department||""}</div></td>
-                  <td><span style={{background:"var(--blue-light)",color:"var(--blue)",padding:"2px 8px",borderRadius:6,fontSize:11.5,fontWeight:700,border:"1px solid var(--blue-mid)"}}>{s.user_id||"—"}</span></td>
-                  <td style={{color:"var(--text2)",fontWeight:600}}>{Math.round((s.total_minutes||0)/60)}h</td>
-                  <td style={{color:"var(--text2)",fontWeight:600}}>{Math.round((s.week_minutes||0)/60)}h</td>
-                  <td>{active?<StatusBadge status="clocked_in"/>:<StatusBadge status="clocked_out"/>}</td>
-                </tr>
-              );})}
-            </tbody>
+            <thead>
+  <tr>
+    <th>Employee</th>
+    <th>ID</th>
+    <th>Total Hrs</th>
+    <th>This Week</th>
+    <th>Personal Break</th>
+    <th>Work Break</th>
+    <th>Status</th>
+  </tr>
+</thead>
+<tbody>
+  {summary.length === 0 ? (
+    <tr><td colSpan={7} style={{textAlign:"center",color:"var(--text4)",padding:24}}>No data yet.</td></tr>
+  ) : (
+    summary.map(s => {
+      const active = attendance.find(a => a.user_id === s.id && a.status === "active");
+      return (
+        <tr key={s.id}>
+          <td>
+            <div style={{fontWeight:600,color:"var(--text)",fontSize:13.5}}>{s.name}</div>
+            <div style={{fontSize:11.5,color:"var(--text3)",marginTop:1}}>{s.designation||s.department||""}</div>
+          </td>
+          <td><span style={{background:"var(--blue-light)",color:"var(--blue)",padding:"2px 8px",borderRadius:6,fontSize:11.5,fontWeight:700,border:"1px solid var(--blue-mid)"}}>{s.user_id||"—"}</span></td>
+          <td style={{color:"var(--text2)",fontWeight:600}}>{Math.round((s.total_minutes||0)/60)}h</td>
+          <td style={{color:"var(--text2)",fontWeight:600}}>{Math.round((s.week_minutes||0)/60)}h</td>
+          <td style={{color:"var(--amber)",fontWeight:500}}>{fmtMins(s.personal_break_minutes||0)}</td>
+          <td style={{color:"var(--blue)",fontWeight:500}}>{fmtMins(s.work_break_minutes||0)}</td>
+          <td>{active?<StatusBadge status="clocked_in"/>:<StatusBadge status="clocked_out"/>}</td>
+        </tr>
+      );
+    })
+  )}
+</tbody>
           </table>
         </div>
       </Card>
@@ -1630,18 +1681,33 @@ function ReportsPage({t}){
 
   // === ACCURATE CALCULATIONS ===
   // Per-employee totals from filtered records
-  const employeeTotals=filteredRecords.reduce((acc,r)=>{
-    if(!r.user_id)return acc;
-    if(!acc[r.user_id]){acc[r.user_id]={name:r.name||"Unknown",userId:r.employee_code||r.user_id?.slice(0,8),minutes:0,sessions:0,breaks:0,breakMins:0};}
-    // Use actual worked_minutes for completed, live calc for active
-    let mins=r.worked_minutes||0;
-    if(r.status==="active"&&r.clock_in_time){mins=Math.max(0,Math.round((Date.now()-new Date(r.clock_in_time).getTime())/60000)-(parseInt(r.break_minutes)||0));}
-    acc[r.user_id].minutes+=mins;
-    acc[r.user_id].sessions+=1;
-    acc[r.user_id].breaks+=(r.break_count||0);
-    acc[r.user_id].breakMins+=parseInt(r.break_minutes)||0;
-    return acc;
-  },{});
+  const employeeTotals = filteredRecords.reduce((acc, r) => {
+  if (!r.user_id) return acc;
+  if (!acc[r.user_id]) {
+    acc[r.user_id] = {
+      name: r.name || "Unknown",
+      userId: r.employee_code || r.user_id?.slice(0,8),
+      minutes: 0,
+      sessions: 0,
+      breaks: 0,
+      breakMins: 0,
+      personalBreakMins: 0,
+      workBreakMins: 0
+    };
+  }
+  // Use actual worked_minutes for completed, live calc for active
+  let mins = r.worked_minutes || 0;
+  if (r.status === "active" && r.clock_in_time) {
+    mins = Math.max(0, Math.round((Date.now() - new Date(r.clock_in_time).getTime()) / 60000) - (parseInt(r.break_minutes) || 0));
+  }
+  acc[r.user_id].minutes += mins;
+  acc[r.user_id].sessions += 1;
+  acc[r.user_id].breaks += (r.break_count || 0);
+  acc[r.user_id].breakMins += parseInt(r.break_minutes) || 0;
+  acc[r.user_id].personalBreakMins += parseInt(r.personal_break_minutes) || 0;
+  acc[r.user_id].workBreakMins += parseInt(r.work_break_minutes) || 0;
+  return acc;
+}, {});
   const empData=Object.values(employeeTotals).sort((a,b)=>b.minutes-a.minutes);
 
   // Per-weekday totals
@@ -1775,29 +1841,44 @@ function ReportsPage({t}){
         <h3 style={{fontSize:14,fontWeight:700,color:"var(--text)",marginBottom:16}}>Employee Breakdown</h3>
         <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
           <table style={{minWidth:500}}>
-            <thead><tr><th>Employee</th><th>Sessions</th><th>Total Hrs</th><th>Avg/Session</th><th>Break Time</th></tr></thead>
-            <tbody>
-              {empData.length===0?<tr><td colSpan={5} style={{textAlign:"center",color:"var(--text4)",padding:24}}>No data for this period.</td></tr>
-              :empData.map((e,i)=>(
-                <tr key={i}>
-                  <td>
-                    <div style={{fontWeight:600,color:"var(--text)",fontSize:13.5}}>{e.name}</div>
-                    <div style={{fontSize:11.5,color:"var(--text3)",marginTop:1}}>{e.userId}</div>
-                  </td>
-                  <td style={{fontWeight:600,color:"var(--text2)"}}>{e.sessions}</td>
-                  <td>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{flex:1,height:6,background:"var(--bg3)",borderRadius:3,overflow:"hidden",minWidth:40}}>
-                        <div style={{height:"100%",background:"var(--blue)",borderRadius:3,width:`${Math.min(100,(e.minutes/(empData[0]?.minutes||1))*100)}%`,transition:"width 0.5s ease"}}/>
-                      </div>
-                      <span style={{color:"var(--blue)",fontWeight:700,fontSize:13,minWidth:32}}>{Math.round(e.minutes/60)}h</span>
-                    </div>
-                  </td>
-                  <td style={{color:"var(--text2)",fontWeight:500}}>{fmtMins(e.sessions>0?Math.round(e.minutes/e.sessions):0)}</td>
-                  <td style={{color:"var(--text3)"}}>{fmtMins(e.breakMins)}</td>
-                </tr>
-              ))}
-            </tbody>
+            <thead>
+  <tr>
+    <th>Employee</th>
+    <th>Sessions</th>
+    <th>Total Hrs</th>
+    <th>Avg/Session</th>
+    <th>Personal Break</th>
+    <th>Work Break</th>
+    <th>Total Break</th>
+  </tr>
+</thead>
+<tbody>
+  {empData.length === 0 ? (
+    <tr><td colSpan={7} style={{textAlign:"center",color:"var(--text4)",padding:24}}>No data for this period.</td></tr>
+  ) : (
+    empData.map((e, i) => (
+      <tr key={i}>
+        <td>
+          <div style={{fontWeight:600,color:"var(--text)",fontSize:13.5}}>{e.name}</div>
+          <div style={{fontSize:11.5,color:"var(--text3)",marginTop:1}}>{e.userId}</div>
+        </td>
+        <td style={{fontWeight:600,color:"var(--text2)"}}>{e.sessions}</td>
+        <td>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{flex:1,height:6,background:"var(--bg3)",borderRadius:3,overflow:"hidden",minWidth:40}}>
+              <div style={{height:"100%",background:"var(--blue)",borderRadius:3,width:`${Math.min(100,(e.minutes/(empData[0]?.minutes||1))*100)}%`,transition:"width 0.5s ease"}}/>
+            </div>
+            <span style={{color:"var(--blue)",fontWeight:700,fontSize:13,minWidth:32}}>{Math.round(e.minutes/60)}h</span>
+          </div>
+        </td>
+        <td style={{color:"var(--text2)",fontWeight:500}}>{fmtMins(e.sessions>0?Math.round(e.minutes/e.sessions):0)}</td>
+        <td style={{color:"var(--amber)",fontWeight:500}}>{fmtMins(e.personalBreakMins||0)}</td>
+        <td style={{color:"var(--blue)",fontWeight:500}}>{fmtMins(e.workBreakMins||0)}</td>
+        <td style={{color:"var(--text3)"}}>{fmtMins(e.breakMins)}</td>
+      </tr>
+    ))
+  )}
+</tbody>
           </table>
         </div>
       </Card>
