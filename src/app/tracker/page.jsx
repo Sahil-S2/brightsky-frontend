@@ -889,13 +889,13 @@ function EmployeeDashboard({
         )}
       </Card>
 
-      {/* Today's Work Breaks */}
+{/* Today's Work Breaks */}
 <Card>
   <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>
     Today's Work Breaks
   </div>
   {(() => {
-    const workBreaks = punches.filter(p => p.punch_type === "break_start" && p.break_type === "work" && p.break_reason);
+    const workBreaks = punches.filter(p => p.punch_type === "break_start" && p.break_type === "work" && p.remarks);
     if (workBreaks.length === 0) {
       return <div style={{ textAlign: "center", padding: "12px 0", color: "var(--text4)", fontSize: 13 }}>No work breaks today.</div>;
     }
@@ -905,7 +905,7 @@ function EmployeeDashboard({
           <div key={breakRecord.id} style={{ padding: "12px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.break_reason}</div>
+                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.remarks}</div>
                 <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{fmtTime(breakRecord.punch_time)}</div>
               </div>
               {breakRecord.break_completed ? (
@@ -916,7 +916,7 @@ function EmployeeDashboard({
                     const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
                     if (res.ok) {
                       addToast("Break task marked as completed.", "success");
-                      await refreshTodayData(); // refresh to update the punch list
+                      await refreshTodayData();
                     } else {
                       addToast("Failed to update break status.", "error");
                     }
