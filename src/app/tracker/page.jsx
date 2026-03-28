@@ -677,33 +677,11 @@ function EmployeeDashboard({
 
   const [showBreakModal, setShowBreakModal] = useState(false);
 
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-
   const [breakReason, setBreakReason] = useState("");
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   const [tasks, setTasks] = useState([]);
 
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   const [loadingTasks, setLoadingTasks] = useState(false);
-
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   
 
   // Fetch tasks for employee
