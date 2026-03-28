@@ -675,11 +675,16 @@ function EmployeeDashboard({
   handleClockIn, handleClockOut, handleBreakStart, handleBreakEnd,
   t, addToast, refreshTodayData
 }) {
-
+  const [now, setNow] = useState(new Date());
   const [showBreakModal, setShowBreakModal] = useState(false);
   const [breakReason, setBreakReason] = useState("");
   const [tasks, setTasks] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
+
+  useEffect(() => {
+  const interval = setInterval(() => setNow(new Date()), 1000);
+  return () => clearInterval(interval);
+}, []);
   
 
   // Fetch tasks for employee
