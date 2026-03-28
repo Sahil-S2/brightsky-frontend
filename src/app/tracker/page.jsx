@@ -663,7 +663,7 @@ function LoginPage({onLogin,lang,setLang}){
 // ─── EMPLOYEE DASHBOARD ───────────────────────────────────────────────────────
 function EmployeeDashboard({
   user, todayData, empStatus, onSite, settings,
-  punchLoading, gpsLoading, userLat,
+  punchLoading, gpsLoading, userLat, userLon,
   isOvertime, overtimeMins, employeeWorksite,
   handleClockIn, handleClockOut, handleBreakStart, handleBreakEnd,
   t, addToast, refreshTodayData
