@@ -683,6 +683,9 @@ function EmployeeDashboard({
   const [breakType, setBreakType] = useState(null); // 'personal' or 'work'
   const [tasks, setTasks] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
+  const [showIncompleteModal, setShowIncompleteModal] = useState(false);
+  const [selectedBreakId, setSelectedBreakId] = useState(null);
+  const [incompleteReason, setIncompleteReason] = useState("");
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
@@ -890,6 +893,7 @@ function EmployeeDashboard({
       </Card>
 
 {/* Today's Work Breaks */}
+{/* Today's Work Breaks */}
 <Card>
   <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>
     Today's Work Breaks
@@ -903,30 +907,48 @@ function EmployeeDashboard({
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {workBreaks.map(breakRecord => (
           <div key={breakRecord.id} style={{ padding: "12px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.remarks}</div>
                 <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{fmtTime(breakRecord.punch_time)}</div>
               </div>
-              {breakRecord.break_completed ? (
+              {breakRecord.break_completed === true ? (
                 <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>
+              ) : breakRecord.break_completed === false && breakRecord.break_incomplete_reason ? (
+                <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Not Completed</span>
               ) : (
-                <button
-                  onClick={async () => {
-                    const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
-                    if (res.ok) {
-                      addToast("Break task marked as completed.", "success");
-                      await refreshTodayData();
-                    } else {
-                      addToast("Failed to update break status.", "error");
-                    }
-                  }}
-                  style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer" }}
-                >
-                  Mark Completed
-                </button>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                  <button
+                    onClick={async () => {
+                      const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
+                      if (res.ok) {
+                        addToast("Break task marked as completed.", "success");
+                        await refreshTodayData();
+                      } else {
+                        addToast("Failed to update break status.", "error");
+                      }
+                    }}
+                    style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer" }}
+                  >
+                    ✓ Completed
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedBreakId(breakRecord.id);
+                      setShowIncompleteModal(true);
+                    }}
+                    style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer" }}
+                  >
+                    ✗ Not Completed
+                  </button>
+                </div>
               )}
             </div>
+            {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "var(--text3)", padding: "4px 8px", background: "var(--red-light)", borderRadius: "var(--radius-sm)" }}>
+                Reason: {breakRecord.break_incomplete_reason}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -968,6 +990,49 @@ function EmployeeDashboard({
           </div>
         </div>
       )}
+    </div>
+  </Modal>
+)}
+
+{/* Incomplete Reason Modal */}
+{showIncompleteModal && (
+  <Modal title="Why was this task not completed?" onClose={() => { setShowIncompleteModal(false); setIncompleteReason(""); setSelectedBreakId(null); }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <textarea
+        rows={4}
+        value={incompleteReason}
+        onChange={e => setIncompleteReason(e.target.value)}
+        placeholder="e.g., Delayed due to weather, equipment not available, etc."
+        style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
+      />
+      <div style={{ display: "flex", gap: 8 }}>
+        <Btn
+          onClick={async () => {
+            if (!incompleteReason.trim()) {
+              addToast("Please enter a reason.", "error");
+              return;
+            }
+            const res = await authFetch(`/api/attendance/break/${selectedBreakId}/not-complete`, {
+              method: "PUT",
+              body: JSON.stringify({ reason: incompleteReason })
+            });
+            if (res.ok) {
+              addToast("Break marked as not completed.", "success");
+              setShowIncompleteModal(false);
+              setIncompleteReason("");
+              setSelectedBreakId(null);
+              await refreshTodayData();
+            } else {
+              const err = await res.json();
+              addToast(err.error || "Failed to update.", "error");
+            }
+          }}
+          style={{ flex: 1 }}
+        >
+          <Icon name="check" size={14} color="white" />Submit
+        </Btn>
+        <Btn onClick={() => setShowIncompleteModal(false)} variant="secondary" style={{ flex: 1 }}>Cancel</Btn>
+      </div>
     </div>
   </Modal>
 )}
@@ -1521,14 +1586,16 @@ function MyAttendance({ t }) {
                                       {p.break_reason && <div style={{ fontSize: 11, color: "var(--text3)" }}>Reason: {p.break_reason}</div>}
                                       <div style={{ fontSize: 11, color: "var(--text3)" }}>{fmtTime(p.punch_time)} {duration !== null && `· Duration: ${fmtMins(duration)}`}</div>
                                       {p.break_type === "work" && (
-                                        <div style={{ marginTop: 4 }}>
-                                          {p.break_completed ? (
-                                            <span style={{ fontSize: 10, color: "var(--green)" }}>✓ Completed</span>
-                                          ) : (
-                                            <span style={{ fontSize: 10, color: "var(--amber)" }}>⏳ Pending</span>
-                                          )}
-                                        </div>
-                                      )}
+  <div style={{ marginTop: 4 }}>
+    {p.break_completed === true ? (
+      <span style={{ fontSize: 10, color: "var(--green)" }}>✓ Completed</span>
+    ) : p.break_completed === false && p.break_incomplete_reason ? (
+      <span style={{ fontSize: 10, color: "var(--red)" }}>✗ Not Completed – {p.break_incomplete_reason}</span>
+    ) : (
+      <span style={{ fontSize: 10, color: "var(--amber)" }}>⏳ Pending</span>
+    )}
+  </div>
+)}
                                     </div>
                                   );
                                 })}
