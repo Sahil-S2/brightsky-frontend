@@ -765,6 +765,7 @@ function EmployeeDashboard({
   const [incompleteReason, setIncompleteReason] = useState("");
   const [expandedBreakId, setExpandedBreakId] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
+  const [clockInLoading, setClockInLoading] = useState(false);
   
 
   useEffect(() => {
@@ -860,7 +861,7 @@ function EmployeeDashboard({
 
   const processClockIn = async (photoData) => {
     // We'll use the global punchLoading from props
-    setPunchLoading(true);
+    setClockInLoading(true);
     try {
       const { latitude, longitude } = getLocationPayload();
       const res = await authFetch("/api/attendance/clock-in", {
@@ -883,7 +884,7 @@ function EmployeeDashboard({
     } catch {
       addToast("Cannot connect to server.", "error");
     } finally {
-      setPunchLoading(false);
+      setClockInLoading(false);
       setShowCamera(false);
     }
   };
@@ -956,9 +957,9 @@ function EmployeeDashboard({
       <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {empStatus === "clocked_out" && (
-            <Btn onClick={handleClockInWithPhoto} disabled={!onSite || punchLoading} loading={punchLoading} size="lg" style={{ width: "100%" }}>
-              <Icon name="camera" size={16} color="white" />{t.clockIn}
-            </Btn>
+            <Btn onClick={handleClockInWithPhoto} disabled={!onSite || clockInLoading} loading={clockInLoading} size="lg" style={{ width: "100%" }}>
+  <Icon name="camera" size={16} color="white" />{t.clockIn}
+</Btn>
           )}
           {empStatus === "clocked_in" && (
             <>
