@@ -506,13 +506,10 @@ useEffect(() => {
 const processClockIn = async (photoData) => {
   setPunchLoading(true);
   try {
+    const { latitude, longitude } = getLocationPayload();
     const res = await authFetch("/api/attendance/clock-in", {
       method: "POST",
-      body: JSON.stringify({
-        latitude: userLat || geoTarget?.latitude || 0,
-        longitude: userLon || geoTarget?.longitude || 0,
-        photo: photoData,
-      }),
+      body: JSON.stringify({ latitude, longitude, photo: photoData }),
     });
     const d = await res.json();
     if (!res.ok) {
@@ -786,6 +783,7 @@ function EmployeeDashboard({
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
+  
 
   const handleMarkComplete = async (taskId) => {
     try {
@@ -830,6 +828,7 @@ function EmployeeDashboard({
     method: "POST",
     body: JSON.stringify({ reason: breakReason, latitude: userLat || 0, longitude: userLon || 0 })
   });
+  
   const data = await res.json();
   if (!res.ok) {
     addToast(data.error || "Failed to start work-related break.", "error");
