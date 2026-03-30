@@ -1734,9 +1734,22 @@ function MyAttendance({ t }) {
                         <tr>
                           <td colSpan={7} style={{ padding: "12px 16px", background: "var(--bg3)" }}>
                             <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Break Details</div>
+                            {(() => {
+  const clockInPunch = sessionPunches[s.id].find(p => p.punch_type === "clock_in" || p.punch_type === "auto_clock_in");
+  if (clockInPunch?.photo_data) {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>Clock‑in Photo:</div>
+        <img src={clockInPunch.photo_data} alt="Clock in" style={{ maxWidth: "100px", maxHeight: "100px", borderRadius: "var(--radius)", border: "1px solid var(--border)" }} />
+      </div>
+    );
+  }
+  return null;
+})()}
                             {sessionPunches[s.id].filter(p => p.punch_type === "break_start").length === 0 ? (
                               <div style={{ color: "var(--text4)", fontSize: 12 }}>No breaks recorded.</div>
                             ) : (
+                              
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 {sessionPunches[s.id].filter(p => p.punch_type === "break_start").map((p, idx) => {
                                   const endPunch = sessionPunches[s.id].find(
