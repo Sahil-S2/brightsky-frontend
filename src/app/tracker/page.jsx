@@ -424,7 +424,20 @@ useEffect(() => {
   const refreshSettings=useCallback(async()=>{
     try{const res=await authFetch("/api/settings");if(res.ok){const d=await res.json();if(d)setSettings({companyName:d.company_name,siteName:d.site_name,latitude:parseFloat(d.latitude),longitude:parseFloat(d.longitude),radiusFeet:parseFloat(d.radius_feet),workStart:d.working_hours_start?.slice(0,5)||"07:00",workEnd:d.working_hours_end?.slice(0,5)||"17:00",autoClockInEnabled:d.auto_clock_in_enabled,autoBreakOnExitEnabled:d.auto_break_on_exit_enabled,autoCorrectionEnabled:d.auto_correction_enabled});}}catch{}
   },[]);
-  const refreshTodayData=useCallback(async()=>{if(!currentUser)return;try{const r=await authFetch("/api/attendance/me/today");if(r.ok){const d=await r.json();setTodayData(d);}}catch{}},[currentUser]);
+  const refreshTodayData = useCallback(async (newData = null) => {
+  if (!currentUser) return;
+  if (newData) {
+    setTodayData(newData);
+    return;
+  }
+  try {
+    const r = await authFetch("/api/attendance/me/today");
+    if (r.ok) {
+      const d = await r.json();
+      setTodayData(d);
+    }
+  } catch { }
+}, [currentUser]);
   const refreshAdminData=useCallback(async()=>{
     if(!currentUser||(currentUser.role!=="admin"&&currentUser.role!=="manager"))return;
     try{
@@ -452,16 +465,34 @@ useEffect(() => {
   },[todayData,t,addToast]);
 
   const empStatus=todayData?.status||"clocked_out";
-  const doPunch=async(endpoint,msg)=>{
-    if(punchLoading)return;setPunchLoading(true);
-    try{
-      const res=await authFetch(`/api/attendance/${endpoint}`,{method:"POST",body:JSON.stringify({latitude:userLat||geoTarget?.latitude||0,longitude:userLon||geoTarget?.longitude||0})});
-      const d=await res.json();
-      if(!res.ok){addToast(d.error||"Action failed.","error");vibrate([100,50,100]);return;}
-      addToast(msg,"success");vibrate([50]);await refreshTodayData();
-    }catch{addToast("Cannot connect to server.","error");}
-    finally{setPunchLoading(false);}
-  };
+  const doPunch = async (endpoint, msg) => {
+  if (punchLoading) return;
+  setPunchLoading(true);
+  try {
+    const res = await authFetch(`/api/attendance/${endpoint}`, {
+      method: "POST",
+      body: JSON.stringify({ latitude: userLat || geoTarget?.latitude || 0, longitude: userLon || geoTarget?.longitude || 0 })
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      addToast(d.error || "Action failed.", "error");
+      vibrate([100, 50, 100]);
+      return;
+    }
+    addToast(msg, "success");
+    vibrate([50]);
+    // Use returned data if present
+    if (d.data) {
+      refreshTodayData(d.data);
+    } else {
+      await refreshTodayData(); // fallback to fetch
+    }
+  } catch {
+    addToast("Cannot connect to server.", "error");
+  } finally {
+    setPunchLoading(false);
+  }
+};
   const handleClockIn=()=>doPunch("clock-in","Clocked in ✓");
   const handleClockOut=()=>doPunch("clock-out","Clocked out. Have a great day!");
   const handleBreakStart=()=>doPunch("break-start","Break started.");
@@ -728,41 +759,49 @@ function EmployeeDashboard({
   };
 
   const handlePersonalBreak = async () => {
-    const res = await authFetch("/api/attendance/break-start", {
-      method: "POST",
-      body: JSON.stringify({ latitude: userLat || 0, longitude: userLon || 0 })
-    });
-    if (!res.ok) {
-      const error = await res.json();
-      addToast(error.error || "Failed to start personal break.", "error");
-      return;
-    }
-    addToast("Personal break started.", "success");
-    setShowBreakModal(false);
-    setBreakType(null);
+  const res = await authFetch("/api/attendance/break-start", {
+    method: "POST",
+    body: JSON.stringify({ latitude: userLat || 0, longitude: userLon || 0 })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    addToast(data.error || "Failed to start personal break.", "error");
+    return;
+  }
+  addToast("Personal break started.", "success");
+  setShowBreakModal(false);
+  setBreakType(null);
+  if (data.data) {
+    refreshTodayData(data.data);
+  } else {
     await refreshTodayData();
-  };
+  }
+};
 
   const handleCustomBreak = async () => {
-    if (!breakReason.trim()) {
-      addToast("Please enter a reason for the work-related break.", "error");
-      return;
-    }
-    const res = await authFetch("/api/attendance/custom-break-start", {
-      method: "POST",
-      body: JSON.stringify({ reason: breakReason, latitude: userLat || 0, longitude: userLon || 0 })
-    });
-    if (!res.ok) {
-      const error = await res.json();
-      addToast(error.error || "Failed to start work-related break.", "error");
-      return;
-    }
-    addToast("Work-related break started.", "success");
-    setShowBreakModal(false);
-    setBreakReason("");
-    setBreakType(null);
+  if (!breakReason.trim()) {
+    addToast("Please enter a reason for the work-related break.", "error");
+    return;
+  }
+  const res = await authFetch("/api/attendance/custom-break-start", {
+    method: "POST",
+    body: JSON.stringify({ reason: breakReason, latitude: userLat || 0, longitude: userLon || 0 })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    addToast(data.error || "Failed to start work-related break.", "error");
+    return;
+  }
+  addToast("Work-related break started.", "success");
+  setShowBreakModal(false);
+  setBreakReason("");
+  setBreakType(null);
+  if (data.data) {
+    refreshTodayData(data.data);
+  } else {
     await refreshTodayData();
-  };
+  }
+};
 
   const session = todayData?.session;
   const punches = todayData?.punches || [];
@@ -938,17 +977,20 @@ function EmployeeDashboard({
               {isExpanded && breakRecord.break_completed !== true && !(breakRecord.break_completed === false && breakRecord.break_incomplete_reason) && (
                 <div style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                   <button
-                    onClick={async (e) => {
-                      e.stopPropagation(); // prevent closing the card
-                      const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
-                      if (res.ok) {
-                        addToast("Break task marked as completed.", "success");
-                        await refreshTodayData();
-                        setExpandedBreakId(null);
-                      } else {
-                        addToast("Failed to update break status.", "error");
-                      }
-                    }}
+                    onClick={async () => {
+  const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
+  const data = await res.json();
+  if (res.ok) {
+    addToast("Break task marked as completed.", "success");
+    if (data.data) {
+      refreshTodayData(data.data);
+    } else {
+      await refreshTodayData();
+    }
+  } else {
+    addToast(data.error || "Failed to update break status.", "error");
+  }
+}}
                     style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer", flex: 1 }}
                   >
                     ✓ Completed
@@ -1035,25 +1077,29 @@ function EmployeeDashboard({
       <div style={{ display: "flex", gap: 8 }}>
         <Btn
           onClick={async () => {
-            if (!incompleteReason.trim()) {
-              addToast("Please enter a reason.", "error");
-              return;
-            }
-            const res = await authFetch(`/api/attendance/break/${selectedBreakId}/not-complete`, {
-              method: "PUT",
-              body: JSON.stringify({ reason: incompleteReason })
-            });
-            if (res.ok) {
-              addToast("Break marked as not completed.", "success");
-              setShowIncompleteModal(false);
-              setIncompleteReason("");
-              setSelectedBreakId(null);
-              await refreshTodayData();
-            } else {
-              const err = await res.json();
-              addToast(err.error || "Failed to update.", "error");
-            }
-          }}
+  if (!incompleteReason.trim()) {
+    addToast("Please enter a reason.", "error");
+    return;
+  }
+  const res = await authFetch(`/api/attendance/break/${selectedBreakId}/not-complete`, {
+    method: "PUT",
+    body: JSON.stringify({ reason: incompleteReason })
+  });
+  const data = await res.json();
+  if (res.ok) {
+    addToast("Break marked as not completed.", "success");
+    setShowIncompleteModal(false);
+    setIncompleteReason("");
+    setSelectedBreakId(null);
+    if (data.data) {
+      refreshTodayData(data.data);
+    } else {
+      await refreshTodayData();
+    }
+  } else {
+    addToast(data.error || "Failed to update.", "error");
+  }
+}}
           style={{ flex: 1 }}
         >
           <Icon name="check" size={14} color="white" />Submit
