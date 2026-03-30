@@ -1970,10 +1970,42 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
                   <span style={{background:"var(--bg2)",color:"var(--text3)",padding:"2px 8px",borderRadius:999,fontSize:11.5,textTransform:"capitalize",border:"1px solid var(--border)"}}>{u.role}</span>
                 </div>
               </div>
-              <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <button onClick={()=>openSchedule(u)} style={{width:34,height:34,borderRadius:"var(--radius-sm)",background:"var(--blue-light)",border:"1px solid var(--blue-mid)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Icon name="clock" size={14} color="var(--blue)"/></button>
-                <button onClick={()=>handleDelete(u.id)} style={{width:34,height:34,borderRadius:"var(--radius-sm)",background:"var(--red-light)",border:"1px solid rgba(220,38,38,0.2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Icon name="x" size={14} color="var(--red)"/></button>
-              </div>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
+  <select
+    value={u.timezone || "America/New_York"}
+    onChange={async (e) => {
+      const newTz = e.target.value;
+      const res = await authFetch(`/api/admin/users/${u.id}/timezone`, {
+        method: "PUT",
+        body: JSON.stringify({ timezone: newTz })
+      });
+      if (res.ok) {
+        addToast("Timezone updated", "success");
+        refreshAdminData(); // refresh the employee list
+      } else {
+        addToast("Failed to update timezone", "error");
+      }
+    }}
+    style={{
+      fontSize: 11,
+      padding: "4px 6px",
+      borderRadius: "var(--radius-sm)",
+      border: "1px solid var(--border)",
+      background: "var(--bg2)",
+      color: "var(--text)",
+      cursor: "pointer"
+    }}
+  >
+    <option value="America/New_York">🇺🇸 Atlanta (UTC-4/5)</option>
+    <option value="Asia/Kolkata">🇮🇳 Kolkata (UTC+5:30)</option>
+  </select>
+  <button onClick={() => openSchedule(u)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", border: "1px solid var(--blue-mid)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+    <Icon name="clock" size={14} color="var(--blue)" />
+  </button>
+  <button onClick={() => handleDelete(u.id)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+    <Icon name="x" size={14} color="var(--red)" />
+  </button>
+</div>
             </div>
           ))}
         </div>
