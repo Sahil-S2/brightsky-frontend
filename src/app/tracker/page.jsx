@@ -765,13 +765,14 @@ function EmployeeDashboard({
   const [incompleteReason, setIncompleteReason] = useState("");
   const [expandedBreakId, setExpandedBreakId] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
+  
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch tasks for employee
+  // Fetch tasks
   const fetchTasks = useCallback(async () => {
     try {
       setLoadingTasks(true);
@@ -790,7 +791,6 @@ function EmployeeDashboard({
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
-  
 
   const handleMarkComplete = async (taskId) => {
     try {
@@ -807,61 +807,104 @@ function EmployeeDashboard({
   };
 
   const handlePersonalBreak = async () => {
-  const res = await authFetch("/api/attendance/break-start", {
-    method: "POST",
-    body: JSON.stringify({ latitude: userLat || 0, longitude: userLon || 0 })
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    addToast(data.error || "Failed to start personal break.", "error");
-    return;
-  }
-  addToast("Personal break started.", "success");
-  setShowBreakModal(false);
-  setBreakType(null);
-  if (data.data) {
-    refreshTodayData(data.data);
-  } else {
-    await refreshTodayData();
-  }
-};
+    const res = await authFetch("/api/attendance/break-start", {
+      method: "POST",
+      body: JSON.stringify({ latitude: userLat || 0, longitude: userLon || 0 })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      addToast(data.error || "Failed to start personal break.", "error");
+      return;
+    }
+    addToast("Personal break started.", "success");
+    setShowBreakModal(false);
+    setBreakType(null);
+    if (data.data) {
+      refreshTodayData(data.data);
+    } else {
+      await refreshTodayData();
+    }
+  };
 
   const handleCustomBreak = async () => {
-  if (!breakReason.trim()) {
-    addToast("Please enter a reason for the work-related break.", "error");
-    return;
-  }
-  const res = await authFetch("/api/attendance/custom-break-start", {
-    method: "POST",
-    body: JSON.stringify({ reason: breakReason, latitude: userLat || 0, longitude: userLon || 0 })
-  });
-  
-  const data = await res.json();
-  if (!res.ok) {
-    addToast(data.error || "Failed to start work-related break.", "error");
-    return;
-  }
-  addToast("Work-related break started.", "success");
-  setShowBreakModal(false);
-  setBreakReason("");
-  setBreakType(null);
-  if (data.data) {
-    refreshTodayData(data.data);
-  } else {
-    await refreshTodayData();
-  }
-};
+    if (!breakReason.trim()) {
+      addToast("Please enter a reason for the work-related break.", "error");
+      return;
+    }
+    const res = await authFetch("/api/attendance/custom-break-start", {
+      method: "POST",
+      body: JSON.stringify({ reason: breakReason, latitude: userLat || 0, longitude: userLon || 0 })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      addToast(data.error || "Failed to start work-related break.", "error");
+      return;
+    }
+    addToast("Work-related break started.", "success");
+    setShowBreakModal(false);
+    setBreakReason("");
+    setBreakType(null);
+    if (data.data) {
+      refreshTodayData(data.data);
+    } else {
+      await refreshTodayData();
+    }
+  };
 
+  // Helper to get coordinates for clock‑in
+  const getLocationPayload = useCallback(() => {
+    const lat = userLat !== null ? userLat : (employeeWorksite?.latitude ?? settings.latitude ?? 0);
+    const lon = userLon !== null ? userLon : (employeeWorksite?.longitude ?? settings.longitude ?? 0);
+    return { latitude: lat, longitude: lon };
+  }, [userLat, userLon, employeeWorksite, settings]);
+
+  const processClockIn = async (photoData) => {
+    // We'll use the global punchLoading from props
+    setPunchLoading(true);
+    try {
+      const { latitude, longitude } = getLocationPayload();
+      const res = await authFetch("/api/attendance/clock-in", {
+        method: "POST",
+        body: JSON.stringify({ latitude, longitude, photo: photoData }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        addToast(d.error || "Action failed.", "error");
+        vibrate([100, 50, 100]);
+        return;
+      }
+      addToast("Clocked in ✓", "success");
+      vibrate([50]);
+      if (d.data) {
+        refreshTodayData(d.data);
+      } else {
+        await refreshTodayData();
+      }
+    } catch {
+      addToast("Cannot connect to server.", "error");
+    } finally {
+      setPunchLoading(false);
+      setShowCamera(false);
+    }
+  };
+
+  const handleClockInWithPhoto = () => {
+    if (!onSite) {
+      addToast("You must be at your assigned worksite to clock in.", "error");
+      return;
+    }
+    setShowCamera(true);
+  };
+
+  // Compute session data
   const session = todayData?.session;
   const punches = todayData?.punches || [];
-  // Calculate today's totals from the session (using stored values or live)
   let totalWorked = session?.worked_minutes || 0;
   let totalBreak = session?.break_minutes || 0;
   if ((empStatus === "clocked_in" || empStatus === "on_break") && session?.clock_in_time) {
     const elapsed = Math.round((now.getTime() - new Date(session.clock_in_time).getTime()) / 60000);
     totalWorked = Math.max(0, elapsed - (session.break_minutes || 0));
     totalBreak = session?.break_minutes || 0;
-    // For break time, if on break, add ongoing break duration
     if (empStatus === "on_break") {
       const lastBreakStart = punches.findLast(p => p.punch_type === "break_start")?.punch_time;
       if (lastBreakStart) {
@@ -913,10 +956,10 @@ function EmployeeDashboard({
       <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {empStatus === "clocked_out" && (
-  <Btn onClick={handleClockInWithPhoto} disabled={!onSite || punchLoading} loading={punchLoading} size="lg" style={{ width: "100%" }}>
-    <Icon name="camera" size={16} color="white" />{t.clockIn}
-  </Btn>
-)}
+            <Btn onClick={handleClockInWithPhoto} disabled={!onSite || punchLoading} loading={punchLoading} size="lg" style={{ width: "100%" }}>
+              <Icon name="camera" size={16} color="white" />{t.clockIn}
+            </Btn>
+          )}
           {empStatus === "clocked_in" && (
             <>
               <Btn onClick={() => setShowBreakModal(true)} disabled={punchLoading} variant="secondary" size="md" style={{ width: "100%" }}>
@@ -981,190 +1024,186 @@ function EmployeeDashboard({
         )}
       </Card>
 
-{/* Today's Work Breaks */}
-<Card>
-  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>
-    Today's Work Breaks
-  </div>
-  {(() => {
-    const workBreaks = punches.filter(p => p.punch_type === "break_start" && p.break_type === "work" && p.remarks);
-    if (workBreaks.length === 0) {
-      return <div style={{ textAlign: "center", padding: "12px 0", color: "var(--text4)", fontSize: 13 }}>No work breaks today.</div>;
-    }
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {workBreaks.map(breakRecord => {
-          const isExpanded = expandedBreakId === breakRecord.id;
+      {/* Today's Work Breaks */}
+      <Card>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>
+          Today's Work Breaks
+        </div>
+        {(() => {
+          const workBreaks = punches.filter(p => p.punch_type === "break_start" && p.break_type === "work" && p.remarks);
+          if (workBreaks.length === 0) {
+            return <div style={{ textAlign: "center", padding: "12px 0", color: "var(--text4)", fontSize: 13 }}>No work breaks today.</div>;
+          }
           return (
-            <div
-              key={breakRecord.id}
-              onClick={() => setExpandedBreakId(isExpanded ? null : breakRecord.id)}
-              style={{
-                padding: "12px",
-                background: "var(--bg3)",
-                borderRadius: "var(--radius)",
-                border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
-                cursor: "pointer",
-                transition: "all 0.2s"
-              }}
-            >
-              {/* Header: reason and time */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.remarks}</div>
-                  <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{fmtTime(breakRecord.punch_time)}</div>
-                </div>
-                {breakRecord.break_completed === true && (
-                  <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>
-                )}
-                {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && (
-                  <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Not Completed</span>
-                )}
-              </div>
-
-              {/* Expanded content: buttons */}
-              {isExpanded && breakRecord.break_completed !== true && !(breakRecord.break_completed === false && breakRecord.break_incomplete_reason) && (
-                <div style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                  <button
-                    onClick={async () => {
-  const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
-  const data = await res.json();
-  if (res.ok) {
-    addToast("Break task marked as completed.", "success");
-    if (data.data) {
-      refreshTodayData(data.data);
-    } else {
-      await refreshTodayData();
-    }
-  } else {
-    addToast(data.error || "Failed to update break status.", "error");
-  }
-}}
-                    style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer", flex: 1 }}
-                  >
-                    ✓ Completed
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedBreakId(breakRecord.id);
-                      setShowIncompleteModal(true);
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {workBreaks.map(breakRecord => {
+                const isExpanded = expandedBreakId === breakRecord.id;
+                return (
+                  <div
+                    key={breakRecord.id}
+                    onClick={() => setExpandedBreakId(isExpanded ? null : breakRecord.id)}
+                    style={{
+                      padding: "12px",
+                      background: "var(--bg3)",
+                      borderRadius: "var(--radius)",
+                      border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
+                      cursor: "pointer",
+                      transition: "all 0.2s"
                     }}
-                    style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer", flex: 1 }}
                   >
-                    ✗ Not Completed
-                  </button>
-                </div>
-              )}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.remarks}</div>
+                        <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{fmtTime(breakRecord.punch_time)}</div>
+                      </div>
+                      {breakRecord.break_completed === true && (
+                        <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>
+                      )}
+                      {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && (
+                        <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Not Completed</span>
+                      )}
+                    </div>
 
-              {/* Show reason if not completed with a reason */}
-              {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && isExpanded && (
-                <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                  <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Reason for incompletion:</div>
-                  <div style={{ fontSize: 12, padding: "4px 8px", background: "var(--red-light)", borderRadius: "var(--radius-sm)", color: "var(--red)" }}>
-                    {breakRecord.break_incomplete_reason}
+                    {isExpanded && breakRecord.break_completed !== true && !(breakRecord.break_completed === false && breakRecord.break_incomplete_reason) && (
+                      <div style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                        <button
+                          onClick={async () => {
+                            const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
+                            const data = await res.json();
+                            if (res.ok) {
+                              addToast("Break task marked as completed.", "success");
+                              if (data.data) {
+                                refreshTodayData(data.data);
+                              } else {
+                                await refreshTodayData();
+                              }
+                            } else {
+                              addToast(data.error || "Failed to update break status.", "error");
+                            }
+                          }}
+                          style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer", flex: 1 }}
+                        >
+                          ✓ Completed
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedBreakId(breakRecord.id);
+                            setShowIncompleteModal(true);
+                          }}
+                          style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer", flex: 1 }}
+                        >
+                          ✗ Not Completed
+                        </button>
+                      </div>
+                    )}
+
+                    {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && isExpanded && (
+                      <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                        <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Reason for incompletion:</div>
+                        <div style={{ fontSize: 12, padding: "4px 8px", background: "var(--red-light)", borderRadius: "var(--radius-sm)", color: "var(--red)" }}>
+                          {breakRecord.break_incomplete_reason}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })}
             </div>
           );
-        })}
-      </div>
-    );
-  })()}
-</Card>
-
+        })()}
+      </Card>
 
       {/* Break Modal */}
-      {/* Break Modal */}
-{showBreakModal && (
-  <Modal title="Start Break" onClose={() => { setShowBreakModal(false); setBreakType(null); setBreakReason(""); }}>
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <p style={{ fontSize: 13, color: "var(--text3)" }}>Choose break type:</p>
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn onClick={handlePersonalBreak} loading={punchLoading} variant="green" style={{ flex: 1 }}>
-          <Icon name="coffee" size={14} color="var(--green)" />Personal Break
-        </Btn>
-        <Btn onClick={() => setBreakType("work")} variant="blue" style={{ flex: 1 }}>
-          <Icon name="briefcase" size={14} color="var(--blue)" />Work‑Related
-        </Btn>
-      </div>
+      {showBreakModal && (
+        <Modal title="Start Break" onClose={() => { setShowBreakModal(false); setBreakType(null); setBreakReason(""); }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <p style={{ fontSize: 13, color: "var(--text3)" }}>Choose break type:</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn onClick={handlePersonalBreak} loading={punchLoading} variant="green" style={{ flex: 1 }}>
+                <Icon name="coffee" size={14} color="var(--green)" />Personal Break
+              </Btn>
+              <Btn onClick={() => setBreakType("work")} variant="blue" style={{ flex: 1 }}>
+                <Icon name="briefcase" size={14} color="var(--blue)" />Work‑Related
+              </Btn>
+            </div>
 
-      {breakType === "work" && (
-        <div style={{ marginTop: 12 }}>
-          <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 8 }}>Reason for work‑related break:</p>
-          <textarea
-            rows={3}
-            value={breakReason}
-            onChange={e => setBreakReason(e.target.value)}
-            placeholder="e.g., Inspecting equipment at another site, delivering materials, etc."
-            style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
-          />
-          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <Btn onClick={handleCustomBreak} loading={punchLoading} style={{ flex: 1 }}>
-              <Icon name="check" size={14} color="white" />Start Break
-            </Btn>
-            <Btn onClick={() => setBreakType(null)} variant="secondary" style={{ flex: 1 }}>Back</Btn>
+            {breakType === "work" && (
+              <div style={{ marginTop: 12 }}>
+                <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 8 }}>Reason for work‑related break:</p>
+                <textarea
+                  rows={3}
+                  value={breakReason}
+                  onChange={e => setBreakReason(e.target.value)}
+                  placeholder="e.g., Inspecting equipment at another site, delivering materials, etc."
+                  style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
+                />
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <Btn onClick={handleCustomBreak} loading={punchLoading} style={{ flex: 1 }}>
+                    <Icon name="check" size={14} color="white" />Start Break
+                  </Btn>
+                  <Btn onClick={() => setBreakType(null)} variant="secondary" style={{ flex: 1 }}>Back</Btn>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        </Modal>
       )}
-    </div>
-  </Modal>
-)}
 
-{/* Incomplete Reason Modal */}
-{showIncompleteModal && (
-  <Modal title="Why was this task not completed?" onClose={() => { setShowIncompleteModal(false); setIncompleteReason(""); setSelectedBreakId(null); }}>
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <textarea
-        rows={4}
-        value={incompleteReason}
-        onChange={e => setIncompleteReason(e.target.value)}
-        placeholder="e.g., Delayed due to weather, equipment not available, etc."
-        style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
-      />
-      <div style={{ display: "flex", gap: 8 }}>
-        <Btn
-          onClick={async () => {
-  if (!incompleteReason.trim()) {
-    addToast("Please enter a reason.", "error");
-    return;
-  }
-  const res = await authFetch(`/api/attendance/break/${selectedBreakId}/not-complete`, {
-    method: "PUT",
-    body: JSON.stringify({ reason: incompleteReason })
-  });
-  const data = await res.json();
-  if (res.ok) {
-    addToast("Break marked as not completed.", "success");
-    setShowIncompleteModal(false);
-    setIncompleteReason("");
-    setSelectedBreakId(null);
-    if (data.data) {
-      refreshTodayData(data.data);
-    } else {
-      await refreshTodayData();
-    }
-  } else {
-    addToast(data.error || "Failed to update.", "error");
-  }
-}}
-          style={{ flex: 1 }}
-        >
-          <Icon name="check" size={14} color="white" />Submit
-        </Btn>
-        <Btn onClick={() => setShowIncompleteModal(false)} variant="secondary" style={{ flex: 1 }}>Cancel</Btn>
-      </div>
-    </div>
-  </Modal>
-)}
+      {/* Incomplete Reason Modal */}
+      {showIncompleteModal && (
+        <Modal title="Why was this task not completed?" onClose={() => { setShowIncompleteModal(false); setIncompleteReason(""); setSelectedBreakId(null); }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <textarea
+              rows={4}
+              value={incompleteReason}
+              onChange={e => setIncompleteReason(e.target.value)}
+              placeholder="e.g., Delayed due to weather, equipment not available, etc."
+              style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn
+                onClick={async () => {
+                  if (!incompleteReason.trim()) {
+                    addToast("Please enter a reason.", "error");
+                    return;
+                  }
+                  const res = await authFetch(`/api/attendance/break/${selectedBreakId}/not-complete`, {
+                    method: "PUT",
+                    body: JSON.stringify({ reason: incompleteReason })
+                  });
+                  const data = await res.json();
+                  if (res.ok) {
+                    addToast("Break marked as not completed.", "success");
+                    setShowIncompleteModal(false);
+                    setIncompleteReason("");
+                    setSelectedBreakId(null);
+                    if (data.data) {
+                      refreshTodayData(data.data);
+                    } else {
+                      await refreshTodayData();
+                    }
+                  } else {
+                    addToast(data.error || "Failed to update.", "error");
+                  }
+                }}
+                style={{ flex: 1 }}
+              >
+                <Icon name="check" size={14} color="white" />Submit
+              </Btn>
+              <Btn onClick={() => setShowIncompleteModal(false)} variant="secondary" style={{ flex: 1 }}>Cancel</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
 
-{showCamera && typeof window !== 'undefined' && (
-  <CameraModal
-    onClose={() => setShowCamera(false)}
-    onCapture={(photo) => processClockIn(photo)}
-  />
-)}
+      {/* Camera Modal */}
+      {showCamera && typeof window !== 'undefined' && (
+        <CameraModal
+          onClose={() => setShowCamera(false)}
+          onCapture={(photo) => processClockIn(photo)}
+        />
+      )}
     </div>
   );
 }
