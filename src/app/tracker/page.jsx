@@ -400,6 +400,12 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, []);
 
+  const getLocationPayload = useCallback(() => {
+  const lat = userLat !== null ? userLat : (employeeWorksite?.latitude ?? settings.latitude ?? 0);
+  const lon = userLon !== null ? userLon : (employeeWorksite?.longitude ?? settings.longitude ?? 0);
+  return { latitude: lat, longitude: lon };
+}, [userLat, userLon, employeeWorksite, settings]);
+
   const addToast=useCallback((message,type="info")=>{
     const id=++toastCounter.current;setToasts(t=>[...t,{id,message,type}]);
     setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),5000);
@@ -529,7 +535,6 @@ const processClockIn = async (photoData) => {
   } finally {
     setPunchLoading(false);
     setShowCamera(false);
-    setPendingPhoto(null);
   }
 };
   const handleClockOut=()=>doPunch("clock-out","Clocked out. Have a great day!");
@@ -609,7 +614,7 @@ const processClockIn = async (photoData) => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} handleClockInWithPhoto={handleClockInWithPhoto} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData}/>)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} handleClockInWithPhoto={handleClockInWithPhoto} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} processClockIn={processClockIn}/>)}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t}/>}
             {page==="employees"&&isAdmin&&<EmployeeList adminData={adminData} refreshAdminData={refreshAdminData} addToast={addToast} worksites={worksites} t={t}/>}
@@ -744,7 +749,7 @@ function EmployeeDashboard({
   punchLoading, gpsLoading, userLat, userLon,
   isOvertime, overtimeMins, employeeWorksite,
   handleClockInWithPhoto, handleClockOut, handleBreakStart, handleBreakEnd,
-  t, addToast, refreshTodayData
+  t, addToast, refreshTodayData, processClockIn
 }) {
   const [now, setNow] = useState(new Date());
   const [showBreakModal, setShowBreakModal] = useState(false);
@@ -757,7 +762,6 @@ function EmployeeDashboard({
   const [incompleteReason, setIncompleteReason] = useState("");
   const [expandedBreakId, setExpandedBreakId] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
-  const [pendingPhoto, setPendingPhoto] = useState(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
