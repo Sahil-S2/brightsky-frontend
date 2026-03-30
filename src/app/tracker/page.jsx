@@ -266,6 +266,7 @@ const Icon=({name,size=18,color="currentColor",style={}})=>{
     search:<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,
     globe:<><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></>,
     briefcase: <><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></>,
+    camera: <><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></>,
   };
   return(<svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{display:"inline-block",flexShrink:0,...style}}>{icons[name]||null}</svg>);
 };
@@ -493,7 +494,47 @@ useEffect(() => {
     setPunchLoading(false);
   }
 };
-  const handleClockIn=()=>doPunch("clock-in","Clocked in ✓");
+  const handleClockInWithPhoto = () => {
+  // Only show camera if on‑site (already validated)
+  if (!onSite) {
+    addToast("You must be at your assigned worksite to clock in.", "error");
+    return;
+  }
+  setShowCamera(true);
+};
+
+const processClockIn = async (photoData) => {
+  setPunchLoading(true);
+  try {
+    const res = await authFetch("/api/attendance/clock-in", {
+      method: "POST",
+      body: JSON.stringify({
+        latitude: userLat || geoTarget?.latitude || 0,
+        longitude: userLon || geoTarget?.longitude || 0,
+        photo: photoData,
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      addToast(d.error || "Action failed.", "error");
+      vibrate([100, 50, 100]);
+      return;
+    }
+    addToast("Clocked in ✓", "success");
+    vibrate([50]);
+    if (d.data) {
+      refreshTodayData(d.data);
+    } else {
+      await refreshTodayData();
+    }
+  } catch {
+    addToast("Cannot connect to server.", "error");
+  } finally {
+    setPunchLoading(false);
+    setShowCamera(false);
+    setPendingPhoto(null);
+  }
+};
   const handleClockOut=()=>doPunch("clock-out","Clocked out. Have a great day!");
   const handleBreakStart=()=>doPunch("break-start","Break started.");
   const handleBreakEnd=()=>doPunch("break-end","Break ended. Welcome back!");
@@ -718,6 +759,8 @@ function EmployeeDashboard({
   const [selectedBreakId, setSelectedBreakId] = useState(null);
   const [incompleteReason, setIncompleteReason] = useState("");
   const [expandedBreakId, setExpandedBreakId] = useState(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [pendingPhoto, setPendingPhoto] = useState(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
@@ -864,10 +907,10 @@ function EmployeeDashboard({
       <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {empStatus === "clocked_out" && (
-            <Btn onClick={handleClockIn} disabled={!onSite || punchLoading} loading={punchLoading} size="lg" style={{ width: "100%" }}>
-              <Icon name="play" size={16} color="white" />{t.clockIn}
-            </Btn>
-          )}
+  <Btn onClick={handleClockInWithPhoto} disabled={!onSite || punchLoading} loading={punchLoading} size="lg" style={{ width: "100%" }}>
+    <Icon name="camera" size={16} color="white" />{t.clockIn}
+  </Btn>
+)}
           {empStatus === "clocked_in" && (
             <>
               <Btn onClick={() => setShowBreakModal(true)} disabled={punchLoading} variant="secondary" size="md" style={{ width: "100%" }}>
@@ -1108,6 +1151,13 @@ function EmployeeDashboard({
       </div>
     </div>
   </Modal>
+)}
+
+{showCamera && (
+  <CameraModal
+    onClose={() => setShowCamera(false)}
+    onCapture={(photo) => processClockIn(photo)}
+  />
 )}
     </div>
   );
@@ -1898,6 +1948,90 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
         </Modal>
       )}
     </div>
+  );
+}
+
+function CameraModal({ onClose, onCapture }) {
+  const [stream, setStream] = useState(null);
+  const [photo, setPhoto] = useState(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    async function startCamera() {
+      try {
+        const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setStream(mediaStream);
+        if (videoRef.current) {
+          videoRef.current.srcObject = mediaStream;
+        }
+      } catch (err) {
+        console.error("Camera error:", err);
+        onClose();
+      }
+    }
+    startCamera();
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  const takePhoto = () => {
+    if (!videoRef.current) return;
+    const canvas = canvasRef.current;
+    const video = videoRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = canvas.toDataURL('image/jpeg', 0.8); // base64
+    setPhoto(imageData);
+  };
+
+  const confirmPhoto = () => {
+    if (photo) {
+      onCapture(photo);
+    } else {
+      // If no photo taken, capture now
+      takePhoto();
+      setTimeout(() => {
+        if (photo) onCapture(photo);
+      }, 100);
+    }
+  };
+
+  return (
+    <Modal title="Take a photo at your worksite" onClose={onClose}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {!photo ? (
+          <>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              style={{ width: "100%", borderRadius: "var(--radius)", background: "black" }}
+            />
+            <canvas ref={canvasRef} style={{ display: "none" }} />
+            <Btn onClick={takePhoto} variant="primary" style={{ width: "100%" }}>
+              <Icon name="camera" size={16} color="white" /> Take Photo
+            </Btn>
+          </>
+        ) : (
+          <>
+            <img src={photo} alt="preview" style={{ width: "100%", borderRadius: "var(--radius)" }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn onClick={() => setPhoto(null)} variant="secondary" style={{ flex: 1 }}>
+                <Icon name="refresh" size={14} /> Retake
+              </Btn>
+              <Btn onClick={confirmPhoto} variant="green" style={{ flex: 1 }}>
+                <Icon name="check" size={14} color="white" /> Use Photo & Clock In
+              </Btn>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   );
 }
 
