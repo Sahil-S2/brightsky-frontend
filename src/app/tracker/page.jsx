@@ -1,5 +1,7 @@
 "use client";
-export const dynamic = 'force-dynamic';
+
+export const dynamic = "force-dynamic";
+export const runtime = "edge";
 import { useState, useEffect, useCallback, useRef } from "react";
 
 const API = "https://brightsky-api.sahilswarajjena456.workers.dev";
