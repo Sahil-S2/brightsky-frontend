@@ -1906,58 +1906,94 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
   };
 
   // AddEmployeeForm is isolated — parent state changes don't affect it
-  function AddEmployeeForm({onDone}){
-    const[fname,setFname]=useState("");
-    const[femail,setFemail]=useState("");
-    const[fpass,setFpass]=useState("");
-    const[fuid,setFuid]=useState("");
-    const[fdept,setFdept]=useState("");
-    const[fdesig,setFdesig]=useState("");
-    const[fcode,setFcode]=useState("");
-    const[frole,setFrole]=useState("employee");
-    const[fshowPass,setFshowPass]=useState(false);
-    const[saving,setSaving]=useState(false);
-    const handleAdd=async()=>{
-      if(!fname||!fpass){addToast("Name and password required.","error");return;}
-      setSaving(true);
-      const res=await authFetch("/api/admin/employees",{method:"POST",body:JSON.stringify({name:fname,email:femail||null,password:fpass,role:frole,department:fdept,designation:fdesig,employeeCode:fcode,userId:fuid||null})});
-      const d=await res.json();
-      if(!res.ok){addToast(d.error||"Failed.","error");setSaving(false);return;}
-      addToast(`Employee added. User ID: ${d.userId}`,"success");setSaving(false);onDone();
-    };
-    return(
-      <Card style={{border:"1.5px solid var(--blue-mid)",background:"var(--blue-light)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <h3 style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>New Employee</h3>
-          <button onClick={onDone} style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text3)",width:28,height:28,borderRadius:"var(--radius-sm)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}><Icon name="close" size={14}/></button>
-        </div>
-        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
-          <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:5,fontWeight:600}}>Full Name *</label><input type="text" value={fname} onChange={e=>setFname(e.target.value)} placeholder="Full name" style={{fontSize:16}} autoCorrect="off" autoComplete="off"/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:5,fontWeight:600}}>User ID (4-char)</label><input type="text" value={fuid} onChange={e=>setFuid(e.target.value.toUpperCase().slice(0,4))} placeholder="Auto" maxLength={4} style={{fontSize:16,textAlign:"center",letterSpacing:"0.15em"}} autoCorrect="off" autoCapitalize="off" autoComplete="off"/></div>
-            <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:5,fontWeight:600}}>Password *</label>
-              <div style={{position:"relative"}}>
-                <input type={fshowPass?"text":"password"} value={fpass} onChange={e=>setFpass(e.target.value)} placeholder="Password" style={{fontSize:16,paddingRight:44}} autoCorrect="off" autoComplete="new-password"/>
-                <button type="button" onClick={()=>setFshowPass(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text3)",cursor:"pointer",padding:5,display:"flex",minWidth:30,minHeight:30,alignItems:"center",justifyContent:"center",borderRadius:"var(--radius-sm)"}}><Icon name={fshowPass?"eyeOff":"eye"} size={15}/></button>
-              </div>
+  function AddEmployeeForm({ onDone }) {
+  const [fname, setFname] = useState("");
+  const [femail, setFemail] = useState("");
+  const [fpass, setFpass] = useState("");
+  const [fuid, setFuid] = useState("");
+  const [fdept, setFdept] = useState("");
+  const [fdesig, setFdesig] = useState("");
+  const [fcode, setFcode] = useState("");
+  const [frole, setFrole] = useState("employee");
+  const [ftz, setFtz] = useState("America/New_York"); // <-- new
+  const [fshowPass, setFshowPass] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const handleAdd = async () => {
+    if (!fname || !fpass) {
+      addToast("Name and password required.", "error");
+      return;
+    }
+    setSaving(true);
+    const res = await authFetch("/api/admin/employees", {
+      method: "POST",
+      body: JSON.stringify({
+        name: fname,
+        email: femail || null,
+        password: fpass,
+        role: frole,
+        department: fdept,
+        designation: fdesig,
+        employeeCode: fcode,
+        userId: fuid || null,
+        timezone: ftz, // <-- send timezone
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      addToast(d.error || "Failed.", "error");
+      setSaving(false);
+      return;
+    }
+    addToast(`Employee added. User ID: ${d.userId}`, "success");
+    setSaving(false);
+    onDone();
+  };
+
+  return (
+    <Card style={{ border: "1.5px solid var(--blue-mid)", background: "var(--blue-light)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>New Employee</h3>
+        <button onClick={onDone} style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text3)", width: 28, height: 28, borderRadius: "var(--radius-sm)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+          <Icon name="close" size={14} />
+        </button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+        <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Full Name *</label><input type="text" value={fname} onChange={e => setFname(e.target.value)} placeholder="Full name" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" /></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>User ID (4-char)</label><input type="text" value={fuid} onChange={e => setFuid(e.target.value.toUpperCase().slice(0, 4))} placeholder="Auto" maxLength={4} style={{ fontSize: 16, textAlign: "center", letterSpacing: "0.15em" }} autoCorrect="off" autoCapitalize="off" autoComplete="off" /></div>
+          <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Password *</label>
+            <div style={{ position: "relative" }}>
+              <input type={fshowPass ? "text" : "password"} value={fpass} onChange={e => setFpass(e.target.value)} placeholder="Password" style={{ fontSize: 16, paddingRight: 44 }} autoCorrect="off" autoComplete="new-password" />
+              <button type="button" onClick={() => setFshowPass(s => !s)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text3)", cursor: "pointer", padding: 5, display: "flex", minWidth: 30, minHeight: 30, alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-sm)" }}>
+                <Icon name={fshowPass ? "eyeOff" : "eye"} size={15} />
+              </button>
             </div>
           </div>
-          <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:5,fontWeight:600}}>Email (optional)</label><input type="email" value={femail} onChange={e=>setFemail(e.target.value)} placeholder="email@brightsky.com" style={{fontSize:16}} autoCorrect="off" autoCapitalize="off" autoComplete="off"/></div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:5,fontWeight:600}}>Department</label><input type="text" value={fdept} onChange={e=>setFdept(e.target.value)} placeholder="Construction" style={{fontSize:16}} autoCorrect="off" autoComplete="off"/></div>
-            <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:5,fontWeight:600}}>Designation</label><input type="text" value={fdesig} onChange={e=>setFdesig(e.target.value)} placeholder="Site Worker" style={{fontSize:16}} autoCorrect="off" autoComplete="off"/></div>
-          </div>
-          <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:5,fontWeight:600}}>Employee Code</label><input type="text" value={fcode} onChange={e=>setFcode(e.target.value)} placeholder="BSC-012" style={{fontSize:16}} autoCorrect="off" autoCapitalize="characters" autoComplete="off"/></div>
-          <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:5,fontWeight:600}}>Role</label>
-            <select value={frole} onChange={e=>setFrole(e.target.value)} style={{fontSize:16}}>
-              <option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option>
-            </select>
-          </div>
         </div>
-        <Btn onClick={handleAdd} loading={saving} style={{width:"100%"}}><Icon name="check" size={14} color="white"/>Add Employee</Btn>
-      </Card>
-    );
-  }
+        <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Email (optional)</label><input type="email" value={femail} onChange={e => setFemail(e.target.value)} placeholder="email@brightsky.com" style={{ fontSize: 16 }} autoCorrect="off" autoCapitalize="off" autoComplete="off" /></div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Department</label><input type="text" value={fdept} onChange={e => setFdept(e.target.value)} placeholder="Construction" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" /></div>
+          <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Designation</label><input type="text" value={fdesig} onChange={e => setFdesig(e.target.value)} placeholder="Site Worker" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" /></div>
+        </div>
+        <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Employee Code</label><input type="text" value={fcode} onChange={e => setFcode(e.target.value)} placeholder="BSC-012" style={{ fontSize: 16 }} autoCorrect="off" autoCapitalize="characters" autoComplete="off" /></div>
+        <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Role</label>
+          <select value={frole} onChange={e => setFrole(e.target.value)} style={{ fontSize: 16 }}>
+            <option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option>
+          </select>
+        </div>
+        {/* Timezone selection */}
+        <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Timezone</label>
+          <select value={ftz} onChange={e => setFtz(e.target.value)} style={{ fontSize: 16 }}>
+            <option value="America/New_York">🇺🇸 Atlanta (UTC-4/5)</option>
+            <option value="Asia/Kolkata">🇮🇳 Kolkata (UTC+5:30)</option>
+          </select>
+        </div>
+      </div>
+      <Btn onClick={handleAdd} loading={saving} style={{ width: "100%" }}><Icon name="check" size={14} color="white" />Add Employee</Btn>
+    </Card>
+  );
+}
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -1968,54 +2004,56 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {employees.length===0?<div style={{textAlign:"center",color:"var(--text4)",padding:24,fontSize:13.5}}>No employees found.</div>
           :employees.map(u=>(
-            <div key={u.id} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:"var(--bg3)",borderRadius:"var(--radius-lg)",border:"1px solid var(--border)"}}>
-              <div style={{width:38,height:38,borderRadius:"50%",background:"var(--blue-light)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:"2px solid var(--blue-mid)"}}><Icon name="user" size={17} color="var(--blue)"/></div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:600,color:"var(--text)",fontSize:14}}>{u.name||u.full_name}</div>
-                <div style={{fontSize:12,color:"var(--text3)",marginTop:1}}>{u.email||""}{u.department?` · ${u.department}`:""}</div>
-                <div style={{display:"flex",gap:6,marginTop:5,flexWrap:"wrap"}}>
-                  {u.user_id&&<span style={{background:"var(--blue-light)",color:"var(--blue)",padding:"2px 8px",borderRadius:999,fontSize:11.5,fontWeight:700,border:"1px solid var(--blue-mid)"}}>ID: {u.user_id}</span>}
-                  <span style={{background:"var(--bg2)",color:"var(--text3)",padding:"2px 8px",borderRadius:999,fontSize:11.5,textTransform:"capitalize",border:"1px solid var(--border)"}}>{u.role}</span>
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-  <select
-    value={u.timezone || "America/New_York"}
-    onChange={async (e) => {
-      const newTz = e.target.value;
-      const res = await authFetch(`/api/admin/users/${u.id}/timezone`, {
-        method: "PUT",
-        body: JSON.stringify({ timezone: newTz })
-      });
-      if (res.ok) {
-        addToast("Timezone updated", "success");
-        refreshAdminData(); // this will re-fetch employees with updated timezone
-      } else {
-        addToast("Failed to update timezone", "error");
-      }
-    }}
-    style={{
-      fontSize: 11,
-      padding: "4px 6px",
-      borderRadius: "var(--radius-sm)",
-      border: "1px solid var(--border)",
-      background: "var(--bg2)",
-      color: "var(--text)",
-      cursor: "pointer",
-      maxWidth: "100px"
-    }}
-  >
-    <option value="America/New_York">🇺🇸 Atlanta</option>
-    <option value="Asia/Kolkata">🇮🇳 Kolkata</option>
-  </select>
-  <button onClick={() => openSchedule(u)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", border: "1px solid var(--blue-mid)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-    <Icon name="clock" size={14} color="var(--blue)" />
-  </button>
-  <button onClick={() => handleDelete(u.id)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-    <Icon name="x" size={14} color="var(--red)" />
-  </button>
+            <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 14px", background: "var(--bg3)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border)" }}>
+  <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--blue-light)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "2px solid var(--blue-mid)" }}>
+    <Icon name="user" size={17} color="var(--blue)" />
+  </div>
+  <div style={{ flex: 1, minWidth: 0 }}>
+    <div style={{ fontWeight: 600, color: "var(--text)", fontSize: 14 }}>{u.name || u.full_name}</div>
+    <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 1 }}>{u.email || ""}{u.department ? ` · ${u.department}` : ""}</div>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 5, alignItems: "center" }}>
+      {u.user_id && <span style={{ background: "var(--blue-light)", color: "var(--blue)", padding: "2px 8px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, border: "1px solid var(--blue-mid)" }}>ID: {u.user_id}</span>}
+      <span style={{ background: "var(--bg2)", color: "var(--text3)", padding: "2px 8px", borderRadius: 999, fontSize: 11.5, textTransform: "capitalize", border: "1px solid var(--border)" }}>{u.role}</span>
+      <select
+        value={u.timezone || "America/New_York"}
+        onChange={async (e) => {
+          const newTz = e.target.value;
+          const res = await authFetch(`/api/admin/users/${u.id}/timezone`, {
+            method: "PUT",
+            body: JSON.stringify({ timezone: newTz })
+          });
+          if (res.ok) {
+            addToast("Timezone updated", "success");
+            refreshAdminData(); // refresh the list to show new value
+          } else {
+            addToast("Failed to update timezone", "error");
+          }
+        }}
+        style={{
+          fontSize: 11,
+          padding: "2px 8px",
+          borderRadius: 999,
+          border: "1px solid var(--border)",
+          background: "var(--bg2)",
+          color: "var(--text)",
+          cursor: "pointer",
+          height: "28px",
+        }}
+      >
+        <option value="America/New_York">🇺🇸 Atlanta</option>
+        <option value="Asia/Kolkata">🇮🇳 Kolkata</option>
+      </select>
+    </div>
+  </div>
+  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+    <button onClick={() => openSchedule(u)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", border: "1px solid var(--blue-mid)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+      <Icon name="clock" size={14} color="var(--blue)" />
+    </button>
+    <button onClick={() => handleDelete(u.id)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+      <Icon name="x" size={14} color="var(--red)" />
+    </button>
+  </div>
 </div>
-            </div>
           ))}
         </div>
       </Card>
