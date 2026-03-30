@@ -1156,7 +1156,7 @@ function EmployeeDashboard({
   </Modal>
 )}
 
-{showCamera && (
+{showCamera && typeof window !== 'undefined' && (
   <CameraModal
     onClose={() => setShowCamera(false)}
     onCapture={(photo) => processClockIn(photo)}
