@@ -686,6 +686,7 @@ function EmployeeDashboard({
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
   const [selectedBreakId, setSelectedBreakId] = useState(null);
   const [incompleteReason, setIncompleteReason] = useState("");
+  const [expandedBreakId, setExpandedBreakId] = useState(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
@@ -893,7 +894,6 @@ function EmployeeDashboard({
       </Card>
 
 {/* Today's Work Breaks */}
-{/* Today's Work Breaks */}
 <Card>
   <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>
     Today's Work Breaks
@@ -905,52 +905,79 @@ function EmployeeDashboard({
     }
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {workBreaks.map(breakRecord => (
-          <div key={breakRecord.id} style={{ padding: "12px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.remarks}</div>
-                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{fmtTime(breakRecord.punch_time)}</div>
+        {workBreaks.map(breakRecord => {
+          const isExpanded = expandedBreakId === breakRecord.id;
+          return (
+            <div
+              key={breakRecord.id}
+              onClick={() => setExpandedBreakId(isExpanded ? null : breakRecord.id)}
+              style={{
+                padding: "12px",
+                background: "var(--bg3)",
+                borderRadius: "var(--radius)",
+                border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
+                cursor: "pointer",
+                transition: "all 0.2s"
+              }}
+            >
+              {/* Header: reason and time */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.remarks}</div>
+                  <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{fmtTime(breakRecord.punch_time)}</div>
+                </div>
+                {breakRecord.break_completed === true && (
+                  <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>
+                )}
+                {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && (
+                  <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Not Completed</span>
+                )}
               </div>
-              {breakRecord.break_completed === true ? (
-                <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>
-              ) : breakRecord.break_completed === false && breakRecord.break_incomplete_reason ? (
-                <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Not Completed</span>
-              ) : (
-                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+
+              {/* Expanded content: buttons */}
+              {isExpanded && breakRecord.break_completed !== true && !(breakRecord.break_completed === false && breakRecord.break_incomplete_reason) && (
+                <div style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
                   <button
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.stopPropagation(); // prevent closing the card
                       const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
                       if (res.ok) {
                         addToast("Break task marked as completed.", "success");
                         await refreshTodayData();
+                        setExpandedBreakId(null);
                       } else {
                         addToast("Failed to update break status.", "error");
                       }
                     }}
-                    style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer" }}
+                    style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer", flex: 1 }}
                   >
                     ✓ Completed
                   </button>
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setSelectedBreakId(breakRecord.id);
                       setShowIncompleteModal(true);
                     }}
-                    style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer" }}
+                    style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer", flex: 1 }}
                   >
                     ✗ Not Completed
                   </button>
                 </div>
               )}
+
+              {/* Show reason if not completed with a reason */}
+              {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && isExpanded && (
+                <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                  <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Reason for incompletion:</div>
+                  <div style={{ fontSize: 12, padding: "4px 8px", background: "var(--red-light)", borderRadius: "var(--radius-sm)", color: "var(--red)" }}>
+                    {breakRecord.break_incomplete_reason}
+                  </div>
+                </div>
+              )}
             </div>
-            {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && (
-              <div style={{ marginTop: 8, fontSize: 11, color: "var(--text3)", padding: "4px 8px", background: "var(--red-light)", borderRadius: "var(--radius-sm)" }}>
-                Reason: {breakRecord.break_incomplete_reason}
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   })()}
