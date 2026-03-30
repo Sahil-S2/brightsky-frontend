@@ -402,11 +402,7 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, []);
 
-  const getLocationPayload = useCallback(() => {
-  const lat = userLat !== null ? userLat : (employeeWorksite?.latitude ?? settings.latitude ?? 0);
-  const lon = userLon !== null ? userLon : (employeeWorksite?.longitude ?? settings.longitude ?? 0);
-  return { latitude: lat, longitude: lon };
-}, [userLat, userLon, employeeWorksite, settings]);
+  
 
   const addToast=useCallback((message,type="info")=>{
     const id=++toastCounter.current;setToasts(t=>[...t,{id,message,type}]);
@@ -502,43 +498,48 @@ useEffect(() => {
     setPunchLoading(false);
   }
 };
-  const handleClockInWithPhoto = () => {
-  // Only show camera if on‑site (already validated)
-  if (!onSite) {
-    addToast("You must be at your assigned worksite to clock in.", "error");
-    return;
-  }
-  setShowCamera(true);
-};
+  const getLocationPayload = useCallback(() => {
+    const lat = userLat !== null ? userLat : (employeeWorksite?.latitude ?? settings.latitude ?? 0);
+    const lon = userLon !== null ? userLon : (employeeWorksite?.longitude ?? settings.longitude ?? 0);
+    return { latitude: lat, longitude: lon };
+  }, [userLat, userLon, employeeWorksite, settings]);
 
-const processClockIn = async (photoData) => {
-  setPunchLoading(true);
-  try {
-    const { latitude, longitude } = getLocationPayload();
-    const res = await authFetch("/api/attendance/clock-in", {
-      method: "POST",
-      body: JSON.stringify({ latitude, longitude, photo: photoData }),
-    });
-    const d = await res.json();
-    if (!res.ok) {
-      addToast(d.error || "Action failed.", "error");
-      vibrate([100, 50, 100]);
+  const processClockIn = async (photoData) => {
+    setPunchLoading(true);
+    try {
+      const { latitude, longitude } = getLocationPayload();
+      const res = await authFetch("/api/attendance/clock-in", {
+        method: "POST",
+        body: JSON.stringify({ latitude, longitude, photo: photoData }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        addToast(d.error || "Action failed.", "error");
+        vibrate([100, 50, 100]);
+        return;
+      }
+      addToast("Clocked in ✓", "success");
+      vibrate([50]);
+      if (d.data) {
+        refreshTodayData(d.data);
+      } else {
+        await refreshTodayData();
+      }
+    } catch {
+      addToast("Cannot connect to server.", "error");
+    } finally {
+      setPunchLoading(false);
+      setShowCamera(false);
+    }
+  };
+
+  const handleClockInWithPhoto = () => {
+    if (!onSite) {
+      addToast("You must be at your assigned worksite to clock in.", "error");
       return;
     }
-    addToast("Clocked in ✓", "success");
-    vibrate([50]);
-    if (d.data) {
-      refreshTodayData(d.data);
-    } else {
-      await refreshTodayData();
-    }
-  } catch {
-    addToast("Cannot connect to server.", "error");
-  } finally {
-    setPunchLoading(false);
-    setShowCamera(false);
-  }
-};
+    setShowCamera(true);
+  };
   const handleClockOut=()=>doPunch("clock-out","Clocked out. Have a great day!");
   const handleBreakStart=()=>doPunch("break-start","Break started.");
   const handleBreakEnd=()=>doPunch("break-end","Break ended. Welcome back!");
@@ -616,7 +617,7 @@ const processClockIn = async (photoData) => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} handleClockInWithPhoto={handleClockInWithPhoto} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} processClockIn={processClockIn}/>)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} />)}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t}/>}
             {page==="employees"&&isAdmin&&<EmployeeList adminData={adminData} refreshAdminData={refreshAdminData} addToast={addToast} worksites={worksites} t={t}/>}
@@ -750,13 +751,13 @@ function EmployeeDashboard({
   user, todayData, empStatus, onSite, settings,
   punchLoading, gpsLoading, userLat, userLon,
   isOvertime, overtimeMins, employeeWorksite,
-  handleClockInWithPhoto, handleClockOut, handleBreakStart, handleBreakEnd,
-  t, addToast, refreshTodayData, processClockIn
+  handleClockOut, handleBreakStart, handleBreakEnd,
+  t, addToast, refreshTodayData
 }) {
   const [now, setNow] = useState(new Date());
   const [showBreakModal, setShowBreakModal] = useState(false);
   const [breakReason, setBreakReason] = useState("");
-  const [breakType, setBreakType] = useState(null); // 'personal' or 'work'
+  const [breakType, setBreakType] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [showIncompleteModal, setShowIncompleteModal] = useState(false);
