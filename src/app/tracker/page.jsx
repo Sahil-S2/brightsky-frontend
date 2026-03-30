@@ -1822,6 +1822,14 @@ function MyProfile({user,addToast,employeeWorksite,t}){
           <div>
             <h2 style={{fontSize:18,fontWeight:800,color:"var(--text)",letterSpacing:"-0.02em"}}>{user.name}</h2>
             <p style={{color:"var(--text3)",fontSize:13,textTransform:"capitalize",marginTop:2}}>{user.role}</p>
+            {user.timezone && (
+  <div style={{ marginTop: 6, display: "inline-flex", alignItems: "center", gap: 5, background: "var(--blue-light)", padding: "3px 10px", borderRadius: 999, border: "1px solid var(--blue-mid)" }}>
+    <Icon name="globe" size={11} color="var(--blue)" />
+    <span style={{ fontSize: 12, fontWeight: 700, color: "var(--blue)" }}>
+      {user.timezone === "America/New_York" ? "🇺🇸 Atlanta (UTC-4/5)" : "🇮🇳 Kolkata (UTC+5:30)"}
+    </span>
+  </div>
+)}
             {user.userId&&<div style={{marginTop:6,display:"inline-flex",alignItems:"center",gap:5,background:"var(--blue-light)",padding:"3px 10px",borderRadius:999,border:"1px solid var(--blue-mid)"}}><Icon name="key" size={11} color="var(--blue)"/><span style={{fontSize:12,fontWeight:700,color:"var(--blue)"}}>{user.userId}</span></div>}
           </div>
         </div>
@@ -1970,7 +1978,7 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
                   <span style={{background:"var(--bg2)",color:"var(--text3)",padding:"2px 8px",borderRadius:999,fontSize:11.5,textTransform:"capitalize",border:"1px solid var(--border)"}}>{u.role}</span>
                 </div>
               </div>
-              <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
   <select
     value={u.timezone || "America/New_York"}
     onChange={async (e) => {
@@ -1981,7 +1989,7 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
       });
       if (res.ok) {
         addToast("Timezone updated", "success");
-        refreshAdminData(); // refresh the employee list
+        refreshAdminData(); // this will re-fetch employees with updated timezone
       } else {
         addToast("Failed to update timezone", "error");
       }
@@ -1993,11 +2001,12 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
       border: "1px solid var(--border)",
       background: "var(--bg2)",
       color: "var(--text)",
-      cursor: "pointer"
+      cursor: "pointer",
+      maxWidth: "100px"
     }}
   >
-    <option value="America/New_York">🇺🇸 Atlanta (UTC-4/5)</option>
-    <option value="Asia/Kolkata">🇮🇳 Kolkata (UTC+5:30)</option>
+    <option value="America/New_York">🇺🇸 Atlanta</option>
+    <option value="Asia/Kolkata">🇮🇳 Kolkata</option>
   </select>
   <button onClick={() => openSchedule(u)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", border: "1px solid var(--blue-mid)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
     <Icon name="clock" size={14} color="var(--blue)" />
