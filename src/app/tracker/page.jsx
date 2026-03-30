@@ -612,7 +612,7 @@ const processClockIn = async (photoData) => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} handleClockIn={handleClockIn} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData}/>)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} handleClockInWithPhoto={handleClockInWithPhoto} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData}/>)}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t}/>}
             {page==="employees"&&isAdmin&&<EmployeeList adminData={adminData} refreshAdminData={refreshAdminData} addToast={addToast} worksites={worksites} t={t}/>}
@@ -746,7 +746,7 @@ function EmployeeDashboard({
   user, todayData, empStatus, onSite, settings,
   punchLoading, gpsLoading, userLat, userLon,
   isOvertime, overtimeMins, employeeWorksite,
-  handleClockIn, handleClockOut, handleBreakStart, handleBreakEnd,
+  handleClockInWithPhoto, handleClockOut, handleBreakStart, handleBreakEnd,
   t, addToast, refreshTodayData
 }) {
   const [now, setNow] = useState(new Date());
