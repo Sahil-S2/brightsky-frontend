@@ -1607,23 +1607,29 @@ function MyAttendance({ t }) {
                                       : null;
                                   return (
                                     <div key={p.id} style={{ borderLeft: "3px solid", borderColor: p.break_type === "work" ? "var(--blue)" : "var(--amber)", paddingLeft: 12 }}>
-                                      <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>
-                                        {p.break_type === "work" ? "Work‑Related" : "Personal"} Break
-                                      </div>
-                                      {p.break_reason && <div style={{ fontSize: 11, color: "var(--text3)" }}>Reason: {p.break_reason}</div>}
-                                      <div style={{ fontSize: 11, color: "var(--text3)" }}>{fmtTime(p.punch_time)} {duration !== null && `· Duration: ${fmtMins(duration)}`}</div>
-                                      {p.break_type === "work" && (
-  <div style={{ marginTop: 4 }}>
-    {p.break_completed === true ? (
-      <span style={{ fontSize: 10, color: "var(--green)" }}>✓ Completed</span>
-    ) : p.break_completed === false && p.break_incomplete_reason ? (
-      <span style={{ fontSize: 10, color: "var(--red)" }}>✗ Not Completed – {p.break_incomplete_reason}</span>
-    ) : (
-      <span style={{ fontSize: 10, color: "var(--amber)" }}>⏳ Pending</span>
-    )}
+  <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>
+    {p.break_type === "work" ? "Work‑Related" : "Personal"} Break
   </div>
-)}
-                                    </div>
+  {p.remarks && (
+    <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
+      Reason: {p.remarks}
+    </div>
+  )}
+  <div style={{ fontSize: 11, color: "var(--text3)" }}>
+    {fmtTime(p.punch_time)} {duration !== null && `· Duration: ${fmtMins(duration)}`}
+  </div>
+  {p.break_type === "work" && (
+    <div style={{ marginTop: 4 }}>
+      {p.break_completed === true ? (
+        <span style={{ fontSize: 10, color: "var(--green)" }}>✓ Completed</span>
+      ) : p.break_completed === false && p.break_incomplete_reason ? (
+        <span style={{ fontSize: 10, color: "var(--red)" }}>✗ Not Completed – {p.break_incomplete_reason}</span>
+      ) : (
+        <span style={{ fontSize: 10, color: "var(--amber)" }}>⏳ Pending</span>
+      )}
+    </div>
+  )}
+</div>
                                   );
                                 })}
                               </div>
