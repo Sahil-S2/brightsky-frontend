@@ -791,6 +791,7 @@ function EmployeeDashboard({
   const [tasksTotal, setTasksTotal] = useState(0);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const [loadingTaskId, setLoadingTaskId] = useState(null);
   const tasksPerPage = 5;
 
