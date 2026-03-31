@@ -2351,23 +2351,50 @@ const saveSchedule = async () => {
       return (
         <label
           key={day}
-          className={`day-label ${isSelected ? "selected" : ""}`}
-          onClick={() => {
-            if (isSelected) {
-              setSelectedDays(selectedDays.filter(d => d !== day));
-            } else {
-              setSelectedDays([...selectedDays, day]);
-            }
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 12px",
+            borderRadius: "var(--radius-sm)",
+            background: isSelected ? "var(--blue-light)" : "var(--bg3)",
+            border: `1px solid ${isSelected ? "var(--blue-mid)" : "var(--border)"}`,
+            cursor: "pointer",
+            transition: "all 0.2s ease",
+            minWidth: "70px",
+            justifyContent: "center",
+          }}
+          onMouseEnter={(e) => {
+            if (!isSelected) e.currentTarget.style.background = "var(--bg2)";
+          }}
+          onMouseLeave={(e) => {
+            if (!isSelected) e.currentTarget.style.background = "var(--bg3)";
           }}
         >
           <input
             type="checkbox"
-            className="day-checkbox"
+            style={{
+              width: 18,
+              height: 18,
+              margin: 0,
+              cursor: "pointer",
+              accentColor: "var(--blue)",
+              transition: "transform 0.1s ease",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.1)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
             checked={isSelected}
-            onChange={() => {}} // handled by label click
-            onClick={(e) => e.stopPropagation()} // prevent double toggle
+            onChange={() => {
+              if (isSelected) {
+                setSelectedDays(selectedDays.filter(d => d !== day));
+              } else {
+                setSelectedDays([...selectedDays, day]);
+              }
+            }}
           />
-          <span>{day}</span>
+          <span style={{ fontSize: 13, fontWeight: isSelected ? 600 : 500, color: isSelected ? "var(--blue)" : "var(--text2)" }}>
+            {day}
+          </span>
         </label>
       );
     })}
