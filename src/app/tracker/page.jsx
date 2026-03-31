@@ -427,9 +427,26 @@ useEffect(() => {
     return()=>navigator.geolocation.clearWatch(wid);
   },[]);
 
-  const refreshSettings=useCallback(async()=>{
-    try{const res=await authFetch("/api/settings");if(res.ok){const d=await res.json();if(d)setSettings({companyName:d.company_name,siteName:d.site_name,latitude:parseFloat(d.latitude),longitude:parseFloat(d.longitude),radiusFeet:parseFloat(d.radius_feet),workStart:d.working_hours_start?.slice(0,5)||"07:00",workEnd:d.working_hours_end?.slice(0,5)||"17:00",autoClockInEnabled:d.auto_clock_in_enabled,autoBreakOnExitEnabled:d.auto_break_on_exit_enabled,autoCorrectionEnabled:d.auto_correction_enabled});}}catch{}
-  },[]);
+  const refreshSettings = useCallback(async () => {
+  try {
+    const res = await authFetch("/api/settings");
+    if (res.ok) {
+      const d = await res.json();
+      if (d) {
+        setSettings({
+          companyName: d.company_name,
+          siteName: d.site_name,
+          latitude: parseFloat(d.latitude),
+          longitude: parseFloat(d.longitude),
+          radiusFeet: parseFloat(d.radius_feet),
+          workStart: d.working_hours_start?.slice(0, 5) || "07:00",
+          workEnd: d.working_hours_end?.slice(0, 5) || "17:00",
+          clockInWithCameraEnabled: d.clockInWithCameraEnabled ?? true, // 👈 add this
+        });
+      }
+    }
+  } catch {}
+}, []);
   const refreshTodayData = useCallback(async (newData = null) => {
   if (!currentUser) return;
   if (newData) {
@@ -896,9 +913,9 @@ function EmployeeDashboard({
       return;
     }
     // Check if camera is required
-    const cameraRequired = settings.clockInWithCameraEnabled ?? true; // default true
-    if (cameraRequired) {
-      setShowCamera(true); // open camera modal
+    const cameraRequired = settings.clockInWithCameraEnabled ?? true;
+if (cameraRequired) {
+  setShowCamera(true); // open camera modal
     } else {
       // Direct clock‑in without photo
       setDirectClockInLoading(true);
@@ -2834,6 +2851,10 @@ function SettingsPage({ settings, addToast, refreshSettings, t }) {
   const [saving, setSaving] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(settings.clockInWithCameraEnabled ?? true);
 
+  useEffect(() => {
+  setCameraEnabled(settings.clockInWithCameraEnabled ?? true);
+}, [settings]);
+
   const companyRef = useRef(null);
   const startRef = useRef(null);
   const endRef = useRef(null);
@@ -2938,11 +2959,11 @@ function SettingsPage({ settings, addToast, refreshSettings, t }) {
           <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Clock‑in Requirements</h3>
         </div>
         <Toggle
-          label="Clock In with Camera"
-          value={cameraEnabled}
-          onChange={setCameraEnabled}
-          desc="Require employees to take a selfie when clocking in at the worksite."
-        />
+  label="Clock In with Camera"
+  value={cameraEnabled}
+  onChange={setCameraEnabled}
+  desc="Require employees to take a selfie when clocking in at the worksite."
+/>
       </Card>
 
       <Btn onClick={handleSave} loading={saving} size="lg" style={{ width: "100%" }}>
