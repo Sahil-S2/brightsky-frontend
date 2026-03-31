@@ -791,7 +791,6 @@ function EmployeeDashboard({
   const [tasksTotal, setTasksTotal] = useState(0);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState(null);
-  const [actionLoading, setActionLoading] = useState(false);
   const [loadingTaskId, setLoadingTaskId] = useState(null);
   const tasksPerPage = 5;
 
@@ -1097,20 +1096,28 @@ if (cameraRequired) {
         const isLoading = loadingTaskId === task.id;
 
         const handleComplete = async () => {
-          if (isLoading) return;
-          setLoadingTaskId(task.id);
-          const res = await authFetch(`/api/tasks/${task.id}/status`, {
-            method: "PUT",
-            body: JSON.stringify({ status: "completed" }),
-          });
-          if (res.ok) {
-            addToast("Task marked as completed", "success");
-            fetchEmployeeTasks(tasksPage);
-          } else {
-            addToast("Failed to update", "error");
-          }
-          setLoadingTaskId(null);
-        };
+  if (isLoading) return;
+  setLoadingTaskId(task.id);
+  try {
+    const res = await authFetch(`/api/tasks/${task.id}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ status: "completed" }),
+    });
+    if (res.ok) {
+      addToast("Task marked as completed", "success");
+      fetchEmployeeTasks(tasksPage);
+    } else {
+      const errData = await res.json();
+      console.error("Task update failed:", errData);
+      addToast(errData.error || "Failed to update", "error");
+    }
+  } catch (err) {
+    console.error("Network error:", err);
+    addToast("Network error", "error");
+  } finally {
+    setLoadingTaskId(null);
+  }
+};
 
         const handleIncomplete = async () => {
           const reason = prompt("Why is this task incomplete?");
