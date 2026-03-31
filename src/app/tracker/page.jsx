@@ -1928,31 +1928,115 @@ function AddEmployeeForm({ onDone, addToast, refreshAdminData }) {
         </button>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-        <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Full Name *</label><input type="text" value={fname} onChange={e => setFname(e.target.value)} placeholder="Full name" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" /></div>
+        <div>
+          <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Full Name *</label>
+          <input type="text" value={fname} onChange={e => setFname(e.target.value)} placeholder="Full name" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" />
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>User ID (4-char)</label><input type="text" value={fuid} onChange={e => setFuid(e.target.value.toUpperCase().slice(0, 4))} placeholder="Auto" maxLength={4} style={{ fontSize: 16, textAlign: "center", letterSpacing: "0.15em" }} autoCorrect="off" autoCapitalize="off" autoComplete="off" /></div>
-          <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Password *</label>
+          <div>
+            <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>User ID (4-char)</label>
+            <input
+              type="text"
+              value={fuid}
+              onChange={e => setFuid(e.target.value.toUpperCase().slice(0, 4))}
+              placeholder="Auto"
+              maxLength={4}
+              style={{ fontSize: 16, textAlign: "center", letterSpacing: "0.15em", width: "100%" }}
+              autoCorrect="off"
+              autoCapitalize="off"
+              autoComplete="off"
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Password *</label>
+            <div style={{ position: "relative" }}>
+              <input
+                type={fshowPass ? "text" : "password"}
+                value={fpass}
+                onChange={e => setFpass(e.target.value.slice(0, 4))}
+                placeholder="4-digit PIN"
+                maxLength={4}
+                inputMode="numeric"
+                style={{
+                  fontSize: 16,
+                  textAlign: "center",
+                  letterSpacing: "0.15em",
+                  width: "100%",
+                  padding: "10px 14px",
+                  paddingRight: 52,
+                }}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setFshowPass(s => !s)}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "var(--bg3)",
+                  border: "1px solid var(--border)",
+                  color: "var(--text3)",
+                  cursor: "pointer",
+                  padding: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "var(--radius-sm)",
+                  minWidth: 34,
+                  minHeight: 34,
+                }}
+              >
+                <Icon name={fshowPass ? "eyeOff" : "eye"} size={16} color="var(--text3)" />
+              </button>
             </div>
+          </div>
         </div>
-        <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Email (optional)</label><input type="email" value={femail} onChange={e => setFemail(e.target.value)} placeholder="email@brightsky.com" style={{ fontSize: 16 }} autoCorrect="off" autoCapitalize="off" autoComplete="off" /></div>
+
+        <div>
+          <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Email (optional)</label>
+          <input type="email" value={femail} onChange={e => setFemail(e.target.value)} placeholder="email@brightsky.com" style={{ fontSize: 16 }} autoCorrect="off" autoCapitalize="off" autoComplete="off" />
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Department</label><input type="text" value={fdept} onChange={e => setFdept(e.target.value)} placeholder="Construction" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" /></div>
-          <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Designation</label><input type="text" value={fdesig} onChange={e => setFdesig(e.target.value)} placeholder="Site Worker" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" /></div>
+          <div>
+            <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Department</label>
+            <input type="text" value={fdept} onChange={e => setFdept(e.target.value)} placeholder="Construction" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Designation</label>
+            <input type="text" value={fdesig} onChange={e => setFdesig(e.target.value)} placeholder="Site Worker" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" />
+          </div>
         </div>
-        <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Employee Code</label><input type="text" value={fcode} onChange={e => setFcode(e.target.value)} placeholder="BSC-012" style={{ fontSize: 16 }} autoCorrect="off" autoCapitalize="characters" autoComplete="off" /></div>
-        <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Role</label>
+
+        <div>
+          <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Employee Code</label>
+          <input type="text" value={fcode} onChange={e => setFcode(e.target.value)} placeholder="BSC-012" style={{ fontSize: 16 }} autoCorrect="off" autoCapitalize="characters" autoComplete="off" />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Role</label>
           <select value={frole} onChange={e => setFrole(e.target.value)} style={{ fontSize: 16 }}>
-            <option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option>
+            <option value="employee">Employee</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
           </select>
         </div>
-        <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Timezone</label>
+
+        <div>
+          <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Timezone</label>
           <select value={ftz} onChange={e => setFtz(e.target.value)} style={{ fontSize: 16 }}>
             <option value="America/New_York">🇺🇸 Atlanta (UTC-4/5)</option>
             <option value="Asia/Kolkata">🇮🇳 Kolkata (UTC+5:30)</option>
           </select>
         </div>
       </div>
-      <Btn onClick={handleAdd} loading={saving} style={{ width: "100%" }}><Icon name="check" size={14} color="white" />Add Employee</Btn>
+
+      <Btn onClick={handleAdd} loading={saving} style={{ width: "100%" }}>
+        <Icon name="check" size={14} color="white" />Add Employee
+      </Btn>
     </Card>
   );
 }
