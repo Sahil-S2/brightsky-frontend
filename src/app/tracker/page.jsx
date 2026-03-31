@@ -1971,6 +1971,10 @@ function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
   const [editingSchedule, setEditingSchedule] = useState(null);
   const [scheduleData, setScheduleData] = useState(null);
   const [loadingSchedule, setLoadingSchedule] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
   // Schedule refs (modal only — no parent re-render issues)
   const startRef = useRef(null), endRef = useRef(null), graceRef = useRef(null);
 
@@ -2023,6 +2027,52 @@ function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
     addToast("Schedule saved.", "success");
     setEditingSchedule(null);
   };
+
+  const openEditModal = (emp) => {
+  setEditingEmployee(emp);
+  setEditForm({
+    name: emp.name,
+    email: emp.email || "",
+    role: emp.role,
+    department: emp.department || "",
+    designation: emp.designation || "",
+    employeeCode: emp.employee_code || "",
+    phone: emp.phone || "",
+    joinedAt: emp.joined_at?.slice(0,10) || "",
+  });
+};
+
+const saveEmployeeDetails = async () => {
+  const res = await authFetch(`/api/admin/employees/${editingEmployee.id}`, {
+    method: "PUT",
+    body: JSON.stringify(editForm)
+  });
+  if (res.ok) {
+    addToast("Employee details updated", "success");
+    setEditingEmployee(null);
+    refreshAdminData();
+  } else {
+    addToast("Failed to update", "error");
+  }
+};
+
+const changePassword = async () => {
+  if (!newPassword || newPassword.length < 4) {
+    addToast("Password must be at least 4 characters", "error");
+    return;
+  }
+  const res = await authFetch(`/api/admin/employees/${editingEmployee.id}/password`, {
+    method: "PUT",
+    body: JSON.stringify({ newPassword })
+  });
+  if (res.ok) {
+    addToast("Password changed", "success");
+    setShowPasswordModal(false);
+    setNewPassword("");
+  } else {
+    addToast("Failed to change password", "error");
+  }
+};
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -2092,13 +2142,16 @@ function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button onClick={() => openSchedule(u)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", border: "1px solid var(--blue-mid)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                    <Icon name="clock" size={14} color="var(--blue)" />
-                  </button>
-                  <button onClick={() => handleDelete(u.id)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-                    <Icon name="x" size={14} color="var(--red)" />
-                  </button>
-                </div>
+  <button onClick={() => openEditModal(u)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", border: "1px solid var(--blue-mid)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+    <Icon name="edit" size={14} color="var(--blue)" />
+  </button>
+  <button onClick={() => openSchedule(u)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", border: "1px solid var(--blue-mid)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+    <Icon name="clock" size={14} color="var(--blue)" />
+  </button>
+  <button onClick={() => handleDelete(u.id)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+    <Icon name="x" size={14} color="var(--red)" />
+  </button>
+</div>
               </div>
             ))
           )}
@@ -2106,42 +2159,42 @@ function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
       </Card>
 
       {/* Schedule modal */}
-      {editingSchedule && (
-        <Modal title={`Schedule — ${editingSchedule.name}`} onClose={() => setEditingSchedule(null)}>
-          {loadingSchedule ? (
-            <div style={{ textAlign: "center", padding: 24, color: "var(--text3)" }}>Loading…</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ padding: "10px 14px", borderRadius: "var(--radius)", background: "var(--blue-light)", border: "1.5px solid var(--blue-mid)", fontSize: 13, color: "var(--blue)", fontWeight: 450 }}>
-                This schedule controls auto clock-in/out and overtime detection.
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div>
-                  <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Start Time</label>
-                  <input type="time" ref={startRef} defaultValue={scheduleData?.scheduled_start_time?.toString().slice(0, 5) || "07:00"} style={{ fontSize: 16 }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>End Time</label>
-                  <input type="time" ref={endRef} defaultValue={scheduleData?.scheduled_end_time?.toString().slice(0, 5) || "17:00"} style={{ fontSize: 16 }} />
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Grace Period (minutes)</label>
-                <input type="text" inputMode="numeric" ref={graceRef} defaultValue={scheduleData?.grace_minutes || 15} placeholder="15" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" />
-              </div>
-              {scheduleData && (
-                <div style={{ padding: "10px 14px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-                  <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 3, fontWeight: 500 }}>Current Schedule</div>
-                  <div style={{ fontSize: 13.5, color: "var(--text)", fontWeight: 500 }}>
-                    {scheduleData.scheduled_start_time?.toString().slice(0, 5) || "07:00"} – {scheduleData.scheduled_end_time?.toString().slice(0, 5) || "17:00"} · Grace: {scheduleData.grace_minutes || 15}min
-                  </div>
-                </div>
-              )}
-              <Btn onClick={saveSchedule} style={{ width: "100%" }} size="md"><Icon name="check" size={14} color="white" />Save Schedule</Btn>
-            </div>
-          )}
-        </Modal>
-      )}
+      {/* Edit Employee Modal */}
+{editingEmployee && (
+  <Modal title={`Edit ${editingEmployee.name}`} onClose={() => setEditingEmployee(null)}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div><label style={{ fontSize: 12, fontWeight: 600 }}>Full Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} style={{ fontSize: 16 }} /></div>
+      <div><label style={{ fontSize: 12, fontWeight: 600 }}>Email</label><input type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} style={{ fontSize: 16 }} /></div>
+      <div><label style={{ fontSize: 12, fontWeight: 600 }}>Role</label>
+        <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})} style={{ fontSize: 16 }}>
+          <option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option>
+        </select>
+      </div>
+      <div><label style={{ fontSize: 12, fontWeight: 600 }}>Department</label><input type="text" value={editForm.department} onChange={e => setEditForm({...editForm, department: e.target.value})} style={{ fontSize: 16 }} /></div>
+      <div><label style={{ fontSize: 12, fontWeight: 600 }}>Designation</label><input type="text" value={editForm.designation} onChange={e => setEditForm({...editForm, designation: e.target.value})} style={{ fontSize: 16 }} /></div>
+      <div><label style={{ fontSize: 12, fontWeight: 600 }}>Employee Code</label><input type="text" value={editForm.employeeCode} onChange={e => setEditForm({...editForm, employeeCode: e.target.value})} style={{ fontSize: 16 }} /></div>
+      <div><label style={{ fontSize: 12, fontWeight: 600 }}>Phone</label><input type="text" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} style={{ fontSize: 16 }} /></div>
+      <div><label style={{ fontSize: 12, fontWeight: 600 }}>Joined At</label><input type="date" value={editForm.joinedAt} onChange={e => setEditForm({...editForm, joinedAt: e.target.value})} style={{ fontSize: 16 }} /></div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Btn onClick={saveEmployeeDetails} variant="primary" style={{ flex: 1 }}>Save Changes</Btn>
+        <Btn onClick={() => setShowPasswordModal(true)} variant="secondary" style={{ flex: 1 }}>Change Password</Btn>
+      </div>
+    </div>
+  </Modal>
+)}
+
+{/* Password Change Modal */}
+{showPasswordModal && (
+  <Modal title="Change Password" onClose={() => { setShowPasswordModal(false); setNewPassword(""); }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <input type="password" placeholder="New password (min 4 chars)" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ fontSize: 16 }} />
+      <div style={{ display: "flex", gap: 8 }}>
+        <Btn onClick={changePassword} variant="primary" style={{ flex: 1 }}>Update Password</Btn>
+        <Btn onClick={() => setShowPasswordModal(false)} variant="secondary" style={{ flex: 1 }}>Cancel</Btn>
+      </div>
+    </div>
+  </Modal>
+)}
     </div>
   );
 }
