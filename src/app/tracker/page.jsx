@@ -790,6 +790,8 @@ function EmployeeDashboard({
   const [tasksPage, setTasksPage] = useState(1);
   const [tasksTotal, setTasksTotal] = useState(0);
   const [tasksLoading, setTasksLoading] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
   const tasksPerPage = 5;
 
   useEffect(() => {
@@ -1074,51 +1076,28 @@ if (cameraRequired) {
 
       {/* Tasks Section */}
       {/* My Tasks Section (Collapsible) */}
+{/* My Tasks Section */}
 <Card>
-  <div
-    style={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 12,
-    }}
-  >
-    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
-      My Tasks
-    </div>
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
     {tasksLoading && (
-      <span
-        className="spin"
-        style={{
-          width: 14,
-          height: 14,
-          border: "2px solid var(--blue)",
-          borderTopColor: "transparent",
-          borderRadius: "50%",
-        }}
-      />
+      <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />
     )}
   </div>
 
   {employeeTasks.length === 0 ? (
-    <div
-      style={{
-        textAlign: "center",
-        padding: "24px 0",
-        color: "var(--text4)",
-        fontSize: 13,
-      }}
-    >
+    <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>
       No tasks assigned.
     </div>
   ) : (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {employeeTasks.map((task) => {
-        const [expanded, setExpanded] = useState(false);
-        const [actionLoading, setActionLoading] = useState(false);
+        const isExpanded = expandedTaskId === task.id;
+        const isLoading = loadingTaskId === task.id;
 
         const handleComplete = async () => {
-          setActionLoading(true);
+          if (isLoading) return;
+          setLoadingTaskId(task.id);
           const res = await authFetch(`/api/tasks/${task.id}/status`, {
             method: "PUT",
             body: JSON.stringify({ status: "completed" }),
@@ -1129,13 +1108,14 @@ if (cameraRequired) {
           } else {
             addToast("Failed to update", "error");
           }
-          setActionLoading(false);
+          setLoadingTaskId(null);
         };
 
         const handleIncomplete = async () => {
           const reason = prompt("Why is this task incomplete?");
           if (!reason) return;
-          setActionLoading(true);
+          if (isLoading) return;
+          setLoadingTaskId(task.id);
           const res = await authFetch(`/api/tasks/${task.id}/status`, {
             method: "PUT",
             body: JSON.stringify({ status: "incomplete", incompleteReason: reason }),
@@ -1146,7 +1126,7 @@ if (cameraRequired) {
           } else {
             addToast("Failed to update", "error");
           }
-          setActionLoading(false);
+          setLoadingTaskId(null);
         };
 
         return (
@@ -1156,41 +1136,19 @@ if (cameraRequired) {
               padding: "12px",
               background: "var(--bg3)",
               borderRadius: "var(--radius)",
-              border: `1px solid ${
-                expanded ? "var(--blue)" : "var(--border)"
-              }`,
+              border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
               cursor: "pointer",
               transition: "all 0.2s",
             }}
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 13.5,
-                    fontWeight: 600,
-                    color: "var(--text)",
-                  }}
-                >
+                <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>
                   {task.title}
                 </div>
                 {task.description && (
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "var(--text3)",
-                      marginTop: 4,
-                    }}
-                  >
+                  <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>
                     {task.description}
                   </div>
                 )}
@@ -1201,13 +1159,7 @@ if (cameraRequired) {
                         href={task.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        style={{
-                          fontSize: 12,
-                          color: "var(--blue)",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                        }}
+                        style={{ fontSize: 12, color: "var(--blue)", display: "flex", alignItems: "center", gap: 4 }}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <Icon name="play" size={12} /> Watch on YouTube
@@ -1220,79 +1172,41 @@ if (cameraRequired) {
                         style={{ fontSize: 12, color: "var(--blue)" }}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        {task.task_type === "document"
-                          ? "📄 View Document"
-                          : "🔗 Open Link"}
+                        {task.task_type === "document" ? "📄 View Document" : "🔗 Open Link"}
                       </a>
                     )}
                   </div>
                 )}
                 {task.due_date && (
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "var(--text3)",
-                      marginTop: 4,
-                    }}
-                  >
+                  <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
                     Due: {fmtDate(task.due_date)}
                   </div>
                 )}
               </div>
               {task.status === "completed" && (
-                <span
-                  style={{
-                    background: "var(--green-light)",
-                    border: "1px solid rgba(5,150,105,0.2)",
-                    borderRadius: "var(--radius-sm)",
-                    padding: "4px 10px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "var(--green)",
-                  }}
-                >
+                <span style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)" }}>
                   ✓ Completed
                 </span>
               )}
               {task.status === "incomplete" && (
-                <span
-                  style={{
-                    background: "var(--red-light)",
-                    border: "1px solid rgba(220,38,38,0.2)",
-                    borderRadius: "var(--radius-sm)",
-                    padding: "4px 10px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "var(--red)",
-                  }}
-                >
+                <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>
                   ✗ Incomplete
                 </span>
               )}
               {task.status === "pending" && (
-                <Icon
-                  name={expanded ? "chevronUp" : "chevronDown"}
-                  size={18}
-                  color="var(--text3)"
-                />
+                <Icon name={isExpanded ? "chevronUp" : "chevronDown"} size={18} color="var(--text3)" />
               )}
             </div>
 
             {/* Expanded actions (only for pending tasks) */}
-            {expanded && task.status === "pending" && (
+            {isExpanded && task.status === "pending" && (
               <div
-                style={{
-                  marginTop: 12,
-                  display: "flex",
-                  gap: 8,
-                  borderTop: "1px solid var(--border)",
-                  paddingTop: 12,
-                }}
+                style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
                   onClick={handleComplete}
-                  disabled={actionLoading}
+                  disabled={isLoading}
                   style={{
                     background: "var(--green-light)",
                     border: "1px solid rgba(5,150,105,0.2)",
@@ -1303,13 +1217,14 @@ if (cameraRequired) {
                     color: "var(--green)",
                     cursor: "pointer",
                     flex: 1,
+                    opacity: isLoading ? 0.6 : 1,
                   }}
                 >
-                  {actionLoading ? "Updating..." : "✓ Completed"}
+                  {isLoading ? "Updating..." : "✓ Completed"}
                 </button>
                 <button
                   onClick={handleIncomplete}
-                  disabled={actionLoading}
+                  disabled={isLoading}
                   style={{
                     background: "var(--red-light)",
                     border: "1px solid rgba(220,38,38,0.2)",
@@ -1320,6 +1235,7 @@ if (cameraRequired) {
                     color: "var(--red)",
                     cursor: "pointer",
                     flex: 1,
+                    opacity: isLoading ? 0.6 : 1,
                   }}
                 >
                   ✗ Incomplete
@@ -1329,16 +1245,7 @@ if (cameraRequired) {
 
             {/* Show incomplete reason if present */}
             {task.status === "incomplete" && task.incomplete_reason && (
-              <div
-                style={{
-                  marginTop: 12,
-                  fontSize: 11,
-                  color: "var(--red)",
-                  background: "var(--red-light)",
-                  padding: "4px 8px",
-                  borderRadius: "var(--radius-sm)",
-                }}
-              >
+              <div style={{ marginTop: 12, fontSize: 11, color: "var(--red)", background: "var(--red-light)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>
                 Reason: {task.incomplete_reason}
               </div>
             )}
@@ -1348,27 +1255,13 @@ if (cameraRequired) {
     </div>
   )}
 
-  {/* Pagination (unchanged) */}
+  {/* Pagination */}
   {tasksTotal > tasksPerPage && (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        gap: 8,
-        marginTop: 12,
-      }}
-    >
+    <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
       <button
         onClick={() => fetchEmployeeTasks(tasksPage - 1)}
         disabled={tasksPage === 1}
-        style={{
-          padding: "6px 12px",
-          borderRadius: "var(--radius-sm)",
-          background: "var(--bg3)",
-          border: "1px solid var(--border)",
-          cursor: tasksPage === 1 ? "not-allowed" : "pointer",
-          opacity: tasksPage === 1 ? 0.5 : 1,
-        }}
+        style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage === 1 ? "not-allowed" : "pointer", opacity: tasksPage === 1 ? 0.5 : 1 }}
       >
         Previous
       </button>
@@ -1378,15 +1271,7 @@ if (cameraRequired) {
       <button
         onClick={() => fetchEmployeeTasks(tasksPage + 1)}
         disabled={tasksPage * tasksPerPage >= tasksTotal}
-        style={{
-          padding: "6px 12px",
-          borderRadius: "var(--radius-sm)",
-          background: "var(--bg3)",
-          border: "1px solid var(--border)",
-          cursor:
-            tasksPage * tasksPerPage >= tasksTotal ? "not-allowed" : "pointer",
-          opacity: tasksPage * tasksPerPage >= tasksTotal ? 0.5 : 1,
-        }}
+        style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage * tasksPerPage >= tasksTotal ? "not-allowed" : "pointer", opacity: tasksPage * tasksPerPage >= tasksTotal ? 0.5 : 1 }}
       >
         Next
       </button>
