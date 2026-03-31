@@ -129,52 +129,6 @@ const GlobalStyle = () => (
   `}</style>
 );
 
-<style>{`
-  .day-checkbox {
-    width: 18px;
-    height: 18px;
-    margin: 0;
-    cursor: pointer;
-    accent-color: var(--blue);
-    transition: transform 0.1s ease;
-  }
-  .day-checkbox:hover {
-    transform: scale(1.1);
-  }
-  .day-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    border-radius: var(--radius-sm);
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    min-width: 70px;
-    justify-content: center;
-  }
-  .day-label.selected {
-    background: var(--blue-light);
-    border-color: var(--blue-mid);
-  }
-  .day-label.selected span {
-    color: var(--blue);
-    font-weight: 600;
-  }
-  .day-label:hover {
-    background: var(--bg2);
-    border-color: var(--blue);
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-sm);
-  }
-  .day-label span {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text2);
-    transition: color 0.2s;
-  }
-`}</style>
 
 const fmtTime=(d)=>d?new Date(d).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"—";
 const fmtDate=(d)=>d?new Date(d).toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"}):"—";
@@ -813,7 +767,7 @@ function EmployeeDashboard({
   const [expandedBreakId, setExpandedBreakId] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
   const [clockInLoading, setClockInLoading] = useState(false);
-  
+  const [directClockInLoading, setDirectClockInLoading] = useState(false); // NEW
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
@@ -907,7 +861,6 @@ function EmployeeDashboard({
   }, [userLat, userLon, employeeWorksite, settings]);
 
   const processClockIn = async (photoData) => {
-    // We'll use the global punchLoading from props
     setClockInLoading(true);
     try {
       const { latitude, longitude } = getLocationPayload();
@@ -936,13 +889,50 @@ function EmployeeDashboard({
     }
   };
 
-  const handleClockInWithPhoto = () => {
+  // NEW: Unified clock‑in handler that respects camera setting
+  const handleClockIn = async () => {
     if (!onSite) {
       addToast("You must be at your assigned worksite to clock in.", "error");
       return;
     }
-    setShowCamera(true);
+    // Check if camera is required
+    const cameraRequired = settings.clockInWithCameraEnabled ?? true; // default true
+    if (cameraRequired) {
+      setShowCamera(true); // open camera modal
+    } else {
+      // Direct clock‑in without photo
+      setDirectClockInLoading(true);
+      try {
+        const { latitude, longitude } = getLocationPayload();
+        const res = await authFetch("/api/attendance/clock-in", {
+          method: "POST",
+          body: JSON.stringify({ latitude, longitude }),
+        });
+        const d = await res.json();
+        if (!res.ok) {
+          addToast(d.error || "Action failed.", "error");
+          vibrate([100, 50, 100]);
+          return;
+        }
+        addToast("Clocked in ✓", "success");
+        vibrate([50]);
+        if (d.data) {
+          refreshTodayData(d.data);
+        } else {
+          await refreshTodayData();
+        }
+      } catch {
+        addToast("Cannot connect to server.", "error");
+      } finally {
+        setDirectClockInLoading(false);
+      }
+    }
   };
+
+  // Compute button loading state based on mode
+  const clockInButtonLoading = (settings.clockInWithCameraEnabled ?? true)
+    ? clockInLoading   // camera flow
+    : directClockInLoading; // direct flow
 
   // Compute session data
   const session = todayData?.session;
@@ -1004,9 +994,15 @@ function EmployeeDashboard({
       <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {empStatus === "clocked_out" && (
-            <Btn onClick={handleClockInWithPhoto} disabled={!onSite || clockInLoading} loading={clockInLoading} size="lg" style={{ width: "100%" }}>
-  <Icon name="camera" size={16} color="white" />{t.clockIn}
-</Btn>
+            <Btn
+              onClick={handleClockIn}
+              disabled={!onSite || clockInButtonLoading}
+              loading={clockInButtonLoading}
+              size="lg"
+              style={{ width: "100%" }}
+            >
+              <Icon name="camera" size={16} color="white" />{t.clockIn}
+            </Btn>
           )}
           {empStatus === "clocked_in" && (
             <>
@@ -2834,55 +2830,124 @@ function ReportsPage({t}){
 }
 
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
-function SettingsPage({settings,addToast,refreshSettings,t}){
-  const[saving,setSaving]=useState(false);
-  const[toggles,setToggles]=useState({autoClockInEnabled:settings.autoClockInEnabled??true,autoBreakOnExitEnabled:settings.autoBreakOnExitEnabled??true,autoCorrectionEnabled:settings.autoCorrectionEnabled??true});
-  useEffect(()=>{setToggles({autoClockInEnabled:settings.autoClockInEnabled??true,autoBreakOnExitEnabled:settings.autoBreakOnExitEnabled??true,autoCorrectionEnabled:settings.autoCorrectionEnabled??true});},[settings]);
-  const companyRef=useRef(null),startRef=useRef(null),endRef=useRef(null);
-  const handleSave=async()=>{
+function SettingsPage({ settings, addToast, refreshSettings, t }) {
+  const [saving, setSaving] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(settings.clockInWithCameraEnabled ?? true);
+
+  const companyRef = useRef(null);
+  const startRef = useRef(null);
+  const endRef = useRef(null);
+
+  const handleSave = async () => {
     setSaving(true);
-    const res=await authFetch("/api/settings",{method:"PUT",body:JSON.stringify({companyName:companyRef.current?.value,siteName:settings.siteName,latitude:settings.latitude,longitude:settings.longitude,radiusFeet:settings.radiusFeet,workingHoursStart:startRef.current?.value,workingHoursEnd:endRef.current?.value,autoClockInEnabled:toggles.autoClockInEnabled,autoBreakOnExitEnabled:toggles.autoBreakOnExitEnabled,autoCorrectionEnabled:toggles.autoCorrectionEnabled})});
-    const d=await res.json();if(!res.ok){addToast(d.error||"Failed.","error");setSaving(false);return;}
-    localStorage.removeItem("bsc_settings");await refreshSettings();addToast("Settings saved.","success");setSaving(false);
+    const res = await authFetch("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        companyName: companyRef.current?.value,
+        siteName: settings.siteName,
+        latitude: settings.latitude,
+        longitude: settings.longitude,
+        radiusFeet: settings.radiusFeet,
+        workingHoursStart: startRef.current?.value,
+        workingHoursEnd: endRef.current?.value,
+        clockInWithCameraEnabled: cameraEnabled, // new field
+        // remove other automation booleans
+      }),
+    });
+    const d = await res.json();
+    if (!res.ok) {
+      addToast(d.error || "Failed.", "error");
+      setSaving(false);
+      return;
+    }
+    localStorage.removeItem("bsc_settings");
+    await refreshSettings();
+    addToast("Settings saved.", "success");
+    setSaving(false);
   };
-  const Toggle=({label,value,onChange,desc})=>(
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 0",borderBottom:"1px solid var(--border)"}}>
-      <div style={{flex:1,paddingRight:16}}>
-        <div style={{fontSize:14,color:"var(--text)",fontWeight:500}}>{label}</div>
-        {desc&&<div style={{fontSize:12.5,color:"var(--text3)",marginTop:3,lineHeight:1.5,fontWeight:400}}>{desc}</div>}
+
+  const Toggle = ({ label, value, onChange, desc }) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ flex: 1, paddingRight: 16 }}>
+        <div style={{ fontSize: 14, color: "var(--text)", fontWeight: 500 }}>{label}</div>
+        {desc && <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 3, lineHeight: 1.5, fontWeight: 400 }}>{desc}</div>}
       </div>
-      <button onClick={()=>onChange(!value)} style={{width:48,height:28,borderRadius:14,border:"none",cursor:"pointer",background:value?"var(--blue)":"var(--border2)",position:"relative",transition:"background 0.2s",flexShrink:0,minWidth:48,boxShadow:value?"0 1px 4px rgba(37,99,235,0.3)":"none"}}>
-        <div style={{width:22,height:22,borderRadius:"50%",background:"white",position:"absolute",top:3,transition:"left 0.2s",left:value?23:3,boxShadow:"0 1px 4px rgba(0,0,0,0.15)"}}/>
+      <button
+        onClick={() => onChange(!value)}
+        style={{
+          width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
+          background: value ? "var(--blue)" : "var(--border2)", position: "relative",
+          transition: "background 0.2s", flexShrink: 0, minWidth: 48,
+          boxShadow: value ? "0 1px 4px rgba(37,99,235,0.3)" : "none"
+        }}
+      >
+        <div style={{
+          width: 22, height: 22, borderRadius: "50%", background: "white", position: "absolute", top: 3,
+          left: value ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.15)"
+        }} />
       </button>
     </div>
   );
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <SectionHeader title={t.settings} subtitle="Company information and automation rules"/>
-      <div style={{padding:"12px 16px",borderRadius:"var(--radius-lg)",background:"var(--blue-light)",border:"1.5px solid var(--blue-mid)",display:"flex",gap:10,alignItems:"flex-start"}}>
-        <Icon name="pin" size={15} color="var(--blue)" style={{marginTop:1,flexShrink:0}}/>
-        <div style={{fontSize:13,color:"var(--blue)",lineHeight:1.5,fontWeight:450}}>Worksite locations are managed in the <strong>Worksites</strong> section. Each employee can be assigned their own worksite with individual geofence settings.</div>
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionHeader title={t.settings} subtitle="Company information and automation rules" />
+      <div style={{ padding: "12px 16px", borderRadius: "var(--radius-lg)", background: "var(--blue-light)", border: "1.5px solid var(--blue-mid)", display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <Icon name="pin" size={15} color="var(--blue)" style={{ marginTop: 1, flexShrink: 0 }} />
+        <div style={{ fontSize: 13, color: "var(--blue)", lineHeight: 1.5, fontWeight: 450 }}>
+          Worksite locations are managed in the <strong>Worksites</strong> section. Each employee can be assigned their own worksite with individual geofence settings.
+        </div>
       </div>
+
       <Card>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}><div style={{width:30,height:30,borderRadius:"var(--radius-sm)",background:"var(--blue-light)",display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--blue-mid)"}}><Icon name="building" size={15} color="var(--blue)"/></div><h3 style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>Company</h3></div>
-        <label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:6,fontWeight:600}}>Company Name</label>
-        <input type="text" ref={companyRef} defaultValue={settings.companyName||""} placeholder="Company name" style={{fontSize:16}} autoCorrect="off"/>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <div style={{ width: 30, height: 30, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--blue-mid)" }}>
+            <Icon name="building" size={15} color="var(--blue)" />
+          </div>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Company</h3>
+        </div>
+        <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Company Name</label>
+        <input type="text" ref={companyRef} defaultValue={settings.companyName || ""} placeholder="Company name" style={{ fontSize: 16 }} autoCorrect="off" />
       </Card>
+
       <Card>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}><div style={{width:30,height:30,borderRadius:"var(--radius-sm)",background:"var(--blue-light)",display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--blue-mid)"}}><Icon name="clock" size={15} color="var(--blue)"/></div><h3 style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>Default Work Schedule</h3></div>
-        <p style={{fontSize:13,color:"var(--text3)",marginBottom:14,fontWeight:400}}>Default for all employees. Override individually in the Employees section.</p>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:6,fontWeight:600}}>Start Time</label><input type="time" ref={startRef} defaultValue={settings.workStart||"07:00"} style={{fontSize:16}}/></div>
-          <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:6,fontWeight:600}}>End Time</label><input type="time" ref={endRef} defaultValue={settings.workEnd||"17:00"} style={{fontSize:16}}/></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <div style={{ width: 30, height: 30, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--blue-mid)" }}>
+            <Icon name="clock" size={15} color="var(--blue)" />
+          </div>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Default Work Schedule</h3>
+        </div>
+        <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 14, fontWeight: 400 }}>Default for all employees. Override individually in the Employees section.</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div>
+            <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Start Time</label>
+            <input type="time" ref={startRef} defaultValue={settings.workStart || "07:00"} style={{ fontSize: 16 }} />
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>End Time</label>
+            <input type="time" ref={endRef} defaultValue={settings.workEnd || "17:00"} style={{ fontSize: 16 }} />
+          </div>
         </div>
       </Card>
+
       <Card>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}><div style={{width:30,height:30,borderRadius:"var(--radius-sm)",background:"var(--green-light)",display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid rgba(5,150,105,0.2)"}}><Icon name="refresh" size={15} color="var(--green)"/></div><h3 style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>Automation Rules</h3></div>
-        <Toggle label="Auto Clock-In" value={toggles.autoClockInEnabled} onChange={v=>setToggles(t=>({...t,autoClockInEnabled:v}))} desc="Automatically clock in employees when they enter their assigned worksite geofence"/>
-        <Toggle label="Auto Break on Exit" value={toggles.autoBreakOnExitEnabled} onChange={v=>setToggles(t=>({...t,autoBreakOnExitEnabled:v}))} desc="Start break automatically when an employee leaves the worksite geofence"/>
-        <Toggle label="Auto Punch Correction" value={toggles.autoCorrectionEnabled} onChange={v=>setToggles(t=>({...t,autoCorrectionEnabled:v}))} desc="Fix missing punches automatically based on schedule and location"/>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <div style={{ width: 30, height: 30, borderRadius: "var(--radius-sm)", background: "var(--green-light)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(5,150,105,0.2)" }}>
+            <Icon name="camera" size={15} color="var(--green)" />
+          </div>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Clock‑in Requirements</h3>
+        </div>
+        <Toggle
+          label="Clock In with Camera"
+          value={cameraEnabled}
+          onChange={setCameraEnabled}
+          desc="Require employees to take a selfie when clocking in at the worksite."
+        />
       </Card>
-      <Btn onClick={handleSave} loading={saving} size="lg" style={{width:"100%"}}><Icon name="check" size={15} color="white"/>{t.save} Settings</Btn>
+
+      <Btn onClick={handleSave} loading={saving} size="lg" style={{ width: "100%" }}>
+        <Icon name="check" size={15} color="white" /> {t.save} Settings
+      </Btn>
     </div>
   );
 }
