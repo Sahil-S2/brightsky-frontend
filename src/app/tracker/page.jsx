@@ -2055,7 +2055,18 @@ function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
   const [newPassword, setNewPassword] = useState("");
   const [showNewPass, setShowNewPass] = useState(false);
   const [savingSchedule, setSavingSchedule] = useState(false);
+  const [selectedDays, setSelectedDays] = useState([]);
+
   const startRef = useRef(null), endRef = useRef(null), graceRef = useRef(null);
+  const dayOptions = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  useEffect(() => {
+  if (scheduleData && scheduleData.working_days) {
+    setSelectedDays(scheduleData.working_days);
+  } else if (scheduleData && !scheduleData.working_days) {
+    setSelectedDays(["Mon", "Tue", "Wed", "Thu", "Fri"]); // fallback
+  }
+}, [scheduleData]);
 
   const employees = adminData.employees.filter(u =>
     u.name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -2072,47 +2083,47 @@ function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
   };
 
   const openSchedule = async (emp) => {
-    setLoadingSchedule(true);
-    setEditingSchedule(emp);
-    try {
-      const r = await authFetch(`/api/employees/${emp.id}/schedule`);
-      if (r.ok) {
-        const d = await r.json();
-        setScheduleData(d);
-      } else {
-        setScheduleData(null);
-      }
-    } catch {
+  setLoadingSchedule(true);
+  setEditingSchedule(emp);
+  try {
+    const r = await authFetch(`/api/employees/${emp.id}/schedule`);
+    if (r.ok) {
+      const d = await r.json();
+      setScheduleData(d);
+    } else {
       setScheduleData(null);
     }
-    setLoadingSchedule(false);
-  };
+  } catch {
+    setScheduleData(null);
+  }
+  setLoadingSchedule(false);
+};
 
-  const saveSchedule = async () => {
-    if (!editingSchedule) return;
-    setSavingSchedule(true);
-    try {
-      const res = await authFetch(`/api/employees/${editingSchedule.id}/schedule`, {
-        method: "PUT",
-        body: JSON.stringify({
-          scheduledStartTime: startRef.current?.value || "07:00",
-          scheduledEndTime: endRef.current?.value || "17:00",
-          graceMinutes: parseInt(graceRef.current?.value) || 15,
-          workingDays: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-        })
-      });
-      if (!res.ok) {
-        addToast("Failed to save schedule.", "error");
-        return;
-      }
-      addToast("Schedule saved.", "success");
-      setEditingSchedule(null);
-    } catch (err) {
-      addToast("Network error", "error");
-    } finally {
-      setSavingSchedule(false);
+const saveSchedule = async () => {
+  if (!editingSchedule) return;
+  setSavingSchedule(true);
+  try {
+    const res = await authFetch(`/api/employees/${editingSchedule.id}/schedule`, {
+      method: "PUT",
+      body: JSON.stringify({
+        scheduledStartTime: startRef.current?.value || "07:00",
+        scheduledEndTime: endRef.current?.value || "17:00",
+        graceMinutes: parseInt(graceRef.current?.value) || 15,
+        workingDays: selectedDays,
+      })
+    });
+    if (!res.ok) {
+      addToast("Failed to save schedule.", "error");
+      return;
     }
-  };
+    addToast("Schedule saved.", "success");
+    setEditingSchedule(null);
+  } catch (err) {
+    addToast("Network error", "error");
+  } finally {
+    setSavingSchedule(false);
+  }
+};
 
   const openEditModal = (emp) => {
     setEditingEmployee(emp);
@@ -2247,58 +2258,75 @@ function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
 
       {/* Schedule Modal */}
       {editingSchedule && (
-        <Modal
-          title={`Schedule for ${editingSchedule.name}`}
-          onClose={() => setEditingSchedule(null)}
-        >
-          {loadingSchedule ? (
-            <div style={{ textAlign: "center", padding: 24, color: "var(--text3)" }}>Loading schedule…</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>Start Time</label>
+  <Modal title={`Schedule for ${editingSchedule.name}`} onClose={() => setEditingSchedule(null)}>
+    {loadingSchedule ? (
+      <div style={{ textAlign: "center", padding: 24, color: "var(--text3)" }}>Loading schedule…</div>
+    ) : (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Time inputs */}
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>Start Time</label>
+          <input
+            type="time"
+            ref={startRef}
+            defaultValue={scheduleData?.scheduled_start_time?.slice(0,5) || "07:00"}
+            style={{ fontSize: 16 }}
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>End Time</label>
+          <input
+            type="time"
+            ref={endRef}
+            defaultValue={scheduleData?.scheduled_end_time?.slice(0,5) || "17:00"}
+            style={{ fontSize: 16 }}
+          />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>Grace Period (minutes)</label>
+          <input
+            type="number"
+            ref={graceRef}
+            defaultValue={scheduleData?.grace_minutes || 15}
+            min={0}
+            step={1}
+            style={{ fontSize: 16 }}
+          />
+        </div>
+        {/* Working days checkboxes */}
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>Working Days</label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+            {dayOptions.map(day => (
+              <label key={day} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
                 <input
-                  type="time"
-                  ref={startRef}
-                  defaultValue={scheduleData?.scheduled_start_time?.slice(0,5) || "07:00"}
-                  style={{ fontSize: 16 }}
+                  type="checkbox"
+                  checked={selectedDays.includes(day)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedDays([...selectedDays, day]);
+                    } else {
+                      setSelectedDays(selectedDays.filter(d => d !== day));
+                    }
+                  }}
                 />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>End Time</label>
-                <input
-                  type="time"
-                  ref={endRef}
-                  defaultValue={scheduleData?.scheduled_end_time?.slice(0,5) || "17:00"}
-                  style={{ fontSize: 16 }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>Grace Period (minutes)</label>
-                <input
-                  type="number"
-                  ref={graceRef}
-                  defaultValue={scheduleData?.grace_minutes || 15}
-                  min={0}
-                  step={1}
-                  style={{ fontSize: 16 }}
-                />
-              </div>
-              <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                Working days: Monday – Friday (fixed)
-              </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <Btn onClick={saveSchedule} loading={savingSchedule} style={{ flex: 1 }}>
-                  <Icon name="check" size={14} color="white" /> Save
-                </Btn>
-                <Btn onClick={() => setEditingSchedule(null)} variant="secondary" style={{ flex: 1 }}>
-                  Cancel
-                </Btn>
-              </div>
-            </div>
-          )}
-        </Modal>
-      )}
+                {day}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <Btn onClick={saveSchedule} loading={savingSchedule} style={{ flex: 1 }}>
+            <Icon name="check" size={14} color="white" /> Save
+          </Btn>
+          <Btn onClick={() => setEditingSchedule(null)} variant="secondary" style={{ flex: 1 }}>
+            Cancel
+          </Btn>
+        </div>
+      </div>
+    )}
+  </Modal>
+)}
 
       {/* Edit Employee Modal */}
       {editingEmployee && (
