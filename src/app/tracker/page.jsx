@@ -1933,11 +1933,11 @@ function AddEmployeeForm({ onDone, addToast, refreshAdminData }) {
           <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>User ID (4-char)</label><input type="text" value={fuid} onChange={e => setFuid(e.target.value.toUpperCase().slice(0, 4))} placeholder="Auto" maxLength={4} style={{ fontSize: 16, textAlign: "center", letterSpacing: "0.15em" }} autoCorrect="off" autoCapitalize="off" autoComplete="off" /></div>
           <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Password *</label>
             <div style={{ position: "relative" }}>
-              <input type={fshowPass ? "text" : "password"} value={fpass} onChange={e => setFpass(e.target.value)} placeholder="Password" style={{ fontSize: 16, paddingRight: 44 }} autoCorrect="off" autoComplete="new-password" />
-              <button type="button" onClick={() => setFshowPass(s => !s)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text3)", cursor: "pointer", padding: 5, display: "flex", minWidth: 30, minHeight: 30, alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-sm)" }}>
-                <Icon name={fshowPass ? "eyeOff" : "eye"} size={15} />
-              </button>
-            </div>
+  <input type={showNewPass ? "text" : "password"} placeholder="New password (min 4 chars)" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ fontSize: 16, paddingRight: 44 }} />
+  <button type="button" onClick={() => setShowNewPass(!showNewPass)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text3)", cursor: "pointer", padding: 5, display: "flex", minWidth: 30, minHeight: 30, alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-sm)" }}>
+    <Icon name={showNewPass ? "eyeOff" : "eye"} size={15} />
+  </button>
+</div>
           </div>
         </div>
         <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Email (optional)</label><input type="email" value={femail} onChange={e => setFemail(e.target.value)} placeholder="email@brightsky.com" style={{ fontSize: 16 }} autoCorrect="off" autoCapitalize="off" autoComplete="off" /></div>
@@ -1975,6 +1975,7 @@ function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
   const [editForm, setEditForm] = useState({});
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+  const [showNewPass, setShowNewPass] = useState(false);
   // Schedule refs (modal only — no parent re-render issues)
   const startRef = useRef(null), endRef = useRef(null), graceRef = useRef(null);
 
@@ -2039,6 +2040,7 @@ function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
     employeeCode: emp.employee_code || "",
     phone: emp.phone || "",
     joinedAt: emp.joined_at?.slice(0,10) || "",
+    userId: emp.user_id || "",
   });
 };
 
@@ -2164,6 +2166,9 @@ const changePassword = async () => {
   <Modal title={`Edit ${editingEmployee.name}`} onClose={() => setEditingEmployee(null)}>
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div><label style={{ fontSize: 12, fontWeight: 600 }}>Full Name</label><input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} style={{ fontSize: 16 }} /></div>
+      <div><label style={{ fontSize: 12, fontWeight: 600 }}>User ID (4-char)</label>
+  <input type="text" value={editForm.userId} onChange={e => setEditForm({...editForm, userId: e.target.value.toUpperCase().slice(0,4)})} placeholder="Auto" maxLength={4} style={{ fontSize: 16, textAlign: "center", letterSpacing: "0.15em" }} autoCorrect="off" autoCapitalize="off" autoComplete="off" />
+</div>
       <div><label style={{ fontSize: 12, fontWeight: 600 }}>Email</label><input type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} style={{ fontSize: 16 }} /></div>
       <div><label style={{ fontSize: 12, fontWeight: 600 }}>Role</label>
         <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})} style={{ fontSize: 16 }}>
