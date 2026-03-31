@@ -1932,13 +1932,7 @@ function AddEmployeeForm({ onDone, addToast, refreshAdminData }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>User ID (4-char)</label><input type="text" value={fuid} onChange={e => setFuid(e.target.value.toUpperCase().slice(0, 4))} placeholder="Auto" maxLength={4} style={{ fontSize: 16, textAlign: "center", letterSpacing: "0.15em" }} autoCorrect="off" autoCapitalize="off" autoComplete="off" /></div>
           <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Password *</label>
-            <div style={{ position: "relative" }}>
-  <input type={showNewPass ? "text" : "password"} placeholder="New password (min 4 chars)" value={newPassword} onChange={e => setNewPassword(e.target.value)} style={{ fontSize: 16, paddingRight: 44 }} />
-  <button type="button" onClick={() => setShowNewPass(!showNewPass)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text3)", cursor: "pointer", padding: 5, display: "flex", minWidth: 30, minHeight: 30, alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-sm)" }}>
-    <Icon name={showNewPass ? "eyeOff" : "eye"} size={15} />
-  </button>
-</div>
-          </div>
+            </div>
         </div>
         <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Email (optional)</label><input type="email" value={femail} onChange={e => setFemail(e.target.value)} placeholder="email@brightsky.com" style={{ fontSize: 16 }} autoCorrect="off" autoCapitalize="off" autoComplete="off" /></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
