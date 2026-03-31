@@ -2342,62 +2342,48 @@ const saveSchedule = async () => {
         </div>
         {/* Working days checkboxes */}
         <div>
-  <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 8 }}>
-    Working Days
-  </label>
-  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => {
-      const isSelected = selectedDays.includes(day);
-      return (
-        <label
-          key={day}
+  <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 8 }}>Working Days</label>
+  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => (
+      <label
+        key={day}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          cursor: "pointer",
+          userSelect: "none",
+          minWidth: 60,
+          padding: "4px 8px",
+          borderRadius: "var(--radius-sm)",
+          background: selectedDays.includes(day) ? "var(--blue-light)" : "var(--bg3)",
+          border: `1px solid ${selectedDays.includes(day) ? "var(--blue-mid)" : "var(--border)"}`,
+          transition: "all 0.2s",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={selectedDays.includes(day)}
+          onChange={() => {
+            if (selectedDays.includes(day)) {
+              setSelectedDays(selectedDays.filter(d => d !== day));
+            } else {
+              setSelectedDays([...selectedDays, day]);
+            }
+          }}
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "6px 12px",
-            borderRadius: "var(--radius-sm)",
-            background: isSelected ? "var(--blue-light)" : "var(--bg3)",
-            border: `1px solid ${isSelected ? "var(--blue-mid)" : "var(--border)"}`,
+            width: 16,
+            height: 16,
+            margin: 0,
             cursor: "pointer",
-            transition: "all 0.2s ease",
-            minWidth: "70px",
-            justifyContent: "center",
+            accentColor: "var(--blue)",
           }}
-          onMouseEnter={(e) => {
-            if (!isSelected) e.currentTarget.style.background = "var(--bg2)";
-          }}
-          onMouseLeave={(e) => {
-            if (!isSelected) e.currentTarget.style.background = "var(--bg3)";
-          }}
-        >
-          <input
-            type="checkbox"
-            style={{
-              width: 18,
-              height: 18,
-              margin: 0,
-              cursor: "pointer",
-              accentColor: "var(--blue)",
-              transition: "transform 0.1s ease",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.1)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
-            checked={isSelected}
-            onChange={() => {
-              if (isSelected) {
-                setSelectedDays(selectedDays.filter(d => d !== day));
-              } else {
-                setSelectedDays([...selectedDays, day]);
-              }
-            }}
-          />
-          <span style={{ fontSize: 13, fontWeight: isSelected ? 600 : 500, color: isSelected ? "var(--blue)" : "var(--text2)" }}>
-            {day}
-          </span>
-        </label>
-      );
-    })}
+        />
+        <span style={{ fontSize: 13, fontWeight: 500, color: selectedDays.includes(day) ? "var(--blue)" : "var(--text2)" }}>
+          {day}
+        </span>
+      </label>
+    ))}
   </div>
 </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
