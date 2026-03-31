@@ -584,7 +584,7 @@ useEffect(() => {
   const isAdmin=currentUser?.role==="admin"||currentUser?.role==="manager";
   const navItems=currentUser?[
     {id:"dashboard",label:isAdmin?t.dashboard:`My ${t.dashboard}`,icon:"home"},
-    ...(isAdmin?[{id:"employees",label:t.employees,icon:"users"},{id:"worksites",label:t.worksites,icon:"map"},{id:"attendance",label:t.attendance,icon:"calendar"},{id:"reports",label:t.reports,icon:"bar"},{id:"settings",label:t.settings,icon:"settings"},{id:"export",label:t.export,icon:"download"},{id:"audit",label:t.auditLogs,icon:"log"}]:[{id:"my_attendance",label:t.myAttendance,icon:"calendar"},{id:"my_profile",label:t.myProfile,icon:"user"}]),
+    ...(isAdmin?[{id:"employees",label:t.employees,icon:"users"},{id:"worksites",label:t.worksites,icon:"map"},{ id: "tasks", label: t.tasks, icon: "briefcase" },{id:"attendance",label:t.attendance,icon:"calendar"},{id:"reports",label:t.reports,icon:"bar"},{id:"settings",label:t.settings,icon:"settings"},{id:"export",label:t.export,icon:"download"},{id:"audit",label:t.auditLogs,icon:"log"}]:[{id:"my_attendance",label:t.myAttendance,icon:"calendar"},{id:"my_profile",label:t.myProfile,icon:"user"}]),
   ]:[];
 
   if(!mounted)return null;
@@ -640,6 +640,7 @@ useEffect(() => {
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t}/>}
             {page==="employees"&&isAdmin&&<EmployeeList adminData={adminData} refreshAdminData={refreshAdminData} addToast={addToast} worksites={worksites} t={t}/>}
             {page==="worksites"&&isAdmin&&<WorksitesPage worksites={worksites} refreshWorksites={refreshWorksites} adminData={adminData} addToast={addToast} t={t}/>}
+            {page === "tasks" && isAdmin && <TasksPage adminData={adminData} addToast={addToast} t={t} />}
             {page==="attendance"&&isAdmin&&<AttendancePage adminData={adminData} t={t}/>}
             {page==="reports"&&isAdmin&&<ReportsPage t={t}/>}
             {page==="settings"&&isAdmin&&<SettingsPage settings={settings} addToast={addToast} refreshSettings={refreshSettings} t={t}/>}
@@ -784,32 +785,52 @@ function EmployeeDashboard({
   const [expandedBreakId, setExpandedBreakId] = useState(null);
   const [showCamera, setShowCamera] = useState(false);
   const [clockInLoading, setClockInLoading] = useState(false);
-  const [directClockInLoading, setDirectClockInLoading] = useState(false); // NEW
+  const [directClockInLoading, setDirectClockInLoading] = useState(false);
+  const [employeeTasks, setEmployeeTasks] = useState([]);
+  const [tasksPage, setTasksPage] = useState(1);
+  const [tasksTotal, setTasksTotal] = useState(0);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const tasksPerPage = 5;
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch tasks
-  const fetchTasks = useCallback(async () => {
-    try {
-      setLoadingTasks(true);
-      const res = await authFetch(`/api/tasks/employee/${user.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTasks(data);
-      }
-    } catch (err) {
-      console.error("Failed to load tasks", err);
-    } finally {
-      setLoadingTasks(false);
+
+  const fetchEmployeeTasks = useCallback(async (page = 1) => {
+  setTasksLoading(true);
+  try {
+    const res = await authFetch(`/api/tasks/employee/${user.id}?page=${page}&limit=${tasksPerPage}`);
+    if (res.ok) {
+      const data = await res.json();
+      setEmployeeTasks(data.tasks);
+      setTasksTotal(data.total);
+      setTasksPage(data.page);
     }
-  }, [user.id]);
+  } catch (err) {
+    console.error(err);
+  } finally {
+    setTasksLoading(false);
+  }
+}, [user.id]);
 
   useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+  fetchEmployeeTasks(1);
+}, [fetchEmployeeTasks]);
+
+  const updateTaskStatus = async (taskId, status, reason = "") => {
+  const res = await authFetch(`/api/tasks/${taskId}/status`, {
+    method: "PUT",
+    body: JSON.stringify({ status, incompleteReason: reason })
+  });
+  if (res.ok) {
+    addToast(`Task marked as ${status}`, "success");
+    fetchEmployeeTasks(tasksPage);
+  } else {
+    addToast("Failed to update task", "error");
+  }
+};
 
   const handleMarkComplete = async (taskId) => {
     try {
@@ -1053,37 +1074,89 @@ if (cameraRequired) {
 
       {/* Tasks Section */}
       <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
-          {loadingTasks && <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />}
-        </div>
-        {tasks.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>No tasks assigned.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {tasks.map(task => (
-              <div key={task.id} style={{ padding: "12px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{task.title}</div>
-                    <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>{task.description}</div>
-                  </div>
-                  {task.status === "pending" ? (
-                    <button
-                      onClick={() => handleMarkComplete(task.id)}
-                      style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer" }}
-                    >
-                      Mark Complete
-                    </button>
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
+    {tasksLoading && <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />}
+  </div>
+  {employeeTasks.length === 0 ? (
+    <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>No tasks assigned.</div>
+  ) : (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {employeeTasks.map(task => (
+        <div key={task.id} style={{ padding: "12px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{task.title}</div>
+              {task.description && <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>{task.description}</div>}
+              {task.url && (
+                <div style={{ marginTop: 6 }}>
+                  {task.task_type === "youtube" ? (
+                    <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)", display: "flex", alignItems: "center", gap: 4 }}>
+                      <Icon name="play" size={12} /> Watch on YouTube
+                    </a>
                   ) : (
-                    <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>
+                    <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)" }}>
+                      {task.task_type === "document" ? "📄 View Document" : "🔗 Open Link"}
+                    </a>
                   )}
                 </div>
+              )}
+              {task.due_date && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Due: {fmtDate(task.due_date)}</div>}
+            </div>
+            {task.status === "pending" ? (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={() => updateTaskStatus(task.id, "completed")}
+                  style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer" }}
+                >
+                  ✓ Complete
+                </button>
+                <button
+                  onClick={() => {
+                    const reason = prompt("Why is this task incomplete?");
+                    if (reason) updateTaskStatus(task.id, "incomplete", reason);
+                  }}
+                  style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer" }}
+                >
+                  ✗ Incomplete
+                </button>
               </div>
-            ))}
+            ) : (
+              <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>
+                {task.status === "completed" ? "✓ Completed" : "✗ Incomplete"}
+              </span>
+            )}
           </div>
-        )}
-      </Card>
+          {task.status === "incomplete" && task.incomplete_reason && (
+            <div style={{ marginTop: 8, fontSize: 11, color: "var(--red)", background: "var(--red-light)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>
+              Reason: {task.incomplete_reason}
+            </div>
+          )}
+        </div>
+      ))}
+      {/* Pagination */}
+      {tasksTotal > tasksPerPage && (
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 8 }}>
+          <button
+            onClick={() => fetchEmployeeTasks(tasksPage - 1)}
+            disabled={tasksPage === 1}
+            style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage === 1 ? "not-allowed" : "pointer", opacity: tasksPage === 1 ? 0.5 : 1 }}
+          >
+            Previous
+          </button>
+          <span style={{ fontSize: 13, padding: "6px 12px" }}>Page {tasksPage} of {Math.ceil(tasksTotal / tasksPerPage)}</span>
+          <button
+            onClick={() => fetchEmployeeTasks(tasksPage + 1)}
+            disabled={tasksPage * tasksPerPage >= tasksTotal}
+            style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage * tasksPerPage >= tasksTotal ? "not-allowed" : "pointer", opacity: tasksPage * tasksPerPage >= tasksTotal ? 0.5 : 1 }}
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </div>
+  )}
+</Card>
 
       {/* Today's Work Breaks */}
       <Card>
@@ -1671,6 +1744,240 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
                 </button>
               );
             })}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function TasksPage({ adminData, addToast, t }) {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [form, setForm] = useState({
+    title: "",
+    description: "",
+    taskType: "link",
+    url: "",
+    assignedTo: "",
+    dueDate: "",
+  });
+
+  const employees = adminData.employees.filter(e => e.role === "employee");
+
+  const fetchTasks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await authFetch("/api/tasks");
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  const handleCreate = async () => {
+    if (!form.title || !form.assignedTo) {
+      addToast("Title and employee are required", "error");
+      return;
+    }
+    const payload = {
+      title: form.title,
+      description: form.description,
+      taskType: form.taskType,
+      url: form.url,
+      assignedTo: form.assignedTo,
+      dueDate: form.dueDate || null,
+    };
+    const res = await authFetch("/api/tasks", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      addToast("Task created", "success");
+      setShowCreateModal(false);
+      setForm({ title: "", description: "", taskType: "link", url: "", assignedTo: "", dueDate: "" });
+      fetchTasks();
+    } else {
+      addToast("Failed to create task", "error");
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (confirm("Delete this task?")) {
+      const res = await authFetch(`/api/tasks/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        addToast("Task deleted", "info");
+        fetchTasks();
+      } else {
+        addToast("Delete failed", "error");
+      }
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionHeader
+        title={t.tasks || "Tasks"}
+        subtitle={`${tasks.length} total tasks`}
+        action={
+          <Btn onClick={() => setShowCreateModal(true)} size="sm">
+            <Icon name="plus" size={13} color="white" /> New Task
+          </Btn>
+        }
+      />
+      <Card>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 24 }}>Loading...</div>
+        ) : tasks.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 24, color: "var(--text4)" }}>
+            No tasks yet. Click "New Task" to assign.
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ minWidth: 600 }}>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Employee</th>
+                  <th>Type</th>
+                  <th>Due Date</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map(task => (
+                  <tr key={task.id}>
+                    <td>
+                      <strong>{task.title}</strong>
+                      {task.description && (
+                        <div style={{ fontSize: 12, color: "var(--text3)" }}>
+                          {task.description.slice(0, 60)}
+                        </div>
+                      )}
+                    </td>
+                    <td>
+                      {task.assigned_to_name}
+                      <div style={{ fontSize: 11, color: "var(--blue)" }}>
+                        {task.assigned_to_user_id}
+                      </div>
+                    </td>
+                    <td>{task.task_type}</td>
+                    <td>{task.due_date ? fmtDate(task.due_date) : "—"}</td>
+                    <td>
+                      <StatusBadge
+                        status={
+                          task.status === "pending"
+                            ? "clocked_out"
+                            : task.status === "completed"
+                            ? "clocked_in"
+                            : "auto_corrected"
+                        }
+                      />
+                    </td>
+                    <td>
+                      <button
+                        onClick={() => handleDelete(task.id)}
+                        style={{
+                          background: "var(--red-light)",
+                          border: "none",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "4px 8px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Icon name="x" size={14} color="var(--red)" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Create Task Modal */}
+      {showCreateModal && (
+        <Modal title="New Task" onClose={() => setShowCreateModal(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600 }}>Title *</label>
+              <input
+                type="text"
+                value={form.title}
+                onChange={e => setForm({ ...form, title: e.target.value })}
+                style={{ fontSize: 16 }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600 }}>Description</label>
+              <textarea
+                rows={3}
+                value={form.description}
+                onChange={e => setForm({ ...form, description: e.target.value })}
+                style={{ fontSize: 14 }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600 }}>Task Type</label>
+              <select
+                value={form.taskType}
+                onChange={e => setForm({ ...form, taskType: e.target.value })}
+                style={{ fontSize: 16 }}
+              >
+                <option value="link">Link (URL)</option>
+                <option value="document">Document (URL)</option>
+                <option value="youtube">YouTube Video</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600 }}>URL</label>
+              <input
+                type="text"
+                value={form.url}
+                onChange={e => setForm({ ...form, url: e.target.value })}
+                placeholder="https://..."
+                style={{ fontSize: 16 }}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600 }}>Assign to Employee *</label>
+              <select
+                value={form.assignedTo}
+                onChange={e => setForm({ ...form, assignedTo: e.target.value })}
+                style={{ fontSize: 16 }}
+              >
+                <option value="">Select employee</option>
+                {employees.map(emp => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.name} ({emp.user_id})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600 }}>Due Date (optional)</label>
+              <input
+                type="date"
+                value={form.dueDate}
+                onChange={e => setForm({ ...form, dueDate: e.target.value })}
+                style={{ fontSize: 16 }}
+              />
+            </div>
+            <Btn onClick={handleCreate} style={{ width: "100%" }}>
+              Create Task
+            </Btn>
           </div>
         </Modal>
       )}
@@ -2590,6 +2897,7 @@ function AttendancePage({adminData,t}){
     </div>
   );
 }
+
 
 // ─── REPORTS PAGE (Interactive Charts) ───────────────────────────────────────
 function ReportsPage({t}){
