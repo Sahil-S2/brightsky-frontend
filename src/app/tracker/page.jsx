@@ -2295,26 +2295,50 @@ const saveSchedule = async () => {
         </div>
         {/* Working days checkboxes */}
         <div>
-          <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 6 }}>Working Days</label>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-            {dayOptions.map(day => (
-              <label key={day} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
-                <input
-                  type="checkbox"
-                  checked={selectedDays.includes(day)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedDays([...selectedDays, day]);
-                    } else {
-                      setSelectedDays(selectedDays.filter(d => d !== day));
-                    }
-                  }}
-                />
-                {day}
-              </label>
-            ))}
-          </div>
-        </div>
+  <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 8 }}>Working Days</label>
+  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => (
+      <label
+        key={day}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          cursor: "pointer",
+          userSelect: "none",
+          minWidth: 60,
+          padding: "4px 8px",
+          borderRadius: "var(--radius-sm)",
+          background: selectedDays.includes(day) ? "var(--blue-light)" : "var(--bg3)",
+          border: `1px solid ${selectedDays.includes(day) ? "var(--blue-mid)" : "var(--border)"}`,
+          transition: "all 0.2s",
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={selectedDays.includes(day)}
+          onChange={() => {
+            if (selectedDays.includes(day)) {
+              setSelectedDays(selectedDays.filter(d => d !== day));
+            } else {
+              setSelectedDays([...selectedDays, day]);
+            }
+          }}
+          style={{
+            width: 16,
+            height: 16,
+            margin: 0,
+            cursor: "pointer",
+            accentColor: "var(--blue)",
+          }}
+        />
+        <span style={{ fontSize: 13, fontWeight: 500, color: selectedDays.includes(day) ? "var(--blue)" : "var(--text2)" }}>
+          {day}
+        </span>
+      </label>
+    ))}
+  </div>
+</div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
           <Btn onClick={saveSchedule} loading={savingSchedule} style={{ flex: 1 }}>
             <Icon name="check" size={14} color="white" /> Save
