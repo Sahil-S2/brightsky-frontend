@@ -34,7 +34,7 @@ const T = {
     updateLocation:"Update My Location",locationUpdated:"Location updated.",
     adminLogin:"Admin login with email",useUserId:"Use Employee ID instead",
     tapToChange:"Change Photo",refresh:"Refresh",save:"Save",cancel:"Cancel",
-    add:"Add",edit:"Edit",assign:"Assign",remove:"Remove",close:"Close",
+    add:"Add",edit:"Edit",assign:"Assign",remove:"Remove",close:"Close",tasks: "Tasks",
   },
   es: {
     signIn:"Iniciar Sesión",userId:"ID de Usuario",password:"Contraseña",clockIn:"Registrar Entrada",
@@ -53,7 +53,7 @@ const T = {
     updateLocation:"Actualizar Ubicación",locationUpdated:"Ubicación actualizada.",
     adminLogin:"Acceso con correo",useUserId:"Usar ID de empleado",
     tapToChange:"Cambiar Foto",refresh:"Actualizar",save:"Guardar",cancel:"Cancelar",
-    add:"Agregar",edit:"Editar",assign:"Asignar",remove:"Quitar",close:"Cerrar",
+    add:"Agregar",edit:"Editar",assign:"Asignar",remove:"Quitar",close:"Cerrar",tasks: "Tareas",
   },
 };
 
@@ -1073,87 +1073,323 @@ if (cameraRequired) {
       </Card>
 
       {/* Tasks Section */}
-      <Card>
-  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
-    {tasksLoading && <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />}
+      {/* My Tasks Section (Collapsible) */}
+<Card>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    }}
+  >
+    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
+      My Tasks
+    </div>
+    {tasksLoading && (
+      <span
+        className="spin"
+        style={{
+          width: 14,
+          height: 14,
+          border: "2px solid var(--blue)",
+          borderTopColor: "transparent",
+          borderRadius: "50%",
+        }}
+      />
+    )}
   </div>
+
   {employeeTasks.length === 0 ? (
-    <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>No tasks assigned.</div>
+    <div
+      style={{
+        textAlign: "center",
+        padding: "24px 0",
+        color: "var(--text4)",
+        fontSize: 13,
+      }}
+    >
+      No tasks assigned.
+    </div>
   ) : (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {employeeTasks.map(task => (
-        <div key={task.id} style={{ padding: "12px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{task.title}</div>
-              {task.description && <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>{task.description}</div>}
-              {task.url && (
-                <div style={{ marginTop: 6 }}>
-                  {task.task_type === "youtube" ? (
-                    <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)", display: "flex", alignItems: "center", gap: 4 }}>
-                      <Icon name="play" size={12} /> Watch on YouTube
-                    </a>
-                  ) : (
-                    <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)" }}>
-                      {task.task_type === "document" ? "📄 View Document" : "🔗 Open Link"}
-                    </a>
-                  )}
-                </div>
-              )}
-              {task.due_date && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Due: {fmtDate(task.due_date)}</div>}
-            </div>
-            {task.status === "pending" ? (
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={() => updateTaskStatus(task.id, "completed")}
-                  style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer" }}
+      {employeeTasks.map((task) => {
+        const [expanded, setExpanded] = useState(false);
+        const [actionLoading, setActionLoading] = useState(false);
+
+        const handleComplete = async () => {
+          setActionLoading(true);
+          const res = await authFetch(`/api/tasks/${task.id}/status`, {
+            method: "PUT",
+            body: JSON.stringify({ status: "completed" }),
+          });
+          if (res.ok) {
+            addToast("Task marked as completed", "success");
+            fetchEmployeeTasks(tasksPage);
+          } else {
+            addToast("Failed to update", "error");
+          }
+          setActionLoading(false);
+        };
+
+        const handleIncomplete = async () => {
+          const reason = prompt("Why is this task incomplete?");
+          if (!reason) return;
+          setActionLoading(true);
+          const res = await authFetch(`/api/tasks/${task.id}/status`, {
+            method: "PUT",
+            body: JSON.stringify({ status: "incomplete", incompleteReason: reason }),
+          });
+          if (res.ok) {
+            addToast("Task marked as incomplete", "success");
+            fetchEmployeeTasks(tasksPage);
+          } else {
+            addToast("Failed to update", "error");
+          }
+          setActionLoading(false);
+        };
+
+        return (
+          <div
+            key={task.id}
+            style={{
+              padding: "12px",
+              background: "var(--bg3)",
+              borderRadius: "var(--radius)",
+              border: `1px solid ${
+                expanded ? "var(--blue)" : "var(--border)"
+              }`,
+              cursor: "pointer",
+              transition: "all 0.2s",
+            }}
+            onClick={() => setExpanded(!expanded)}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                    color: "var(--text)",
+                  }}
                 >
-                  ✓ Complete
+                  {task.title}
+                </div>
+                {task.description && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text3)",
+                      marginTop: 4,
+                    }}
+                  >
+                    {task.description}
+                  </div>
+                )}
+                {task.url && (
+                  <div style={{ marginTop: 6 }}>
+                    {task.task_type === "youtube" ? (
+                      <a
+                        href={task.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          fontSize: 12,
+                          color: "var(--blue)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Icon name="play" size={12} /> Watch on YouTube
+                      </a>
+                    ) : (
+                      <a
+                        href={task.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ fontSize: 12, color: "var(--blue)" }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {task.task_type === "document"
+                          ? "📄 View Document"
+                          : "🔗 Open Link"}
+                      </a>
+                    )}
+                  </div>
+                )}
+                {task.due_date && (
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text3)",
+                      marginTop: 4,
+                    }}
+                  >
+                    Due: {fmtDate(task.due_date)}
+                  </div>
+                )}
+              </div>
+              {task.status === "completed" && (
+                <span
+                  style={{
+                    background: "var(--green-light)",
+                    border: "1px solid rgba(5,150,105,0.2)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "4px 10px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--green)",
+                  }}
+                >
+                  ✓ Completed
+                </span>
+              )}
+              {task.status === "incomplete" && (
+                <span
+                  style={{
+                    background: "var(--red-light)",
+                    border: "1px solid rgba(220,38,38,0.2)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "4px 10px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--red)",
+                  }}
+                >
+                  ✗ Incomplete
+                </span>
+              )}
+              {task.status === "pending" && (
+                <Icon
+                  name={expanded ? "chevronUp" : "chevronDown"}
+                  size={18}
+                  color="var(--text3)"
+                />
+              )}
+            </div>
+
+            {/* Expanded actions (only for pending tasks) */}
+            {expanded && task.status === "pending" && (
+              <div
+                style={{
+                  marginTop: 12,
+                  display: "flex",
+                  gap: 8,
+                  borderTop: "1px solid var(--border)",
+                  paddingTop: 12,
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={handleComplete}
+                  disabled={actionLoading}
+                  style={{
+                    background: "var(--green-light)",
+                    border: "1px solid rgba(5,150,105,0.2)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--green)",
+                    cursor: "pointer",
+                    flex: 1,
+                  }}
+                >
+                  {actionLoading ? "Updating..." : "✓ Completed"}
                 </button>
                 <button
-                  onClick={() => {
-                    const reason = prompt("Why is this task incomplete?");
-                    if (reason) updateTaskStatus(task.id, "incomplete", reason);
+                  onClick={handleIncomplete}
+                  disabled={actionLoading}
+                  style={{
+                    background: "var(--red-light)",
+                    border: "1px solid rgba(220,38,38,0.2)",
+                    borderRadius: "var(--radius-sm)",
+                    padding: "6px 12px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: "var(--red)",
+                    cursor: "pointer",
+                    flex: 1,
                   }}
-                  style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer" }}
                 >
                   ✗ Incomplete
                 </button>
               </div>
-            ) : (
-              <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>
-                {task.status === "completed" ? "✓ Completed" : "✗ Incomplete"}
-              </span>
+            )}
+
+            {/* Show incomplete reason if present */}
+            {task.status === "incomplete" && task.incomplete_reason && (
+              <div
+                style={{
+                  marginTop: 12,
+                  fontSize: 11,
+                  color: "var(--red)",
+                  background: "var(--red-light)",
+                  padding: "4px 8px",
+                  borderRadius: "var(--radius-sm)",
+                }}
+              >
+                Reason: {task.incomplete_reason}
+              </div>
             )}
           </div>
-          {task.status === "incomplete" && task.incomplete_reason && (
-            <div style={{ marginTop: 8, fontSize: 11, color: "var(--red)", background: "var(--red-light)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>
-              Reason: {task.incomplete_reason}
-            </div>
-          )}
-        </div>
-      ))}
-      {/* Pagination */}
-      {tasksTotal > tasksPerPage && (
-        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 8 }}>
-          <button
-            onClick={() => fetchEmployeeTasks(tasksPage - 1)}
-            disabled={tasksPage === 1}
-            style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage === 1 ? "not-allowed" : "pointer", opacity: tasksPage === 1 ? 0.5 : 1 }}
-          >
-            Previous
-          </button>
-          <span style={{ fontSize: 13, padding: "6px 12px" }}>Page {tasksPage} of {Math.ceil(tasksTotal / tasksPerPage)}</span>
-          <button
-            onClick={() => fetchEmployeeTasks(tasksPage + 1)}
-            disabled={tasksPage * tasksPerPage >= tasksTotal}
-            style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage * tasksPerPage >= tasksTotal ? "not-allowed" : "pointer", opacity: tasksPage * tasksPerPage >= tasksTotal ? 0.5 : 1 }}
-          >
-            Next
-          </button>
-        </div>
-      )}
+        );
+      })}
+    </div>
+  )}
+
+  {/* Pagination (unchanged) */}
+  {tasksTotal > tasksPerPage && (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        gap: 8,
+        marginTop: 12,
+      }}
+    >
+      <button
+        onClick={() => fetchEmployeeTasks(tasksPage - 1)}
+        disabled={tasksPage === 1}
+        style={{
+          padding: "6px 12px",
+          borderRadius: "var(--radius-sm)",
+          background: "var(--bg3)",
+          border: "1px solid var(--border)",
+          cursor: tasksPage === 1 ? "not-allowed" : "pointer",
+          opacity: tasksPage === 1 ? 0.5 : 1,
+        }}
+      >
+        Previous
+      </button>
+      <span style={{ fontSize: 13, padding: "6px 12px" }}>
+        Page {tasksPage} of {Math.ceil(tasksTotal / tasksPerPage)}
+      </span>
+      <button
+        onClick={() => fetchEmployeeTasks(tasksPage + 1)}
+        disabled={tasksPage * tasksPerPage >= tasksTotal}
+        style={{
+          padding: "6px 12px",
+          borderRadius: "var(--radius-sm)",
+          background: "var(--bg3)",
+          border: "1px solid var(--border)",
+          cursor:
+            tasksPage * tasksPerPage >= tasksTotal ? "not-allowed" : "pointer",
+          opacity: tasksPage * tasksPerPage >= tasksTotal ? 0.5 : 1,
+        }}
+      >
+        Next
+      </button>
     </div>
   )}
 </Card>
@@ -1856,52 +2092,98 @@ function TasksPage({ adminData, addToast, t }) {
                 </tr>
               </thead>
               <tbody>
-                {tasks.map(task => (
-                  <tr key={task.id}>
-                    <td>
-                      <strong>{task.title}</strong>
-                      {task.description && (
-                        <div style={{ fontSize: 12, color: "var(--text3)" }}>
-                          {task.description.slice(0, 60)}
-                        </div>
-                      )}
-                    </td>
-                    <td>
-                      {task.assigned_to_name}
-                      <div style={{ fontSize: 11, color: "var(--blue)" }}>
-                        {task.assigned_to_user_id}
-                      </div>
-                    </td>
-                    <td>{task.task_type}</td>
-                    <td>{task.due_date ? fmtDate(task.due_date) : "—"}</td>
-                    <td>
-                      <StatusBadge
-                        status={
-                          task.status === "pending"
-                            ? "clocked_out"
-                            : task.status === "completed"
-                            ? "clocked_in"
-                            : "auto_corrected"
-                        }
-                      />
-                    </td>
-                    <td>
-                      <button
-                        onClick={() => handleDelete(task.id)}
-                        style={{
-                          background: "var(--red-light)",
-                          border: "none",
-                          borderRadius: "var(--radius-sm)",
-                          padding: "4px 8px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <Icon name="x" size={14} color="var(--red)" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+  {tasks.map(task => (
+    <tr key={task.id}>
+      <td>
+        <strong>{task.title}</strong>
+        {task.description && (
+          <div style={{ fontSize: 12, color: "var(--text3)" }}>
+            {task.description.slice(0, 60)}
+          </div>
+        )}
+      </td>
+      <td>
+        {task.assigned_to_name}
+        <div style={{ fontSize: 11, color: "var(--blue)" }}>
+          {task.assigned_to_user_id}
+        </div>
+      </td>
+      <td>
+        {task.task_type === "youtube" && task.url ? (
+          <a
+            href={task.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--blue)", textDecoration: "underline" }}
+          >
+            YouTube
+          </a>
+        ) : task.task_type === "link" && task.url ? (
+          <a
+            href={task.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--blue)", textDecoration: "underline" }}
+          >
+            Link
+          </a>
+        ) : (
+          task.task_type
+        )}
+      </td>
+      <td>{task.due_date ? fmtDate(task.due_date) : "—"}</td>
+      <td>
+        <span
+          style={{
+            background:
+              task.status === "completed"
+                ? "var(--green-light)"
+                : task.status === "incomplete"
+                ? "var(--red-light)"
+                : "var(--bg3)",
+            color:
+              task.status === "completed"
+                ? "var(--green)"
+                : task.status === "incomplete"
+                ? "var(--red)"
+                : "var(--text3)",
+            padding: "2px 8px",
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 600,
+            border: `1px solid ${
+              task.status === "completed"
+                ? "rgba(5,150,105,0.2)"
+                : task.status === "incomplete"
+                ? "rgba(220,38,38,0.2)"
+                : "var(--border)"
+            }`,
+          }}
+        >
+          {task.status === "completed"
+            ? "✓ Completed"
+            : task.status === "incomplete"
+            ? "✗ Incomplete"
+            : "Pending"}
+        </span>
+      </td>
+      <td>
+        <button
+          onClick={() => handleDelete(task.id)}
+          style={{
+            background: "var(--red-light)",
+            border: "none",
+            borderRadius: "var(--radius-sm)",
+            padding: "4px 8px",
+            cursor: "pointer",
+          }}
+        >
+          <Icon name="x" size={14} color="var(--red)" />
+        </button>
+      </td>
+    </tr>
+  ))}
+</tbody>
             </table>
           </div>
         )}
