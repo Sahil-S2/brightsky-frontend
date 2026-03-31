@@ -1874,39 +1874,8 @@ function MyProfile({user,addToast,employeeWorksite,t}){
   );
 }
 
-// ─── EMPLOYEE LIST ────────────────────────────────────────────────────────────
-function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
-  const[search,setSearch]=useState("");
-  const[adding,setAdding]=useState(false);
-  const[editingSchedule,setEditingSchedule]=useState(null);
-  const[scheduleData,setScheduleData]=useState(null);
-  const[loadingSchedule,setLoadingSchedule]=useState(false);
-  // Use separate state for each field (not refs) for controlled inputs
-  // but wrap in a sub-component to avoid keyboard-close on parent re-render
-  const[role,setRole]=useState("employee");
-  const[showPass,setShowPass]=useState(false);
-  // Schedule refs (modal only — no parent re-render issues)
-  const startRef=useRef(null),endRef=useRef(null),graceRef=useRef(null);
-
-  const employees=adminData.employees.filter(u=>u.name?.toLowerCase().includes(search.toLowerCase())||u.email?.toLowerCase().includes(search.toLowerCase())||u.employee_code?.toLowerCase().includes(search.toLowerCase())||u.user_id?.includes(search));
-
-  const handleDelete=async(uid)=>{if(!confirm("Deactivate this employee?"))return;await authFetch(`/api/admin/employees/${uid}`,{method:"DELETE"});addToast("Deactivated.","info");refreshAdminData();};
-
-  const openSchedule=async(emp)=>{
-    setLoadingSchedule(true);setEditingSchedule(emp);
-    try{const r=await authFetch(`/api/employees/${emp.id}/schedule`);if(r.ok){const d=await r.json();setScheduleData(d);}else setScheduleData(null);}catch{setScheduleData(null);}
-    setLoadingSchedule(false);
-  };
-
-  const saveSchedule=async()=>{
-    if(!editingSchedule)return;
-    const res=await authFetch(`/api/employees/${editingSchedule.id}/schedule`,{method:"PUT",body:JSON.stringify({scheduledStartTime:startRef.current?.value||"07:00",scheduledEndTime:endRef.current?.value||"17:00",graceMinutes:parseInt(graceRef.current?.value)||15,workingDays:["Mon","Tue","Wed","Thu","Fri"]})});
-    if(!res.ok){addToast("Failed to save schedule.","error");return;}
-    addToast("Schedule saved.","success");setEditingSchedule(null);
-  };
-
-  // AddEmployeeForm is isolated — parent state changes don't affect it
-  function AddEmployeeForm({ onDone }) {
+// ─── ADD EMPLOYEE FORM (moved outside to prevent keyboard dismissal) ──────────
+function AddEmployeeForm({ onDone, addToast, refreshAdminData }) {
   const [fname, setFname] = useState("");
   const [femail, setFemail] = useState("");
   const [fpass, setFpass] = useState("");
@@ -1915,7 +1884,7 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
   const [fdesig, setFdesig] = useState("");
   const [fcode, setFcode] = useState("");
   const [frole, setFrole] = useState("employee");
-  const [ftz, setFtz] = useState("America/New_York"); // <-- new
+  const [ftz, setFtz] = useState("America/New_York");
   const [fshowPass, setFshowPass] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -1936,7 +1905,7 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
         designation: fdesig,
         employeeCode: fcode,
         userId: fuid || null,
-        timezone: ftz, // <-- send timezone
+        timezone: ftz,
       }),
     });
     const d = await res.json();
@@ -1947,7 +1916,7 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
     }
     addToast(`Employee added. User ID: ${d.userId}`, "success");
     setSaving(false);
-    onDone();
+    onDone(); // closes the form and refreshes list
   };
 
   return (
@@ -1982,7 +1951,6 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
             <option value="employee">Employee</option><option value="manager">Manager</option><option value="admin">Admin</option>
           </select>
         </div>
-        {/* Timezone selection */}
         <div><label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Timezone</label>
           <select value={ftz} onChange={e => setFtz(e.target.value)} style={{ fontSize: 16 }}>
             <option value="America/New_York">🇺🇸 Atlanta (UTC-4/5)</option>
@@ -1995,92 +1963,181 @@ function EmployeeList({adminData,refreshAdminData,addToast,worksites,t}){
   );
 }
 
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <SectionHeader title={t.employees} subtitle={`${employees.length} team members`} action={<Btn onClick={()=>setAdding(a=>!a)} variant={adding?"secondary":"primary"} size="sm">{adding?t.cancel:<><Icon name="plus" size={13} color="white"/>{t.add}</>}</Btn>}/>
-      {adding&&<AddEmployeeForm onDone={()=>{setAdding(false);refreshAdminData();}}/>}
+
+  // ─── EMPLOYEE LIST ────────────────────────────────────────────────────────────
+function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
+  const [search, setSearch] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(null);
+  const [scheduleData, setScheduleData] = useState(null);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
+  // Schedule refs (modal only — no parent re-render issues)
+  const startRef = useRef(null), endRef = useRef(null), graceRef = useRef(null);
+
+  const employees = adminData.employees.filter(u =>
+    u.name?.toLowerCase().includes(search.toLowerCase()) ||
+    u.email?.toLowerCase().includes(search.toLowerCase()) ||
+    u.employee_code?.toLowerCase().includes(search.toLowerCase()) ||
+    u.user_id?.includes(search)
+  );
+
+  const handleDelete = async (uid) => {
+    if (!confirm("Deactivate this employee?")) return;
+    await authFetch(`/api/admin/employees/${uid}`, { method: "DELETE" });
+    addToast("Deactivated.", "info");
+    refreshAdminData();
+  };
+
+  const openSchedule = async (emp) => {
+    setLoadingSchedule(true);
+    setEditingSchedule(emp);
+    try {
+      const r = await authFetch(`/api/employees/${emp.id}/schedule`);
+      if (r.ok) {
+        const d = await r.json();
+        setScheduleData(d);
+      } else {
+        setScheduleData(null);
+      }
+    } catch {
+      setScheduleData(null);
+    }
+    setLoadingSchedule(false);
+  };
+
+  const saveSchedule = async () => {
+    if (!editingSchedule) return;
+    const res = await authFetch(`/api/employees/${editingSchedule.id}/schedule`, {
+      method: "PUT",
+      body: JSON.stringify({
+        scheduledStartTime: startRef.current?.value || "07:00",
+        scheduledEndTime: endRef.current?.value || "17:00",
+        graceMinutes: parseInt(graceRef.current?.value) || 15,
+        workingDays: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+      })
+    });
+    if (!res.ok) {
+      addToast("Failed to save schedule.", "error");
+      return;
+    }
+    addToast("Schedule saved.", "success");
+    setEditingSchedule(null);
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionHeader
+        title={t.employees}
+        subtitle={`${employees.length} team members`}
+        action={
+          <Btn onClick={() => setAdding(a => !a)} variant={adding ? "secondary" : "primary"} size="sm">
+            {adding ? t.cancel : <><Icon name="plus" size={13} color="white" />{t.add}</>}
+          </Btn>
+        }
+      />
+      {adding && <AddEmployeeForm onDone={() => { setAdding(false); refreshAdminData(); }} addToast={addToast} refreshAdminData={refreshAdminData} />}
       <Card>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name, code, or User ID…" style={{marginBottom:14,fontSize:16}} autoCorrect="off" autoComplete="off"/>
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {employees.length===0?<div style={{textAlign:"center",color:"var(--text4)",padding:24,fontSize:13.5}}>No employees found.</div>
-          :employees.map(u=>(
-            <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 14px", background: "var(--bg3)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border)" }}>
-  <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--blue-light)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "2px solid var(--blue-mid)" }}>
-    <Icon name="user" size={17} color="var(--blue)" />
-  </div>
-  <div style={{ flex: 1, minWidth: 0 }}>
-    <div style={{ fontWeight: 600, color: "var(--text)", fontSize: 14 }}>{u.name || u.full_name}</div>
-    <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 1 }}>{u.email || ""}{u.department ? ` · ${u.department}` : ""}</div>
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 5, alignItems: "center" }}>
-      {u.user_id && <span style={{ background: "var(--blue-light)", color: "var(--blue)", padding: "2px 8px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, border: "1px solid var(--blue-mid)" }}>ID: {u.user_id}</span>}
-      <span style={{ background: "var(--bg2)", color: "var(--text3)", padding: "2px 8px", borderRadius: 999, fontSize: 11.5, textTransform: "capitalize", border: "1px solid var(--border)" }}>{u.role}</span>
-      <select
-        value={u.timezone || "America/New_York"}
-        onChange={async (e) => {
-          const newTz = e.target.value;
-          const res = await authFetch(`/api/admin/users/${u.id}/timezone`, {
-            method: "PUT",
-            body: JSON.stringify({ timezone: newTz })
-          });
-          if (res.ok) {
-            addToast("Timezone updated", "success");
-            refreshAdminData(); // refresh the list to show new value
-          } else {
-            addToast("Failed to update timezone", "error");
-          }
-        }}
-        style={{
-          fontSize: 11,
-          padding: "2px 8px",
-          borderRadius: 999,
-          border: "1px solid var(--border)",
-          background: "var(--bg2)",
-          color: "var(--text)",
-          cursor: "pointer",
-          height: "28px",
-        }}
-      >
-        <option value="America/New_York">🇺🇸 Atlanta</option>
-        <option value="Asia/Kolkata">🇮🇳 Kolkata</option>
-      </select>
-    </div>
-  </div>
-  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-    <button onClick={() => openSchedule(u)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", border: "1px solid var(--blue-mid)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-      <Icon name="clock" size={14} color="var(--blue)" />
-    </button>
-    <button onClick={() => handleDelete(u.id)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
-      <Icon name="x" size={14} color="var(--red)" />
-    </button>
-  </div>
-</div>
-          ))}
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, code, or User ID…"
+          style={{ marginBottom: 14, fontSize: 16 }}
+          autoCorrect="off"
+          autoComplete="off"
+        />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {employees.length === 0 ? (
+            <div style={{ textAlign: "center", color: "var(--text4)", padding: 24, fontSize: 13.5 }}>No employees found.</div>
+          ) : (
+            employees.map(u => (
+              <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 14px", background: "var(--bg3)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border)" }}>
+                <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--blue-light)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "2px solid var(--blue-mid)" }}>
+                  <Icon name="user" size={17} color="var(--blue)" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, color: "var(--text)", fontSize: 14 }}>{u.name || u.full_name}</div>
+                  <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 1 }}>{u.email || ""}{u.department ? ` · ${u.department}` : ""}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 5, alignItems: "center" }}>
+                    {u.user_id && <span style={{ background: "var(--blue-light)", color: "var(--blue)", padding: "2px 8px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, border: "1px solid var(--blue-mid)" }}>ID: {u.user_id}</span>}
+                    <span style={{ background: "var(--bg2)", color: "var(--text3)", padding: "2px 8px", borderRadius: 999, fontSize: 11.5, textTransform: "capitalize", border: "1px solid var(--border)" }}>{u.role}</span>
+                    <select
+                      value={u.timezone || "America/New_York"}
+                      onChange={async (e) => {
+                        const newTz = e.target.value;
+                        const res = await authFetch(`/api/admin/users/${u.id}/timezone`, {
+                          method: "PUT",
+                          body: JSON.stringify({ timezone: newTz })
+                        });
+                        if (res.ok) {
+                          addToast("Timezone updated", "success");
+                          refreshAdminData();
+                        } else {
+                          addToast("Failed to update timezone", "error");
+                        }
+                      }}
+                      style={{
+                        fontSize: 11,
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        border: "1px solid var(--border)",
+                        background: "var(--bg2)",
+                        color: "var(--text)",
+                        cursor: "pointer",
+                        height: "28px",
+                      }}
+                    >
+                      <option value="America/New_York">🇺🇸 Atlanta</option>
+                      <option value="Asia/Kolkata">🇮🇳 Kolkata</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => openSchedule(u)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", border: "1px solid var(--blue-mid)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                    <Icon name="clock" size={14} color="var(--blue)" />
+                  </button>
+                  <button onClick={() => handleDelete(u.id)} style={{ width: 34, height: 34, borderRadius: "var(--radius-sm)", background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                    <Icon name="x" size={14} color="var(--red)" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </Card>
+
       {/* Schedule modal */}
-      {editingSchedule&&(
-        <Modal title={`Schedule — ${editingSchedule.name}`} onClose={()=>setEditingSchedule(null)}>
-          {loadingSchedule?<div style={{textAlign:"center",padding:24,color:"var(--text3)"}}>Loading…</div>:(
-            <div style={{display:"flex",flexDirection:"column",gap:14}}>
-              <div style={{padding:"10px 14px",borderRadius:"var(--radius)",background:"var(--blue-light)",border:"1.5px solid var(--blue-mid)",fontSize:13,color:"var(--blue)",fontWeight:450}}>
+      {editingSchedule && (
+        <Modal title={`Schedule — ${editingSchedule.name}`} onClose={() => setEditingSchedule(null)}>
+          {loadingSchedule ? (
+            <div style={{ textAlign: "center", padding: 24, color: "var(--text3)" }}>Loading…</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ padding: "10px 14px", borderRadius: "var(--radius)", background: "var(--blue-light)", border: "1.5px solid var(--blue-mid)", fontSize: 13, color: "var(--blue)", fontWeight: 450 }}>
                 This schedule controls auto clock-in/out and overtime detection.
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:6,fontWeight:600}}>Start Time</label>
-                  <input type="time" ref={startRef} defaultValue={scheduleData?.scheduled_start_time?.toString().slice(0,5)||"07:00"} style={{fontSize:16}}/></div>
-                <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:6,fontWeight:600}}>End Time</label>
-                  <input type="time" ref={endRef} defaultValue={scheduleData?.scheduled_end_time?.toString().slice(0,5)||"17:00"} style={{fontSize:16}}/></div>
-              </div>
-              <div><label style={{fontSize:12,color:"var(--text2)",display:"block",marginBottom:6,fontWeight:600}}>Grace Period (minutes)</label>
-                <input type="text" inputMode="numeric" ref={graceRef} defaultValue={scheduleData?.grace_minutes||15} placeholder="15" style={{fontSize:16}} autoCorrect="off" autoComplete="off"/>
-              </div>
-              {scheduleData&&<div style={{padding:"10px 14px",background:"var(--bg3)",borderRadius:"var(--radius)",border:"1px solid var(--border)"}}>
-                <div style={{fontSize:12,color:"var(--text3)",marginBottom:3,fontWeight:500}}>Current Schedule</div>
-                <div style={{fontSize:13.5,color:"var(--text)",fontWeight:500}}>
-                  {scheduleData.scheduled_start_time?.toString().slice(0,5)||"07:00"} – {scheduleData.scheduled_end_time?.toString().slice(0,5)||"17:00"} · Grace: {scheduleData.grace_minutes||15}min
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Start Time</label>
+                  <input type="time" ref={startRef} defaultValue={scheduleData?.scheduled_start_time?.toString().slice(0, 5) || "07:00"} style={{ fontSize: 16 }} />
                 </div>
-              </div>}
-              <Btn onClick={saveSchedule} style={{width:"100%"}} size="md"><Icon name="check" size={14} color="white"/>Save Schedule</Btn>
+                <div>
+                  <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>End Time</label>
+                  <input type="time" ref={endRef} defaultValue={scheduleData?.scheduled_end_time?.toString().slice(0, 5) || "17:00"} style={{ fontSize: 16 }} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Grace Period (minutes)</label>
+                <input type="text" inputMode="numeric" ref={graceRef} defaultValue={scheduleData?.grace_minutes || 15} placeholder="15" style={{ fontSize: 16 }} autoCorrect="off" autoComplete="off" />
+              </div>
+              {scheduleData && (
+                <div style={{ padding: "10px 14px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 3, fontWeight: 500 }}>Current Schedule</div>
+                  <div style={{ fontSize: 13.5, color: "var(--text)", fontWeight: 500 }}>
+                    {scheduleData.scheduled_start_time?.toString().slice(0, 5) || "07:00"} – {scheduleData.scheduled_end_time?.toString().slice(0, 5) || "17:00"} · Grace: {scheduleData.grace_minutes || 15}min
+                  </div>
+                </div>
+              )}
+              <Btn onClick={saveSchedule} style={{ width: "100%" }} size="md"><Icon name="check" size={14} color="white" />Save Schedule</Btn>
             </div>
           )}
         </Modal>
