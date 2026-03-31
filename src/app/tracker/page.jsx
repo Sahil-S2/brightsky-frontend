@@ -129,6 +129,53 @@ const GlobalStyle = () => (
   `}</style>
 );
 
+<style>{`
+  .day-checkbox {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--blue);
+    transition: transform 0.1s ease;
+  }
+  .day-checkbox:hover {
+    transform: scale(1.1);
+  }
+  .day-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-width: 70px;
+    justify-content: center;
+  }
+  .day-label.selected {
+    background: var(--blue-light);
+    border-color: var(--blue-mid);
+  }
+  .day-label.selected span {
+    color: var(--blue);
+    font-weight: 600;
+  }
+  .day-label:hover {
+    background: var(--bg2);
+    border-color: var(--blue);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
+  .day-label span {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text2);
+    transition: color 0.2s;
+  }
+`}</style>
+
 const fmtTime=(d)=>d?new Date(d).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):"—";
 const fmtDate=(d)=>d?new Date(d).toLocaleDateString([],{month:"short",day:"numeric",year:"numeric"}):"—";
 const fmtMins=(m)=>{if(!m&&m!==0)return"—";const h=Math.floor(m/60),min=m%60;return h?`${h}h ${min}m`:`${min}m`;};
@@ -2295,48 +2342,35 @@ const saveSchedule = async () => {
         </div>
         {/* Working days checkboxes */}
         <div>
-  <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 8 }}>Working Days</label>
-  <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => (
-      <label
-        key={day}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          cursor: "pointer",
-          userSelect: "none",
-          minWidth: 60,
-          padding: "4px 8px",
-          borderRadius: "var(--radius-sm)",
-          background: selectedDays.includes(day) ? "var(--blue-light)" : "var(--bg3)",
-          border: `1px solid ${selectedDays.includes(day) ? "var(--blue-mid)" : "var(--border)"}`,
-          transition: "all 0.2s",
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={selectedDays.includes(day)}
-          onChange={() => {
-            if (selectedDays.includes(day)) {
+  <label style={{ fontSize: 12, fontWeight: 600, display: "block", marginBottom: 8 }}>
+    Working Days
+  </label>
+  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+    {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => {
+      const isSelected = selectedDays.includes(day);
+      return (
+        <label
+          key={day}
+          className={`day-label ${isSelected ? "selected" : ""}`}
+          onClick={() => {
+            if (isSelected) {
               setSelectedDays(selectedDays.filter(d => d !== day));
             } else {
               setSelectedDays([...selectedDays, day]);
             }
           }}
-          style={{
-            width: 16,
-            height: 16,
-            margin: 0,
-            cursor: "pointer",
-            accentColor: "var(--blue)",
-          }}
-        />
-        <span style={{ fontSize: 13, fontWeight: 500, color: selectedDays.includes(day) ? "var(--blue)" : "var(--text2)" }}>
-          {day}
-        </span>
-      </label>
-    ))}
+        >
+          <input
+            type="checkbox"
+            className="day-checkbox"
+            checked={isSelected}
+            onChange={() => {}} // handled by label click
+            onClick={(e) => e.stopPropagation()} // prevent double toggle
+          />
+          <span>{day}</span>
+        </label>
+      );
+    })}
   </div>
 </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
