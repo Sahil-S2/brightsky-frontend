@@ -3448,46 +3448,70 @@ function ReportsPage({t}){
 
       {/* Employee detail table */}
       <Card>
-        <h3 style={{fontSize:14,fontWeight:700,color:"var(--text)",marginBottom:16}}>Employee Breakdown</h3>
-        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-          <table style={{minWidth:500}}>
-            <thead>
-  <tr>
-    <th>Employee</th>
-    <th>Sessions</th>
-    <th>Total Hrs</th>
-    <th>Avg/Session</th>
-    <th>Personal Break</th>
-    <th>Work Break</th>
-    <th>Break Time</th>
-  </tr>
-</thead>
-<tbody>
-  {empData.map((e, i) => (
-    <tr key={i}>
-      <td>
-        <div style={{ fontWeight: 600, color: "var(--text)", fontSize: 13.5 }}>{e.name}</div>
-        <div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 1 }}>{e.userId}</div>
-      </td>
-      <td style={{ fontWeight: 600, color: "var(--text2)" }}>{e.sessions}</td>
-      <td>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ flex: 1, height: 6, background: "var(--bg3)", borderRadius: 3, overflow: "hidden", minWidth: 40 }}>
-            <div style={{ height: "100%", background: "var(--blue)", borderRadius: 3, width: `${Math.min(100, (e.minutes / (empData[0]?.minutes || 1)) * 100)}%`, transition: "width 0.5s ease" }} />
-          </div>
-          <span style={{ color: "var(--blue)", fontWeight: 700, fontSize: 13, minWidth: 32 }}>{Math.round(e.minutes / 60)}h</span>
-        </div>
-      </td>
-      <td style={{ color: "var(--text2)", fontWeight: 500 }}>{fmtMins(e.sessions > 0 ? Math.round(e.minutes / e.sessions) : 0)}</td>
-      <td style={{ color: "var(--text3)", fontSize: 12 }}>{fmtMins(e.personalBreakMins || 0)}</td>
-      <td style={{ color: "var(--text3)", fontSize: 12 }}>{fmtMins(e.workBreakMins || 0)}</td>
-      <td style={{ color: "var(--text3)" }}>{fmtMins(e.breakMins)}</td>
-    </tr>
-  ))}
-</tbody>
-          </table>
-        </div>
-      </Card>
+  <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 16 }}>
+    Employee Breakdown
+  </h3>
+  <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+    <table style={{ minWidth: 600 }}>
+      <thead>
+        <tr>
+          <th>Employee</th>
+          <th>Sessions</th>
+          <th>Total Hrs</th>
+          <th>Regular Hrs</th>
+          <th>Overtime Hrs</th>
+          <th>Avg/Session</th>
+          <th>Personal Break</th>
+          <th>Work Break</th>
+        </tr>
+      </thead>
+      <tbody>
+        {summary.map((s, i) => (
+          <tr key={i}>
+            <td>
+              <div style={{ fontWeight: 600, color: "var(--text)", fontSize: 13.5 }}>{s.name}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 1 }}>{s.user_id || s.employee_code}</div>
+            </td>
+            <td style={{ fontWeight: 600, color: "var(--text2)" }}>{s.total_sessions}</td>
+            <td>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ flex: 1, height: 6, background: "var(--bg3)", borderRadius: 3, overflow: "hidden", minWidth: 40 }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      background: "var(--blue)",
+                      borderRadius: 3,
+                      width: `${Math.min(100, (s.total_minutes / (summary[0]?.total_minutes || 1)) * 100)}%`,
+                      transition: "width 0.5s ease",
+                    }}
+                  />
+                </div>
+                <span style={{ color: "var(--blue)", fontWeight: 700, fontSize: 13, minWidth: 32 }}>
+                  {Math.round(s.total_minutes / 60)}h
+                </span>
+              </div>
+            </td>
+            <td style={{ color: "var(--green)", fontWeight: 600 }}>
+              {Math.round((s.total_regular_minutes || 0) / 60)}h
+            </td>
+            <td style={{ color: (s.total_overtime_minutes || 0) > 0 ? "var(--orange)" : "var(--text3)", fontWeight: 600 }}>
+              {Math.round((s.total_overtime_minutes || 0) / 60)}h
+            </td>
+            <td style={{ color: "var(--text2)", fontWeight: 500 }}>
+              {fmtMins(s.total_sessions > 0 ? Math.round(s.total_minutes / s.total_sessions) : 0)}
+            </td>
+            <td style={{ color: "var(--text3)", fontSize: 12 }}>
+              {fmtMins(s.personal_break_minutes || 0)}
+            </td>
+            <td style={{ color: "var(--text3)", fontSize: 12 }}>
+              {fmtMins(s.work_break_minutes || 0)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</Card>
 
       {/* Weekday breakdown table */}
       {chartView==="weekdays"&&(
