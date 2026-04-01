@@ -34,7 +34,7 @@ const T = {
     updateLocation:"Update My Location",locationUpdated:"Location updated.",
     adminLogin:"Admin login with email",useUserId:"Use Employee ID instead",
     tapToChange:"Change Photo",refresh:"Refresh",save:"Save",cancel:"Cancel",
-    add:"Add",edit:"Edit",assign:"Assign",remove:"Remove",close:"Close",tasks: "Tasks",
+    add:"Add",edit:"Edit",assign:"Assign",remove:"Remove",close:"Close",tasks: "Tasks",taskHistory: "Task History",
   },
   es: {
     signIn:"Iniciar Sesión",userId:"ID de Usuario",password:"Contraseña",clockIn:"Registrar Entrada",
@@ -53,7 +53,7 @@ const T = {
     updateLocation:"Actualizar Ubicación",locationUpdated:"Ubicación actualizada.",
     adminLogin:"Acceso con correo",useUserId:"Usar ID de empleado",
     tapToChange:"Cambiar Foto",refresh:"Actualizar",save:"Guardar",cancel:"Cancelar",
-    add:"Agregar",edit:"Editar",assign:"Asignar",remove:"Quitar",close:"Cerrar",tasks: "Tareas",
+    add:"Agregar",edit:"Editar",assign:"Asignar",remove:"Quitar",close:"Cerrar",tasks: "Tareas",taskHistory: "Historial de tareas",
   },
 };
 
@@ -584,7 +584,7 @@ useEffect(() => {
   const isAdmin=currentUser?.role==="admin"||currentUser?.role==="manager";
   const navItems=currentUser?[
     {id:"dashboard",label:isAdmin?t.dashboard:`My ${t.dashboard}`,icon:"home"},
-    ...(isAdmin?[{id:"employees",label:t.employees,icon:"users"},{id:"worksites",label:t.worksites,icon:"map"},{ id: "tasks", label: t.tasks, icon: "briefcase" },{id:"attendance",label:t.attendance,icon:"calendar"},{id:"reports",label:t.reports,icon:"bar"},{id:"settings",label:t.settings,icon:"settings"},{id:"export",label:t.export,icon:"download"},{id:"audit",label:t.auditLogs,icon:"log"}]:[{id:"my_attendance",label:t.myAttendance,icon:"calendar"},{id:"my_profile",label:t.myProfile,icon:"user"}]),
+    ...(isAdmin?[{id:"employees",label:t.employees,icon:"users"},{id:"worksites",label:t.worksites,icon:"map"},{ id: "tasks", label: t.tasks, icon: "briefcase" },{id:"attendance",label:t.attendance,icon:"calendar"},{id:"reports",label:t.reports,icon:"bar"},{id:"settings",label:t.settings,icon:"settings"},{id:"export",label:t.export,icon:"download"},{id:"audit",label:t.auditLogs,icon:"log"}]:[{id:"my_attendance",label:t.myAttendance,icon:"calendar"},{ id: "task_history", label: t.taskHistory || "Task History", icon: "log" },{id:"my_profile",label:t.myProfile,icon:"user"}]),
   ]:[];
 
   if(!mounted)return null;
@@ -635,9 +635,10 @@ useEffect(() => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} />)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")}/>)}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
-            {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t}/>}
+            {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
+            {page === "task_history" && <TaskHistoryPage user={currentUser} t={t} />}
             {page==="employees"&&isAdmin&&<EmployeeList adminData={adminData} refreshAdminData={refreshAdminData} addToast={addToast} worksites={worksites} t={t}/>}
             {page==="worksites"&&isAdmin&&<WorksitesPage worksites={worksites} refreshWorksites={refreshWorksites} adminData={adminData} addToast={addToast} t={t}/>}
             {page === "tasks" && isAdmin && <TasksPage adminData={adminData} addToast={addToast} t={t} />}
@@ -1991,81 +1992,52 @@ function TasksPage({ adminData, addToast, t }) {
               </thead>
               <tbody>
   {tasks.map(task => (
-    <tr key={task.id}>
-      <td>
+    <tr key={task.id} style={{ verticalAlign: "middle" }}>
+      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
         <strong>{task.title}</strong>
         {task.description && (
-          <div style={{ fontSize: 12, color: "var(--text3)" }}>
+          <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>
             {task.description.slice(0, 60)}
           </div>
         )}
       </td>
-      <td>
+      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
         {task.assigned_to_name}
         <div style={{ fontSize: 11, color: "var(--blue)" }}>
           {task.assigned_to_user_id}
         </div>
       </td>
-      <td>
+      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
         {task.task_type === "youtube" && task.url ? (
-          <a
-            href={task.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: "var(--blue)", textDecoration: "underline" }}
-          >
-            YouTube
-          </a>
+          <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--blue)", textDecoration: "underline" }}>YouTube</a>
         ) : task.task_type === "link" && task.url ? (
-          <a
-            href={task.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: "var(--blue)", textDecoration: "underline" }}
-          >
-            Link
-          </a>
+          <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--blue)", textDecoration: "underline" }}>Link</a>
         ) : (
           task.task_type
         )}
       </td>
-      <td>{task.due_date ? fmtDate(task.due_date) : "—"}</td>
-      <td>
+      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
+        {task.due_date ? fmtDate(task.due_date) : "—"}
+      </td>
+      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
         <span
           style={{
-            background:
-              task.status === "completed"
-                ? "var(--green-light)"
-                : task.status === "incomplete"
-                ? "var(--red-light)"
-                : "var(--bg3)",
-            color:
-              task.status === "completed"
-                ? "var(--green)"
-                : task.status === "incomplete"
-                ? "var(--red)"
-                : "var(--text3)",
+            background: task.status === "completed" ? "var(--green-light)" : task.status === "incomplete" ? "var(--red-light)" : "var(--bg3)",
+            color: task.status === "completed" ? "var(--green)" : task.status === "incomplete" ? "var(--red)" : "var(--text3)",
             padding: "2px 8px",
             borderRadius: 999,
             fontSize: 11,
             fontWeight: 600,
             border: `1px solid ${
-              task.status === "completed"
-                ? "rgba(5,150,105,0.2)"
-                : task.status === "incomplete"
-                ? "rgba(220,38,38,0.2)"
-                : "var(--border)"
+              task.status === "completed" ? "rgba(5,150,105,0.2)" : task.status === "incomplete" ? "rgba(220,38,38,0.2)" : "var(--border)"
             }`,
+            display: "inline-block",
           }}
         >
-          {task.status === "completed"
-            ? "✓ Completed"
-            : task.status === "incomplete"
-            ? "✗ Incomplete"
-            : "Pending"}
+          {task.status === "completed" ? "✓ Completed" : task.status === "incomplete" ? "✗ Incomplete" : "Pending"}
         </span>
       </td>
-      <td>
+      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
         <button
           onClick={() => handleDelete(task.id)}
           style={{
@@ -2161,6 +2133,148 @@ function TasksPage({ adminData, addToast, t }) {
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+function TaskHistoryPage({ user, t }) {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const tasksPerPage = 10;
+
+  const fetchTasks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const statusParam = statusFilter !== "all" ? `&status=${statusFilter}` : "";
+      const res = await authFetch(`/api/tasks/employee/${user.id}?page=${page}&limit=${tasksPerPage}${statusParam}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data.tasks);
+        setTotal(data.total);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, statusFilter, user.id]);
+
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionHeader title={t.taskHistory || "Task History"} subtitle={`${total} tasks`} />
+
+      <Card>
+        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+            style={{ fontSize: 14, padding: "6px 10px", width: "auto" }}
+          >
+            <option value="all">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="completed">Completed</option>
+            <option value="incomplete">Incomplete</option>
+          </select>
+          <Btn onClick={() => fetchTasks()} variant="secondary" size="sm" loading={loading}>
+            <Icon name="refresh" size={13} /> Refresh
+          </Btn>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 24 }}>Loading...</div>
+        ) : tasks.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 24, color: "var(--text4)" }}>No tasks found.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ minWidth: 600 }}>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Type</th>
+                  <th>Due Date</th>
+                  <th>Status</th>
+                  <th>Assigned Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map(task => (
+                  <tr key={task.id}>
+                    <td style={{ verticalAlign: "middle" }}>
+                      <strong>{task.title}</strong>
+                      {task.description && (
+                        <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>
+                          {task.description.slice(0, 60)}
+                        </div>
+                      )}
+                      {task.url && (
+                        <div style={{ marginTop: 6 }}>
+                          {task.task_type === "youtube" ? (
+                            <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)" }}>
+                              Watch on YouTube
+                            </a>
+                          ) : (
+                            <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)" }}>
+                              {task.task_type === "document" ? "📄 View Document" : "🔗 Open Link"}
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ verticalAlign: "middle" }}>{task.task_type}</td>
+                    <td style={{ verticalAlign: "middle" }}>{task.due_date ? fmtDate(task.due_date) : "—"}</td>
+                    <td style={{ verticalAlign: "middle" }}>
+                      <span
+                        style={{
+                          background: task.status === "completed" ? "var(--green-light)" : task.status === "incomplete" ? "var(--red-light)" : "var(--bg3)",
+                          color: task.status === "completed" ? "var(--green)" : task.status === "incomplete" ? "var(--red)" : "var(--text3)",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          border: `1px solid ${
+                            task.status === "completed" ? "rgba(5,150,105,0.2)" : task.status === "incomplete" ? "rgba(220,38,38,0.2)" : "var(--border)"
+                          }`,
+                          display: "inline-block",
+                        }}
+                      >
+                        {task.status === "completed" ? "✓ Completed" : task.status === "incomplete" ? "✗ Incomplete" : "Pending"}
+                      </span>
+                    </td>
+                    <td style={{ verticalAlign: "middle" }}>{fmtDate(task.assigned_date)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {total > tasksPerPage && (
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16 }}>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: page === 1 ? "not-allowed" : "pointer", opacity: page === 1 ? 0.5 : 1 }}
+            >
+              Previous
+            </button>
+            <span style={{ fontSize: 13, padding: "6px 12px" }}>Page {page} of {Math.ceil(total / tasksPerPage)}</span>
+            <button
+              onClick={() => setPage(p => p + 1)}
+              disabled={page * tasksPerPage >= total}
+              style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: page * tasksPerPage >= total ? "not-allowed" : "pointer", opacity: page * tasksPerPage >= total ? 0.5 : 1 }}
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -2423,7 +2537,7 @@ function MyAttendance({ t }) {
 }
 
 // ─── MY PROFILE ───────────────────────────────────────────────────────────────
-function MyProfile({user,addToast,employeeWorksite,t}){
+function MyProfile({user,addToast,employeeWorksite,t,onViewTaskHistory}){
   const[summary,setSummary]=useState(null);
   const[schedule,setSchedule]=useState(null);
   const[loadingSchedule,setLoadingSchedule]=useState(true);
@@ -2479,6 +2593,18 @@ function MyProfile({user,addToast,employeeWorksite,t}){
           </div>
         ))}
       </Card>
+      <Card>
+  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+    <Icon name="briefcase" size={15} color="var(--blue)" />
+    <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Task History</h3>
+  </div>
+  <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 12 }}>
+    View all your assigned tasks and their statuses.
+  </p>
+  <Btn onClick={onViewTaskHistory} variant="secondary" size="sm">
+    <Icon name="calendar" size={13} /> View Full History
+  </Btn>
+</Card>
       {summary&&<Card>
         <h3 style={{fontSize:14,fontWeight:700,color:"var(--text)",marginBottom:14}}>Work Summary</h3>
         {[["Total Sessions",summary.total_sessions],["Total Hours",`${Math.round((summary.total_minutes||0)/60)}h`],["Daily Average",fmtMins(Math.round(summary.avg_daily_minutes||0))],["This Week",`${Math.round((summary.week_minutes||0)/60)}h`]].map(([k,v])=>(
