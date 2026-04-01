@@ -2034,7 +2034,7 @@ function TasksPage({ adminData, addToast, t }) {
             display: "inline-block",
           }}
         >
-          {task.status === "completed" ? "✓ Completed" : task.status === "incomplete" ? "✗ Incomplete" : "Pending"}
+          {task.status === "completed" ? "Completed" : task.status === "incomplete" ? "Incomplete" : "Pending"}
         </span>
       </td>
       <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
@@ -2244,7 +2244,7 @@ function TaskHistoryPage({ user, t }) {
                           display: "inline-block",
                         }}
                       >
-                        {task.status === "completed" ? "✓ Completed" : task.status === "incomplete" ? "✗ Incomplete" : "Pending"}
+                        {task.status === "completed" ? "Completed" : task.status === "incomplete" ? "Incomplete" : "Pending"}
                       </span>
                     </td>
                     <td style={{ verticalAlign: "middle" }}>{fmtDate(task.assigned_date)}</td>
