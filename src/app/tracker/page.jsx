@@ -35,6 +35,11 @@ const T = {
     adminLogin:"Admin login with email",useUserId:"Use Employee ID instead",
     tapToChange:"Change Photo",refresh:"Refresh",save:"Save",cancel:"Cancel",
     add:"Add",edit:"Edit",assign:"Assign",remove:"Remove",close:"Close",tasks: "Tasks",taskHistory: "Task History",
+    route: "Route",routeHistory: "Route History",stops: "Stops",stopNumber: "Stop #",startEndTime: "Start → End",travelTime: "Travel",
+    distance: "Distance",avgMPH: "Avg MPH",breaks: "Breaks",timeAtStore: "Time @ Store",remarks: "Remarks",addStop: "Add Stop",endStop: "End Stop",
+    addDetails: "Add Details",storeName: "Store Name",orderAmount: "Order Amount",deliveryAmount: "Delivery Amount",productPriceRemark: "Product & Price Remark",
+    storeRemark: "Store Remark",routeRemark: "Route Remark",nextSchedule: "Next Schedule",startBreak: "Start Break",endBreak: "End Break",
+    breakType: "Break Type",lunch: "Lunch",toilet: "Toilet",short: "Short Break"
   },
   es: {
     signIn:"Iniciar Sesión",userId:"ID de Usuario",password:"Contraseña",clockIn:"Registrar Entrada",
@@ -54,6 +59,12 @@ const T = {
     adminLogin:"Acceso con correo",useUserId:"Usar ID de empleado",
     tapToChange:"Cambiar Foto",refresh:"Actualizar",save:"Guardar",cancel:"Cancelar",
     add:"Agregar",edit:"Editar",assign:"Asignar",remove:"Quitar",close:"Cerrar",tasks: "Tareas",taskHistory: "Historial de tareas",
+    route: "Ruta",routeHistory: "Historial de Ruta",stops: "Paradas",stopNumber: "Parada #",startEndTime: "Inicio → Fin",travelTime: "Tiempo de viaje",
+    distance: "Distancia",avgMPH: "Velocidad Promedio (MPH)",breaks: "Descansos",timeAtStore: "Tiempo en Tienda",remarks: "Observaciones",
+    addStop: "Agregar Parada",endStop: "Finalizar Parada",addDetails: "Agregar Detalles",storeName: "Nombre de la Tienda",
+    orderAmount: "Monto del Pedido",deliveryAmount: "Monto de Entrega",productPriceRemark: "Observación de Producto y Precio",storeRemark: "Observación de la Tienda",
+    routeRemark: "Observación de la Ruta",nextSchedule: "Próximo Horario",startBreak: "Iniciar Descanso",endBreak: "Finalizar Descanso",
+    breakType: "Tipo de Descanso",lunch: "Almuerzo",toilet: "Baño",short: "Descanso Corto"
   },
 };
 
@@ -584,7 +595,7 @@ useEffect(() => {
   const isAdmin=currentUser?.role==="admin"||currentUser?.role==="manager";
   const navItems=currentUser?[
     {id:"dashboard",label:isAdmin?t.dashboard:`My ${t.dashboard}`,icon:"home"},
-    ...(isAdmin?[{id:"employees",label:t.employees,icon:"users"},{id:"worksites",label:t.worksites,icon:"map"},{ id: "tasks", label: t.tasks, icon: "briefcase" },{id:"attendance",label:t.attendance,icon:"calendar"},{id:"reports",label:t.reports,icon:"bar"},{id:"settings",label:t.settings,icon:"settings"},{id:"export",label:t.export,icon:"download"},{id:"audit",label:t.auditLogs,icon:"log"}]:[{id:"my_attendance",label:t.myAttendance,icon:"calendar"},{ id: "task_history", label: t.taskHistory || "Task History", icon: "log" },{id:"my_profile",label:t.myProfile,icon:"user"}]),
+    ...(isAdmin?[{id:"employees",label:t.employees,icon:"users"},{id:"worksites",label:t.worksites,icon:"map"},{ id: "tasks", label: t.tasks, icon: "briefcase" },{id:"attendance",label:t.attendance,icon:"calendar"},{id:"reports",label:t.reports,icon:"bar"},{id:"settings",label:t.settings,icon:"settings"},{id:"export",label:t.export,icon:"download"},{id:"audit",label:t.auditLogs,icon:"log"},{ id: "route", label: t.route || "Route", icon: "navigation" }]:[{id:"my_attendance",label:t.myAttendance,icon:"calendar"},{ id: "task_history", label: t.taskHistory || "Task History", icon: "log" },{ id: "route", label: t.route || "Route", icon: "navigation" },{id:"my_profile",label:t.myProfile,icon:"user"}]),
   ]:[];
 
   if(!mounted)return null;
@@ -639,6 +650,7 @@ useEffect(() => {
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
             {page === "task_history" && <TaskHistoryPage user={currentUser} t={t} />}
+            {page === "route" && (isAdmin ? <RouteHistoryPage adminData={adminData} t={t} /> : <RoutePage user={currentUser} t={t} />)}
             {page==="employees"&&isAdmin&&<EmployeeList adminData={adminData} refreshAdminData={refreshAdminData} addToast={addToast} worksites={worksites} t={t}/>}
             {page==="worksites"&&isAdmin&&<WorksitesPage worksites={worksites} refreshWorksites={refreshWorksites} adminData={adminData} addToast={addToast} t={t}/>}
             {page === "tasks" && isAdmin && <TasksPage adminData={adminData} addToast={addToast} t={t} />}
@@ -2279,6 +2291,418 @@ function TaskHistoryPage({ user, t }) {
   );
 }
 
+function RoutePage({ user, t }) {
+  const [route, setRoute] = useState(null);
+  const [stops, setStops] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeStop, setActiveStop] = useState(null);
+  const [activeBreak, setActiveBreak] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedStop, setSelectedStop] = useState(null);
+  const [formData, setFormData] = useState({});
+  const [breakType, setBreakType] = useState("");
+  const [showBreakModal, setShowBreakModal] = useState(false);
+  const [stopForm, setStopForm] = useState({ distanceMiles: "", timeAtStoreMinutes: "", routeRemarks: "" });
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await authFetch("/api/route/today");
+      if (res.ok) {
+        const data = await res.json();
+        setRoute(data.route);
+        setStops(data.stops);
+        const active = data.stops.find(s => !s.end_time);
+        setActiveStop(active || null);
+        const breakRes = await authFetch("/api/route/active-break");
+        if (breakRes.ok) {
+          const breakData = await breakRes.json();
+          setActiveBreak(breakData.break || null);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const startStop = async () => {
+    try {
+      const res = await authFetch("/api/route/start-stop", { method: "POST" });
+      if (res.ok) {
+        const newStop = await res.json();
+        setStops(prev => [...prev, newStop]);
+        setActiveStop(newStop);
+      } else {
+        const err = await res.json();
+        alert(err.error || "Failed to start stop");
+      }
+    } catch (err) {
+      alert("Network error");
+    }
+  };
+
+  const endStop = async () => {
+    if (!activeStop) return;
+    const { distanceMiles, timeAtStoreMinutes, routeRemarks } = stopForm;
+    if (!distanceMiles || !timeAtStoreMinutes) {
+      alert("Please enter distance and time at store");
+      return;
+    }
+    try {
+      const res = await authFetch(`/api/route/stop/${activeStop.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ distanceMiles, timeAtStoreMinutes, routeRemarks })
+      });
+      if (res.ok) {
+        setActiveStop(null);
+        setStopForm({ distanceMiles: "", timeAtStoreMinutes: "", routeRemarks: "" });
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || "Failed to end stop");
+      }
+    } catch (err) {
+      alert("Network error");
+    }
+  };
+
+  const openDetails = (stop) => {
+    setSelectedStop(stop);
+    setFormData({
+      storeName: stop.store_name || "",
+      orderAmount: stop.order_amount || "",
+      deliveryAmount: stop.delivery_amount || "",
+      productPriceRemark: stop.product_price_remark || "",
+      storeRemark: stop.store_remark || "",
+      nextSchedule: stop.next_schedule || "",
+    });
+    setShowDetailsModal(true);
+  };
+
+  const saveDetails = async () => {
+    if (!selectedStop) return;
+    try {
+      const res = await authFetch(`/api/route/stop/${selectedStop.id}/details`, {
+        method: "POST",
+        body: JSON.stringify(formData)
+      });
+      if (res.ok) {
+        setShowDetailsModal(false);
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || "Failed to save details");
+      }
+    } catch (err) {
+      alert("Network error");
+    }
+  };
+
+  const startBreak = async () => {
+    if (!breakType) {
+      alert("Please select break type");
+      return;
+    }
+    try {
+      const res = await authFetch("/api/route/break/start", {
+        method: "POST",
+        body: JSON.stringify({ breakType, stopId: activeStop?.id })
+      });
+      if (res.ok) {
+        const breakData = await res.json();
+        setActiveBreak(breakData);
+        setShowBreakModal(false);
+        setBreakType("");
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || "Failed to start break");
+      }
+    } catch (err) {
+      alert("Network error");
+    }
+  };
+
+  const endBreak = async () => {
+    if (!activeBreak) return;
+    try {
+      const res = await authFetch("/api/route/break/end", {
+        method: "POST",
+        body: JSON.stringify({ breakId: activeBreak.id })
+      });
+      if (res.ok) {
+        setActiveBreak(null);
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.error || "Failed to end break");
+      }
+    } catch (err) {
+      alert("Network error");
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionHeader title={t.route} subtitle="Manage your daily route stops" />
+
+      {/* Action Buttons */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        {!activeStop && (
+          <Btn onClick={startStop} variant="primary">
+            <Icon name="plus" size={14} color="white" /> Start Stop
+          </Btn>
+        )}
+        {activeStop && (
+          <>
+            <Btn onClick={() => setShowBreakModal(true)} variant="secondary">
+              <Icon name="coffee" size={14} /> Start Break
+            </Btn>
+            <div style={{ flex: 1 }}>
+              <input
+                type="number"
+                placeholder="Distance (miles)"
+                value={stopForm.distanceMiles}
+                onChange={e => setStopForm({ ...stopForm, distanceMiles: e.target.value })}
+                style={{ width: "100%", marginBottom: 5 }}
+              />
+              <input
+                type="number"
+                placeholder="Time at store (min)"
+                value={stopForm.timeAtStoreMinutes}
+                onChange={e => setStopForm({ ...stopForm, timeAtStoreMinutes: e.target.value })}
+                style={{ width: "100%", marginBottom: 5 }}
+              />
+              <input
+                type="text"
+                placeholder="Route remarks"
+                value={stopForm.routeRemarks}
+                onChange={e => setStopForm({ ...stopForm, routeRemarks: e.target.value })}
+                style={{ width: "100%", marginBottom: 5 }}
+              />
+              <Btn onClick={endStop} variant="danger" style={{ width: "100%" }}>
+                End Stop
+              </Btn>
+            </div>
+          </>
+        )}
+        {activeBreak && (
+          <Btn onClick={endBreak} variant="orange">
+            <Icon name="stop" size={14} /> End Break
+          </Btn>
+        )}
+      </div>
+
+      {/* Stops Table / Cards */}
+      <Card>
+        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Today's Stops</h3>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 24 }}>Loading...</div>
+        ) : stops.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 24, color: "var(--text4)" }}>No stops yet. Start a new stop.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ minWidth: 600 }}>
+              <thead>
+                <tr>
+                  <th>{t.stopNumber}</th>
+                  <th>{t.startEndTime}</th>
+                  <th>{t.travelTime}</th>
+                  <th>{t.distance}</th>
+                  <th>{t.avgMPH}</th>
+                  <th>{t.breaks}</th>
+                  <th>{t.timeAtStore}</th>
+                  <th>{t.remarks}</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stops.map(stop => (
+                  <tr key={stop.id}>
+                    <td>{stop.stop_number}</td>
+                    <td>{stop.start_time ? fmtTime(stop.start_time) : "—"} → {stop.end_time ? fmtTime(stop.end_time) : "—"}</td>
+                    <td>{stop.travel_time_minutes ? fmtMins(stop.travel_time_minutes) : "—"}</td>
+                    <td>{stop.distance_miles ? `${stop.distance_miles} mi` : "—"}</td>
+                    <td>{stop.avg_mph ? `${stop.avg_mph} mph` : "—"}</td>
+                    <td>{stop.breaks_taken ? "Yes" : "No"}</td>
+                    <td>{stop.time_at_store_minutes ? fmtMins(stop.time_at_store_minutes) : "—"}</td>
+                    <td>{stop.route_remarks || "—"}</td>
+                    <td>
+                      <Btn onClick={() => openDetails(stop)} variant="secondary" size="sm">
+                        {t.addDetails}
+                      </Btn>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Details Modal */}
+      {showDetailsModal && (
+        <Modal title="Stop Details" onClose={() => setShowDetailsModal(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <input
+              type="text"
+              placeholder={t.storeName}
+              value={formData.storeName}
+              onChange={e => setFormData({ ...formData, storeName: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <input
+              type="number"
+              placeholder={t.orderAmount}
+              value={formData.orderAmount}
+              onChange={e => setFormData({ ...formData, orderAmount: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <input
+              type="number"
+              placeholder={t.deliveryAmount}
+              value={formData.deliveryAmount}
+              onChange={e => setFormData({ ...formData, deliveryAmount: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <textarea
+              rows={2}
+              placeholder={t.productPriceRemark}
+              value={formData.productPriceRemark}
+              onChange={e => setFormData({ ...formData, productPriceRemark: e.target.value })}
+              style={{ fontSize: 14 }}
+            />
+            <textarea
+              rows={2}
+              placeholder={t.storeRemark}
+              value={formData.storeRemark}
+              onChange={e => setFormData({ ...formData, storeRemark: e.target.value })}
+              style={{ fontSize: 14 }}
+            />
+            <input
+              type="text"
+              placeholder={t.nextSchedule}
+              value={formData.nextSchedule}
+              onChange={e => setFormData({ ...formData, nextSchedule: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <Btn onClick={saveDetails} style={{ width: "100%" }}>Save Details</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* Break Modal */}
+      {showBreakModal && (
+        <Modal title="Start Break" onClose={() => setShowBreakModal(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <select value={breakType} onChange={e => setBreakType(e.target.value)} style={{ fontSize: 16 }}>
+              <option value="">Select break type</option>
+              <option value="lunch">{t.lunch || "Lunch"}</option>
+              <option value="toilet">{t.toilet || "Toilet"}</option>
+              <option value="short">{t.short || "Short Break"}</option>
+            </select>
+            <Btn onClick={startBreak} style={{ width: "100%" }}>Start Break</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function RouteHistoryPage({ adminData, t }) {
+  const [routes, setRoutes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filterUser, setFilterUser] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const fetchHistory = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (filterUser !== "all") params.set("user_id", filterUser);
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    try {
+      const res = await authFetch(`/api/route/history?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRoutes(data);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [filterUser, dateFrom, dateTo]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionHeader title={t.routeHistory || "Route History"} subtitle="Overview of all routes" />
+      <Card>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+          <select value={filterUser} onChange={e => setFilterUser(e.target.value)} style={{ fontSize: 16 }}>
+            <option value="all">All Employees</option>
+            {adminData.employees.map(emp => (
+              <option key={emp.id} value={emp.id}>{emp.name}</option>
+            ))}
+          </select>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
+          <Btn onClick={fetchHistory} variant="secondary" size="sm">Refresh</Btn>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 24 }}>Loading...</div>
+        ) : routes.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 24, color: "var(--text4)" }}>No routes found.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ minWidth: 600 }}>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Stops</th>
+                  <th>Travel Time</th>
+                  <th>Store Time</th>
+                  <th>Distance</th>
+                  <th>Breaks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {routes.map(route => (
+                  <tr key={route.id}>
+                    <td>{route.user_name}</td>
+                    <td>{fmtDate(route.route_date)}</td>
+                    <td><StatusBadge status={route.status === "active" ? "clocked_in" : "clocked_out"} /></td>
+                    <td>{route.total_stops}</td>
+                    <td>{fmtMins(route.total_travel)}</td>
+                    <td>{fmtMins(route.total_store_time)}</td>
+                    <td>{route.total_distance ? `${route.total_distance} mi` : "—"}</td>
+                    <td>{route.total_breaks}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
 // ─── MY ATTENDANCE ────────────────────────────────────────────────────────────
 function MyAttendance({ t }) {
   const [sessions, setSessions] = useState([]);
