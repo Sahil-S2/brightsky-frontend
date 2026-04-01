@@ -41,6 +41,8 @@ const T = {
     storeRemark: "Store Remark",routeRemark: "Route Remark",nextSchedule: "Next Schedule",startBreak: "Start Break",endBreak: "End Break",
     breakType: "Break Type",lunch: "Lunch",toilet: "Toilet",short: "Short Break",
     startRoute: "Start Route",continueRoute: "Continue Route",viewRoute: "View Route",
+    storeName: "Store Name",orderAmount: "Order Amount",deliveryAmount: "Delivery Amount",productPriceRemark: "Product & Price Remark",
+    storeRemark: "Store Remark",nextSchedule: "Next Schedule",addDetails: "Add Details",
   },
   es: {
     signIn:"Iniciar Sesión",userId:"ID de Usuario",password:"Contraseña",clockIn:"Registrar Entrada",
@@ -67,6 +69,8 @@ const T = {
     routeRemark: "Observación de la Ruta",nextSchedule: "Próximo Horario",startBreak: "Iniciar Descanso",endBreak: "Finalizar Descanso",
     breakType: "Tipo de Descanso",lunch: "Almuerzo",toilet: "Baño",short: "Descanso Corto",
     startRoute: "Iniciar Ruta",continueRoute: "Continuar Ruta",viewRoute: "Ver Ruta",
+    storeName: "Nombre de la Tienda",orderAmount: "Monto del Pedido",deliveryAmount: "Monto de Entrega",productPriceRemark: "Observación de Producto y Precio",
+    storeRemark: "Observación de la Tienda",nextSchedule: "Próximo Horario",addDetails: "Agregar Detalles",
   },
 };
 
@@ -810,6 +814,8 @@ function EmployeeDashboard({
   const tasksPerPage = 5;
   const [routeStatus, setRouteStatus] = useState("not_started");
   const [routeLoading, setRouteLoading] = useState(false);
+  const [selectedTab, setSelectedTab] = useState("timecard");
+  const [navCollapsed, setNavCollapsed] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
@@ -1045,518 +1051,895 @@ if (cameraRequired) {
   }
 
   const displayWS = employeeWorksite || { latitude: settings.latitude, longitude: settings.longitude, radius_feet: settings.radiusFeet, name: settings.siteName };
+  const renderTimeCard = () => (
+  <>
+    {/* Assigned Worksite Card */}
+    {employeeWorksite && (
+      <Card style={{ border: "1.5px solid var(--blue-mid)", background: "var(--blue-light)" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: "var(--radius)", background: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}>
+            <Icon name="pin" size={18} color="white" />
+          </div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>{t.assignedWorksite}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.01em" }}>{employeeWorksite.project_name || employeeWorksite.name}</div>
+            {employeeWorksite.address && <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 2, fontWeight: 400 }}>{employeeWorksite.address}</div>}
+            <div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 2 }}>{parseFloat(employeeWorksite.latitude).toFixed(4)}°, {parseFloat(employeeWorksite.longitude).toFixed(4)}° · {employeeWorksite.radius_feet}ft radius</div>
+          </div>
+        </div>
+      </Card>
+    )}
 
+    {/* Compact Time Summary */}
+    <div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>
+          {fmtMins(totalWorked)}
+        </div>
+        {overtimeMins > 0 && (
+          <div style={{ fontSize: 11, color: "var(--orange)", fontWeight: 500, marginTop: 4 }}>
+            <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
+          </div>
+        )}
+      </div>
+      <div>
+        <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
+        <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>
+          {fmtMins(totalBreak)}
+        </div>
+      </div>
+    </div>
+
+    {/* Main Action Card (Clock In/Out/Break) */}
+    <Card>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {empStatus === "clocked_out" && (
+          <Btn
+            onClick={handleClockIn}
+            disabled={!onSite || clockInButtonLoading}
+            loading={clockInButtonLoading}
+            size="lg"
+            style={{ width: "100%" }}
+          >
+            <Icon name="camera" size={16} color="white" />{t.clockIn}
+          </Btn>
+        )}
+        {empStatus === "clocked_in" && (
+          <>
+            <Btn onClick={() => setShowBreakModal(true)} disabled={punchLoading} variant="secondary" size="md" style={{ width: "100%" }}>
+              <Icon name="coffee" size={15} color="var(--amber)" />Break
+            </Btn>
+            <Btn onClick={handleClockOut} disabled={punchLoading} loading={punchLoading} variant="danger" size="md" style={{ width: "100%" }}>
+              <Icon name="stop" size={15} color="var(--red)" />{t.clockOut}
+            </Btn>
+          </>
+        )}
+        {empStatus === "on_break" && (
+          <Btn onClick={handleBreakEnd} disabled={punchLoading} loading={punchLoading} variant="green" size="lg" style={{ width: "100%" }}>
+            <Icon name="play" size={16} color="var(--green)" />{t.endBreak}
+          </Btn>
+        )}
+      </div>
+      {gpsLoading && userLat == null && displayWS?.latitude != null && (
+        <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "rgba(255,255,255,0.7)", border: "1px solid rgba(217,119,6,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
+          <span className="spin" style={{ width: 12, height: 12, border: "2px solid var(--amber)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", flexShrink: 0 }} />
+          <span style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 500 }}>Getting your location…</span>
+        </div>
+      )}
+      {!gpsLoading && !onSite && displayWS?.latitude != null && userLat != null && (
+        <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "var(--red-light)", border: "1.5px solid rgba(220,38,38,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
+          <Icon name="alert" size={14} color="var(--red)" />
+          <span style={{ fontSize: 12.5, color: "var(--red)", fontWeight: 450 }}>Must be within {displayWS.radius_feet} ft of your assigned worksite.</span>
+        </div>
+      )}
+    </Card>
+
+    {/* My Tasks Section */}
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
+        {tasksLoading && <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />}
+      </div>
+
+      {employeeTasks.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>
+          No tasks assigned.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {employeeTasks.map((task) => {
+            const isExpanded = expandedTaskId === task.id;
+            const isLoading = loadingTaskId === task.id;
+
+            const handleComplete = async () => {
+              if (isLoading) return;
+              setLoadingTaskId(task.id);
+              try {
+                const res = await authFetch(`/api/tasks/${task.id}/status`, {
+                  method: "PUT",
+                  body: JSON.stringify({ status: "completed" }),
+                });
+                if (res.ok) {
+                  addToast("Task marked as completed", "success");
+                  fetchEmployeeTasks(tasksPage);
+                } else {
+                  const errData = await res.json();
+                  console.error("Task update failed:", errData);
+                  addToast(errData.error || "Failed to update", "error");
+                }
+              } catch (err) {
+                console.error("Network error:", err);
+                addToast("Network error", "error");
+              } finally {
+                setLoadingTaskId(null);
+              }
+            };
+
+            const handleIncomplete = async () => {
+              const reason = prompt("Why is this task incomplete?");
+              if (!reason) return;
+              if (isLoading) return;
+              setLoadingTaskId(task.id);
+              try {
+                const res = await authFetch(`/api/tasks/${task.id}/status`, {
+                  method: "PUT",
+                  body: JSON.stringify({ status: "incomplete", incompleteReason: reason }),
+                });
+                if (res.ok) {
+                  addToast("Task marked as incomplete", "success");
+                  fetchEmployeeTasks(tasksPage);
+                } else {
+                  addToast("Failed to update", "error");
+                }
+              } catch (err) {
+                addToast("Network error", "error");
+              } finally {
+                setLoadingTaskId(null);
+              }
+            };
+
+            return (
+              <div
+                key={task.id}
+                style={{
+                  padding: "12px",
+                  background: "var(--bg3)",
+                  borderRadius: "var(--radius)",
+                  border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
+                  cursor: "pointer",
+                  transition: "all 0.2s",
+                }}
+                onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>
+                      {task.title}
+                    </div>
+                    {task.description && (
+                      <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>
+                        {task.description}
+                      </div>
+                    )}
+                    {task.url && (
+                      <div style={{ marginTop: 6 }}>
+                        {task.task_type === "youtube" ? (
+                          <a
+                            href={task.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: 12, color: "var(--blue)", display: "flex", alignItems: "center", gap: 4 }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Icon name="play" size={12} /> Watch on YouTube
+                          </a>
+                        ) : (
+                          <a
+                            href={task.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: 12, color: "var(--blue)" }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {task.task_type === "document" ? "📄 View Document" : "🔗 Open Link"}
+                          </a>
+                        )}
+                      </div>
+                    )}
+                    {task.due_date && (
+                      <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
+                        Due: {fmtDate(task.due_date)}
+                      </div>
+                    )}
+                  </div>
+                  {task.status === "completed" && (
+                    <span style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)" }}>
+                      ✓ Completed
+                    </span>
+                  )}
+                  {task.status === "incomplete" && (
+                    <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>
+                      ✗ Incomplete
+                    </span>
+                  )}
+                  {task.status === "pending" && (
+                    <Icon name={isExpanded ? "chevronUp" : "chevronDown"} size={18} color="var(--text3)" />
+                  )}
+                </div>
+
+                {isExpanded && task.status === "pending" && (
+                  <div
+                    style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={handleComplete}
+                      disabled={isLoading}
+                      style={{
+                        background: "var(--green-light)",
+                        border: "1px solid rgba(5,150,105,0.2)",
+                        borderRadius: "var(--radius-sm)",
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "var(--green)",
+                        cursor: "pointer",
+                        flex: 1,
+                        opacity: isLoading ? 0.6 : 1,
+                      }}
+                    >
+                      {isLoading ? "Updating..." : "✓ Completed"}
+                    </button>
+                    <button
+                      onClick={handleIncomplete}
+                      disabled={isLoading}
+                      style={{
+                        background: "var(--red-light)",
+                        border: "1px solid rgba(220,38,38,0.2)",
+                        borderRadius: "var(--radius-sm)",
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "var(--red)",
+                        cursor: "pointer",
+                        flex: 1,
+                        opacity: isLoading ? 0.6 : 1,
+                      }}
+                    >
+                      ✗ Incomplete
+                    </button>
+                  </div>
+                )}
+
+                {task.status === "incomplete" && task.incomplete_reason && (
+                  <div style={{ marginTop: 12, fontSize: 11, color: "var(--red)", background: "var(--red-light)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>
+                    Reason: {task.incomplete_reason}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Pagination for tasks */}
+      {tasksTotal > tasksPerPage && (
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
+          <button
+            onClick={() => fetchEmployeeTasks(tasksPage - 1)}
+            disabled={tasksPage === 1}
+            style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage === 1 ? "not-allowed" : "pointer", opacity: tasksPage === 1 ? 0.5 : 1 }}
+          >
+            Previous
+          </button>
+          <span style={{ fontSize: 13, padding: "6px 12px" }}>
+            Page {tasksPage} of {Math.ceil(tasksTotal / tasksPerPage)}
+          </span>
+          <button
+            onClick={() => fetchEmployeeTasks(tasksPage + 1)}
+            disabled={tasksPage * tasksPerPage >= tasksTotal}
+            style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage * tasksPerPage >= tasksTotal ? "not-allowed" : "pointer", opacity: tasksPage * tasksPerPage >= tasksTotal ? 0.5 : 1 }}
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </Card>
+
+    {/* Today's Work Breaks */}
+    <Card>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>
+        Today's Work Breaks
+      </div>
+      {(() => {
+        const workBreaks = punches.filter(p => p.punch_type === "break_start" && p.break_type === "work" && p.remarks);
+        if (workBreaks.length === 0) {
+          return <div style={{ textAlign: "center", padding: "12px 0", color: "var(--text4)", fontSize: 13 }}>No work breaks today.</div>;
+        }
+        return (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {workBreaks.map(breakRecord => {
+              const isExpanded = expandedBreakId === breakRecord.id;
+              return (
+                <div
+                  key={breakRecord.id}
+                  onClick={() => setExpandedBreakId(isExpanded ? null : breakRecord.id)}
+                  style={{
+                    padding: "12px",
+                    background: "var(--bg3)",
+                    borderRadius: "var(--radius)",
+                    border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
+                    cursor: "pointer",
+                    transition: "all 0.2s"
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.remarks}</div>
+                      <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{fmtTime(breakRecord.punch_time)}</div>
+                    </div>
+                    {breakRecord.break_completed === true && (
+                      <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>
+                    )}
+                    {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && (
+                      <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Not Completed</span>
+                    )}
+                  </div>
+
+                  {isExpanded && breakRecord.break_completed !== true && !(breakRecord.break_completed === false && breakRecord.break_incomplete_reason) && (
+                    <div style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                      <button
+                        onClick={async () => {
+                          const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
+                          const data = await res.json();
+                          if (res.ok) {
+                            addToast("Break task marked as completed.", "success");
+                            if (data.data) {
+                              refreshTodayData(data.data);
+                            } else {
+                              await refreshTodayData();
+                            }
+                          } else {
+                            addToast(data.error || "Failed to update break status.", "error");
+                          }
+                        }}
+                        style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer", flex: 1 }}
+                      >
+                        ✓ Completed
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedBreakId(breakRecord.id);
+                          setShowIncompleteModal(true);
+                        }}
+                        style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer", flex: 1 }}
+                      >
+                        ✗ Not Completed
+                      </button>
+                    </div>
+                  )}
+
+                  {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && isExpanded && (
+                    <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                      <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Reason for incompletion:</div>
+                      <div style={{ fontSize: 12, padding: "4px 8px", background: "var(--red-light)", borderRadius: "var(--radius-sm)", color: "var(--red)" }}>
+                        {breakRecord.break_incomplete_reason}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+    </Card>
+
+    {/* Break Modal */}
+    {showBreakModal && (
+      <Modal title="Start Break" onClose={() => { setShowBreakModal(false); setBreakType(null); setBreakReason(""); }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <p style={{ fontSize: 13, color: "var(--text3)" }}>Choose break type:</p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn onClick={handlePersonalBreak} loading={punchLoading} variant="green" style={{ flex: 1 }}>
+              <Icon name="coffee" size={14} color="var(--green)" />Personal Break
+            </Btn>
+            <Btn onClick={() => setBreakType("work")} variant="blue" style={{ flex: 1 }}>
+              <Icon name="briefcase" size={14} color="var(--blue)" />Work‑Related
+            </Btn>
+          </div>
+
+          {breakType === "work" && (
+            <div style={{ marginTop: 12 }}>
+              <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 8 }}>Reason for work‑related break:</p>
+              <textarea
+                rows={3}
+                value={breakReason}
+                onChange={e => setBreakReason(e.target.value)}
+                placeholder="e.g., Inspecting equipment at another site, delivering materials, etc."
+                style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
+              />
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <Btn onClick={handleCustomBreak} loading={punchLoading} style={{ flex: 1 }}>
+                  <Icon name="check" size={14} color="white" />Start Break
+                </Btn>
+                <Btn onClick={() => setBreakType(null)} variant="secondary" style={{ flex: 1 }}>Back</Btn>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+    )}
+
+    {/* Incomplete Reason Modal */}
+    {showIncompleteModal && (
+      <Modal title="Why was this task not completed?" onClose={() => { setShowIncompleteModal(false); setIncompleteReason(""); setSelectedBreakId(null); }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <textarea
+            rows={4}
+            value={incompleteReason}
+            onChange={e => setIncompleteReason(e.target.value)}
+            placeholder="e.g., Delayed due to weather, equipment not available, etc."
+            style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn
+              onClick={async () => {
+                if (!incompleteReason.trim()) {
+                  addToast("Please enter a reason.", "error");
+                  return;
+                }
+                const res = await authFetch(`/api/attendance/break/${selectedBreakId}/not-complete`, {
+                  method: "PUT",
+                  body: JSON.stringify({ reason: incompleteReason })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                  addToast("Break marked as not completed.", "success");
+                  setShowIncompleteModal(false);
+                  setIncompleteReason("");
+                  setSelectedBreakId(null);
+                  if (data.data) {
+                    refreshTodayData(data.data);
+                  } else {
+                    await refreshTodayData();
+                  }
+                } else {
+                  addToast(data.error || "Failed to update.", "error");
+                }
+              }}
+              style={{ flex: 1 }}
+            >
+              <Icon name="check" size={14} color="white" />Submit
+            </Btn>
+            <Btn onClick={() => setShowIncompleteModal(false)} variant="secondary" style={{ flex: 1 }}>Cancel</Btn>
+          </div>
+        </div>
+      </Modal>
+    )}
+
+    {/* Camera Modal */}
+    {showCamera && typeof window !== 'undefined' && (
+      <CameraModal
+        onClose={() => setShowCamera(false)}
+        onCapture={(photo) => processClockIn(photo)}
+      />
+    )}
+  </>
+);
+  return (
+  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    {/* --- Tab Navigation (vertical buttons with collapse) --- */}
+    <div style={{ background: "var(--bg2)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border)", overflow: "hidden", marginBottom: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)" }}>Workflow</span>
+        <button onClick={() => setNavCollapsed(!navCollapsed)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text3)" }}>
+          <Icon name={navCollapsed ? "chevronDown" : "chevronUp"} size={16} />
+        </button>
+      </div>
+      {!navCollapsed && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px" }}>
+          {["timecard", "route", "fuel", "equipment", "tasks"].map(tab => (
+            <button
+              key={tab}
+              onClick={() => setSelectedTab(tab)}
+              style={{
+                padding: "10px 12px",
+                borderRadius: "var(--radius-sm)",
+                background: selectedTab === tab ? "var(--blue-light)" : "transparent",
+                border: "none",
+                cursor: "pointer",
+                textAlign: "left",
+                fontSize: 14,
+                fontWeight: selectedTab === tab ? 600 : 500,
+                color: selectedTab === tab ? "var(--blue)" : "var(--text2)",
+                transition: "all 0.2s",
+              }}
+            >
+              {tab === "timecard" ? "Time Card" : tab === "route" ? "Route Workflow" : tab === "fuel" ? "Fuel Entry" : tab === "equipment" ? "Equipment" : "Tasks"}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+
+    {/* Content based on selected tab */}
+    {selectedTab === "timecard" && renderTimeCard()}
+    {selectedTab === "route" && (
+      <RouteTabContent user={user} t={t} addToast={addToast} />
+    )}
+    {selectedTab === "fuel" && (
+      <Card>
+        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Fuel Entry</h3>
+        <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
+      </Card>
+    )}
+    {selectedTab === "equipment" && (
+      <Card>
+        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Equipment</h3>
+        <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
+      </Card>
+    )}
+    {selectedTab === "tasks" && (
+      <Card>
+        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Tasks</h3>
+        <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
+      </Card>
+    )}
+  </div>
+);
+}
+
+function RouteTabContent({ user, t, addToast }) {
+  const [route, setRoute] = useState(null);
+  const [stops, setStops] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeStop, setActiveStop] = useState(null);
+  const [activeBreak, setActiveBreak] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedStop, setSelectedStop] = useState(null);
+  const [formData, setFormData] = useState({});
+  const [breakType, setBreakType] = useState("");
+  const [showBreakModal, setShowBreakModal] = useState(false);
+  const [stopForm, setStopForm] = useState({ distanceMiles: "", timeAtStoreMinutes: "", routeRemarks: "" });
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await authFetch("/api/route/today");
+      if (res.ok) {
+        const data = await res.json();
+        setRoute(data.route);
+        setStops(data.stops);
+        const active = data.stops.find(s => !s.end_time);
+        setActiveStop(active || null);
+        const breakRes = await authFetch("/api/route/active-break");
+        if (breakRes.ok) {
+          const breakData = await breakRes.json();
+          setActiveBreak(breakData.break || null);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const startStop = async () => {
+    try {
+      const res = await authFetch("/api/route/start-stop", { method: "POST" });
+      if (res.ok) {
+        const newStop = await res.json();
+        setStops(prev => [...prev, newStop]);
+        setActiveStop(newStop);
+      } else {
+        const err = await res.json();
+        addToast(err.error || "Failed to start stop", "error");
+      }
+    } catch (err) {
+      addToast("Network error", "error");
+    }
+  };
+
+  const endStop = async () => {
+    if (!activeStop) return;
+    const { distanceMiles, timeAtStoreMinutes, routeRemarks } = stopForm;
+    if (!distanceMiles || !timeAtStoreMinutes) {
+      addToast("Please enter distance and time at store", "error");
+      return;
+    }
+    try {
+      const res = await authFetch(`/api/route/stop/${activeStop.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ distanceMiles, timeAtStoreMinutes, routeRemarks })
+      });
+      if (res.ok) {
+        setActiveStop(null);
+        setStopForm({ distanceMiles: "", timeAtStoreMinutes: "", routeRemarks: "" });
+        fetchData();
+      } else {
+        const err = await res.json();
+        addToast(err.error || "Failed to end stop", "error");
+      }
+    } catch (err) {
+      addToast("Network error", "error");
+    }
+  };
+
+  const openDetails = (stop) => {
+    setSelectedStop(stop);
+    setFormData({
+      storeName: stop.store_name || "",
+      orderAmount: stop.order_amount || "",
+      deliveryAmount: stop.delivery_amount || "",
+      productPriceRemark: stop.product_price_remark || "",
+      storeRemark: stop.store_remark || "",
+      nextSchedule: stop.next_schedule || "",
+    });
+    setShowDetailsModal(true);
+  };
+
+  const saveDetails = async () => {
+    if (!selectedStop) return;
+    try {
+      const res = await authFetch(`/api/route/stop/${selectedStop.id}/details`, {
+        method: "POST",
+        body: JSON.stringify(formData)
+      });
+      if (res.ok) {
+        setShowDetailsModal(false);
+        fetchData();
+      } else {
+        const err = await res.json();
+        addToast(err.error || "Failed to save details", "error");
+      }
+    } catch (err) {
+      addToast("Network error", "error");
+    }
+  };
+
+  const startBreak = async () => {
+    if (!breakType) {
+      addToast("Please select break type", "error");
+      return;
+    }
+    try {
+      const res = await authFetch("/api/route/break/start", {
+        method: "POST",
+        body: JSON.stringify({ breakType, stopId: activeStop?.id })
+      });
+      if (res.ok) {
+        const breakData = await res.json();
+        setActiveBreak(breakData);
+        setShowBreakModal(false);
+        setBreakType("");
+        fetchData();
+      } else {
+        const err = await res.json();
+        addToast(err.error || "Failed to start break", "error");
+      }
+    } catch (err) {
+      addToast("Network error", "error");
+    }
+  };
+
+  const endBreak = async () => {
+    if (!activeBreak) return;
+    try {
+      const res = await authFetch("/api/route/break/end", {
+        method: "POST",
+        body: JSON.stringify({ breakId: activeBreak.id })
+      });
+      if (res.ok) {
+        setActiveBreak(null);
+        fetchData();
+      } else {
+        const err = await res.json();
+        addToast(err.error || "Failed to end break", "error");
+      }
+    } catch (err) {
+      addToast("Network error", "error");
+    }
+  };
+
+  if (loading) {
+    return <div style={{ textAlign: "center", padding: 24 }}>Loading route data...</div>;
+  }
+
+  // Route not started (no stops) – show a clear start button
+  if (stops.length === 0) {
+    return (
+      <Card>
+        <div style={{ textAlign: "center", padding: "32px 16px" }}>
+          <Icon name="navigation" size={48} color="var(--blue)" style={{ marginBottom: 16 }} />
+          <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>No active route</h3>
+          <p style={{ color: "var(--text3)", marginBottom: 24 }}>Click below to start your daily route.</p>
+          <Btn onClick={startStop} size="lg" style={{ width: "100%", maxWidth: 300, margin: "0 auto" }}>
+            <Icon name="play" size={16} color="white" /> Start Route
+          </Btn>
+        </div>
+      </Card>
+    );
+  }
+
+  // Route in progress – show full route UI
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Assigned Worksite Card */}
-      {employeeWorksite && (
-        <Card style={{ border: "1.5px solid var(--blue-mid)", background: "var(--blue-light)" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: "var(--radius)", background: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}>
-              <Icon name="pin" size={18} color="white" />
-            </div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>{t.assignedWorksite}</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.01em" }}>{employeeWorksite.project_name || employeeWorksite.name}</div>
-              {employeeWorksite.address && <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 2, fontWeight: 400 }}>{employeeWorksite.address}</div>}
-              <div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 2 }}>{parseFloat(employeeWorksite.latitude).toFixed(4)}°, {parseFloat(employeeWorksite.longitude).toFixed(4)}° · {employeeWorksite.radius_feet}ft radius</div>
-            </div>
+      {/* Route status bar */}
+      <div style={{ background: "var(--bg3)", borderRadius: "var(--radius)", padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <div>
+          <span style={{ fontSize: 12, color: "var(--text3)" }}>Route status: </span>
+          <strong style={{ color: "var(--blue)" }}>In Progress</strong>
+        </div>
+        {stops.length > 0 && (
+          <span style={{ fontSize: 12, color: "var(--text3)" }}>{stops.length} stop{stops.length !== 1 && "s"} completed</span>
+        )}
+      </div>
+
+      {/* Action buttons for active stop */}
+      {activeStop ? (
+        <Card>
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Active Stop #{activeStop.stop_number}</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <Btn onClick={() => setShowBreakModal(true)} variant="secondary" size="md" style={{ width: "100%" }}>
+              <Icon name="coffee" size={14} /> Start Break
+            </Btn>
+            <input
+              type="number"
+              placeholder="Distance (miles)"
+              value={stopForm.distanceMiles}
+              onChange={e => setStopForm({ ...stopForm, distanceMiles: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <input
+              type="number"
+              placeholder="Time at store (min)"
+              value={stopForm.timeAtStoreMinutes}
+              onChange={e => setStopForm({ ...stopForm, timeAtStoreMinutes: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <input
+              type="text"
+              placeholder="Route remarks"
+              value={stopForm.routeRemarks}
+              onChange={e => setStopForm({ ...stopForm, routeRemarks: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <Btn onClick={endStop} variant="danger" size="md" style={{ width: "100%" }}>
+              End Stop
+            </Btn>
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <div style={{ textAlign: "center", padding: "16px 0" }}>
+            <Btn onClick={startStop} variant="primary" size="md">
+              <Icon name="plus" size={14} color="white" /> Add Next Stop
+            </Btn>
           </div>
         </Card>
       )}
 
-      {/* Compact Time Summary */}
-      <div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>
-            {fmtMins(totalWorked)}
-          </div>
-          {overtimeMins > 0 && (
-            <div style={{ fontSize: 11, color: "var(--orange)", fontWeight: 500, marginTop: 4 }}>
-              <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
-            </div>
-          )}
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>
-            {fmtMins(totalBreak)}
-          </div>
-        </div>
-      </div>
-
-      {/* Main Action Card (Clock In/Out/Break) */}
+      {/* Stops table */}
       <Card>
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {empStatus === "clocked_out" && (
-            <Btn
-              onClick={handleClockIn}
-              disabled={!onSite || clockInButtonLoading}
-              loading={clockInButtonLoading}
-              size="lg"
-              style={{ width: "100%" }}
-            >
-              <Icon name="camera" size={16} color="white" />{t.clockIn}
-            </Btn>
-          )}
-          {empStatus === "clocked_in" && (
-            <>
-              <Btn onClick={() => setShowBreakModal(true)} disabled={punchLoading} variant="secondary" size="md" style={{ width: "100%" }}>
-                <Icon name="coffee" size={15} color="var(--amber)" />Break
-              </Btn>
-              <Btn onClick={handleClockOut} disabled={punchLoading} loading={punchLoading} variant="danger" size="md" style={{ width: "100%" }}>
-                <Icon name="stop" size={15} color="var(--red)" />{t.clockOut}
-              </Btn>
-            </>
-          )}
-          {empStatus === "on_break" && (
-            <Btn onClick={handleBreakEnd} disabled={punchLoading} loading={punchLoading} variant="green" size="lg" style={{ width: "100%" }}>
-              <Icon name="play" size={16} color="var(--green)" />{t.endBreak}
-            </Btn>
-          )}
-        </div>
-        {gpsLoading && userLat == null && displayWS?.latitude != null && (
-          <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "rgba(255,255,255,0.7)", border: "1px solid rgba(217,119,6,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
-            <span className="spin" style={{ width: 12, height: 12, border: "2px solid var(--amber)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", flexShrink: 0 }} />
-            <span style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 500 }}>Getting your location…</span>
-          </div>
-        )}
-        {!gpsLoading && !onSite && displayWS?.latitude != null && userLat != null && (
-          <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "var(--red-light)", border: "1.5px solid rgba(220,38,38,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
-            <Icon name="alert" size={14} color="var(--red)" />
-            <span style={{ fontSize: 12.5, color: "var(--red)", fontWeight: 450 }}>Must be within {displayWS.radius_feet} ft of your assigned worksite.</span>
+        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Today's Stops</h3>
+        {stops.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 24, color: "var(--text4)" }}>No stops yet. Start a new stop.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ minWidth: 600 }}>
+              <thead>
+                <tr>
+                  <th>Stop #</th>
+                  <th>Start → End</th>
+                  <th>Travel Time</th>
+                  <th>Distance</th>
+                  <th>Avg MPH</th>
+                  <th>Breaks</th>
+                  <th>Time @ Store</th>
+                  <th>Remarks</th>
+                  <th>Actions</th>
+                  </tr>
+                </thead>
+              <tbody>
+                {stops.map(stop => (
+                  <tr key={stop.id}>
+                    <td>{stop.stop_number}</td>
+                    <td>{stop.start_time ? fmtTime(stop.start_time) : "—"} → {stop.end_time ? fmtTime(stop.end_time) : "—"}</td>
+                    <td>{stop.travel_time_minutes ? fmtMins(stop.travel_time_minutes) : "—"}</td>
+                    <td>{stop.distance_miles ? `${stop.distance_miles} mi` : "—"}</td>
+                    <td>{stop.avg_mph ? `${stop.avg_mph} mph` : "—"}</td>
+                    <td>{stop.breaks_taken ? "Yes" : "No"}</td>
+                    <td>{stop.time_at_store_minutes ? fmtMins(stop.time_at_store_minutes) : "—"}</td>
+                    <td>{stop.route_remarks || "—"}</td>
+                    <td>
+                      <Btn onClick={() => openDetails(stop)} variant="secondary" size="sm">
+                        {t.addDetails}
+                      </Btn>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </Card>
-      <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>
-              {t.route || "Route"}
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
-              {routeStatus === "in_progress" ? "In Progress" : routeStatus === "completed" ? "Completed" : "Not Started"}
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
-              {routeStatus === "in_progress" && "You have an active route – continue to add stops and breaks."}
-              {routeStatus === "completed" && "Today's route completed. View details in Route history."}
-              {routeStatus === "not_started" && "Start your daily route to track stops, travel time, and store visits."}
-            </div>
+
+      {/* Details Modal */}
+      {showDetailsModal && (
+        <Modal title="Stop Details" onClose={() => setShowDetailsModal(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <input
+              type="text"
+              placeholder={t.storeName}
+              value={formData.storeName}
+              onChange={e => setFormData({ ...formData, storeName: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <input
+              type="number"
+              placeholder={t.orderAmount}
+              value={formData.orderAmount}
+              onChange={e => setFormData({ ...formData, orderAmount: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <input
+              type="number"
+              placeholder={t.deliveryAmount}
+              value={formData.deliveryAmount}
+              onChange={e => setFormData({ ...formData, deliveryAmount: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <textarea
+              rows={2}
+              placeholder={t.productPriceRemark}
+              value={formData.productPriceRemark}
+              onChange={e => setFormData({ ...formData, productPriceRemark: e.target.value })}
+              style={{ fontSize: 14 }}
+            />
+            <textarea
+              rows={2}
+              placeholder={t.storeRemark}
+              value={formData.storeRemark}
+              onChange={e => setFormData({ ...formData, storeRemark: e.target.value })}
+              style={{ fontSize: 14 }}
+            />
+            <input
+              type="text"
+              placeholder={t.nextSchedule}
+              value={formData.nextSchedule}
+              onChange={e => setFormData({ ...formData, nextSchedule: e.target.value })}
+              style={{ fontSize: 16 }}
+            />
+            <Btn onClick={saveDetails} style={{ width: "100%" }}>Save Details</Btn>
           </div>
-          <Btn
-            onClick={onNavigateToRoute}
-            variant={routeStatus === "in_progress" ? "blue" : "primary"}
-            size="md"
-            loading={routeLoading}
-          >
-            <Icon name="navigation" size={14} color="white" />
-            {routeStatus === "not_started"
-              ? t.startRoute || "Start Route"
-              : routeStatus === "in_progress"
-              ? t.continueRoute || "Continue Route"
-              : t.viewRoute || "View Route"}
-          </Btn>
-        </div>
-      </Card>
-
-      {/* Tasks Section */}
-      {/* My Tasks Section (Collapsible) */}
-{/* My Tasks Section */}
-<Card>
-  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
-    {tasksLoading && (
-      <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />
-    )}
-  </div>
-
-  {employeeTasks.length === 0 ? (
-    <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>
-      No tasks assigned.
-    </div>
-  ) : (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {employeeTasks.map((task) => {
-        const isExpanded = expandedTaskId === task.id;
-        const isLoading = loadingTaskId === task.id;
-
-        const handleComplete = async () => {
-  if (isLoading) return;
-  setLoadingTaskId(task.id);
-  try {
-    const res = await authFetch(`/api/tasks/${task.id}/status`, {
-      method: "PUT",
-      body: JSON.stringify({ status: "completed" }),
-    });
-    if (res.ok) {
-      addToast("Task marked as completed", "success");
-      fetchEmployeeTasks(tasksPage);
-    } else {
-      const errData = await res.json();
-      console.error("Task update failed:", errData);
-      addToast(errData.error || "Failed to update", "error");
-    }
-  } catch (err) {
-    console.error("Network error:", err);
-    addToast("Network error", "error");
-  } finally {
-    setLoadingTaskId(null);
-  }
-};
-
-        const handleIncomplete = async () => {
-          const reason = prompt("Why is this task incomplete?");
-          if (!reason) return;
-          if (isLoading) return;
-          setLoadingTaskId(task.id);
-          const res = await authFetch(`/api/tasks/${task.id}/status`, {
-            method: "PUT",
-            body: JSON.stringify({ status: "incomplete", incompleteReason: reason }),
-          });
-          if (res.ok) {
-            addToast("Task marked as incomplete", "success");
-            fetchEmployeeTasks(tasksPage);
-          } else {
-            addToast("Failed to update", "error");
-          }
-          setLoadingTaskId(null);
-        };
-
-        return (
-          <div
-            key={task.id}
-            style={{
-              padding: "12px",
-              background: "var(--bg3)",
-              borderRadius: "var(--radius)",
-              border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
-              cursor: "pointer",
-              transition: "all 0.2s",
-            }}
-            onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>
-                  {task.title}
-                </div>
-                {task.description && (
-                  <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>
-                    {task.description}
-                  </div>
-                )}
-                {task.url && (
-                  <div style={{ marginTop: 6 }}>
-                    {task.task_type === "youtube" ? (
-                      <a
-                        href={task.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ fontSize: 12, color: "var(--blue)", display: "flex", alignItems: "center", gap: 4 }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Icon name="play" size={12} /> Watch on YouTube
-                      </a>
-                    ) : (
-                      <a
-                        href={task.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ fontSize: 12, color: "var(--blue)" }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {task.task_type === "document" ? "📄 View Document" : "🔗 Open Link"}
-                      </a>
-                    )}
-                  </div>
-                )}
-                {task.due_date && (
-                  <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
-                    Due: {fmtDate(task.due_date)}
-                  </div>
-                )}
-              </div>
-              {task.status === "completed" && (
-                <span style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)" }}>
-                  ✓ Completed
-                </span>
-              )}
-              {task.status === "incomplete" && (
-                <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>
-                  ✗ Incomplete
-                </span>
-              )}
-              {task.status === "pending" && (
-                <Icon name={isExpanded ? "chevronUp" : "chevronDown"} size={18} color="var(--text3)" />
-              )}
-            </div>
-
-            {/* Expanded actions (only for pending tasks) */}
-            {isExpanded && task.status === "pending" && (
-              <div
-                style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={handleComplete}
-                  disabled={isLoading}
-                  style={{
-                    background: "var(--green-light)",
-                    border: "1px solid rgba(5,150,105,0.2)",
-                    borderRadius: "var(--radius-sm)",
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: "var(--green)",
-                    cursor: "pointer",
-                    flex: 1,
-                    opacity: isLoading ? 0.6 : 1,
-                  }}
-                >
-                  {isLoading ? "Updating..." : "✓ Completed"}
-                </button>
-                <button
-                  onClick={handleIncomplete}
-                  disabled={isLoading}
-                  style={{
-                    background: "var(--red-light)",
-                    border: "1px solid rgba(220,38,38,0.2)",
-                    borderRadius: "var(--radius-sm)",
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: "var(--red)",
-                    cursor: "pointer",
-                    flex: 1,
-                    opacity: isLoading ? 0.6 : 1,
-                  }}
-                >
-                  ✗ Incomplete
-                </button>
-              </div>
-            )}
-
-            {/* Show incomplete reason if present */}
-            {task.status === "incomplete" && task.incomplete_reason && (
-              <div style={{ marginTop: 12, fontSize: 11, color: "var(--red)", background: "var(--red-light)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>
-                Reason: {task.incomplete_reason}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  )}
-
-  {/* Pagination */}
-  {tasksTotal > tasksPerPage && (
-    <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
-      <button
-        onClick={() => fetchEmployeeTasks(tasksPage - 1)}
-        disabled={tasksPage === 1}
-        style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage === 1 ? "not-allowed" : "pointer", opacity: tasksPage === 1 ? 0.5 : 1 }}
-      >
-        Previous
-      </button>
-      <span style={{ fontSize: 13, padding: "6px 12px" }}>
-        Page {tasksPage} of {Math.ceil(tasksTotal / tasksPerPage)}
-      </span>
-      <button
-        onClick={() => fetchEmployeeTasks(tasksPage + 1)}
-        disabled={tasksPage * tasksPerPage >= tasksTotal}
-        style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage * tasksPerPage >= tasksTotal ? "not-allowed" : "pointer", opacity: tasksPage * tasksPerPage >= tasksTotal ? 0.5 : 1 }}
-      >
-        Next
-      </button>
-    </div>
-  )}
-</Card>
-
-      {/* Today's Work Breaks */}
-      <Card>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>
-          Today's Work Breaks
-        </div>
-        {(() => {
-          const workBreaks = punches.filter(p => p.punch_type === "break_start" && p.break_type === "work" && p.remarks);
-          if (workBreaks.length === 0) {
-            return <div style={{ textAlign: "center", padding: "12px 0", color: "var(--text4)", fontSize: 13 }}>No work breaks today.</div>;
-          }
-          return (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {workBreaks.map(breakRecord => {
-                const isExpanded = expandedBreakId === breakRecord.id;
-                return (
-                  <div
-                    key={breakRecord.id}
-                    onClick={() => setExpandedBreakId(isExpanded ? null : breakRecord.id)}
-                    style={{
-                      padding: "12px",
-                      background: "var(--bg3)",
-                      borderRadius: "var(--radius)",
-                      border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
-                      cursor: "pointer",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.remarks}</div>
-                        <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{fmtTime(breakRecord.punch_time)}</div>
-                      </div>
-                      {breakRecord.break_completed === true && (
-                        <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>
-                      )}
-                      {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && (
-                        <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Not Completed</span>
-                      )}
-                    </div>
-
-                    {isExpanded && breakRecord.break_completed !== true && !(breakRecord.break_completed === false && breakRecord.break_incomplete_reason) && (
-                      <div style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                        <button
-                          onClick={async () => {
-                            const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
-                            const data = await res.json();
-                            if (res.ok) {
-                              addToast("Break task marked as completed.", "success");
-                              if (data.data) {
-                                refreshTodayData(data.data);
-                              } else {
-                                await refreshTodayData();
-                              }
-                            } else {
-                              addToast(data.error || "Failed to update break status.", "error");
-                            }
-                          }}
-                          style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer", flex: 1 }}
-                        >
-                          ✓ Completed
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedBreakId(breakRecord.id);
-                            setShowIncompleteModal(true);
-                          }}
-                          style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer", flex: 1 }}
-                        >
-                          ✗ Not Completed
-                        </button>
-                      </div>
-                    )}
-
-                    {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && isExpanded && (
-                      <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                        <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Reason for incompletion:</div>
-                        <div style={{ fontSize: 12, padding: "4px 8px", background: "var(--red-light)", borderRadius: "var(--radius-sm)", color: "var(--red)" }}>
-                          {breakRecord.break_incomplete_reason}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })()}
-      </Card>
+        </Modal>
+      )}
 
       {/* Break Modal */}
       {showBreakModal && (
-        <Modal title="Start Break" onClose={() => { setShowBreakModal(false); setBreakType(null); setBreakReason(""); }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <p style={{ fontSize: 13, color: "var(--text3)" }}>Choose break type:</p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <Btn onClick={handlePersonalBreak} loading={punchLoading} variant="green" style={{ flex: 1 }}>
-                <Icon name="coffee" size={14} color="var(--green)" />Personal Break
-              </Btn>
-              <Btn onClick={() => setBreakType("work")} variant="blue" style={{ flex: 1 }}>
-                <Icon name="briefcase" size={14} color="var(--blue)" />Work‑Related
-              </Btn>
-            </div>
-
-            {breakType === "work" && (
-              <div style={{ marginTop: 12 }}>
-                <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 8 }}>Reason for work‑related break:</p>
-                <textarea
-                  rows={3}
-                  value={breakReason}
-                  onChange={e => setBreakReason(e.target.value)}
-                  placeholder="e.g., Inspecting equipment at another site, delivering materials, etc."
-                  style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
-                />
-                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                  <Btn onClick={handleCustomBreak} loading={punchLoading} style={{ flex: 1 }}>
-                    <Icon name="check" size={14} color="white" />Start Break
-                  </Btn>
-                  <Btn onClick={() => setBreakType(null)} variant="secondary" style={{ flex: 1 }}>Back</Btn>
-                </div>
-              </div>
-            )}
+        <Modal title="Start Break" onClose={() => setShowBreakModal(false)}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <select value={breakType} onChange={e => setBreakType(e.target.value)} style={{ fontSize: 16 }}>
+              <option value="">Select break type</option>
+              <option value="lunch">Lunch</option>
+              <option value="toilet">Toilet</option>
+              <option value="short">Short Break</option>
+            </select>
+            <Btn onClick={startBreak} style={{ width: "100%" }}>Start Break</Btn>
           </div>
         </Modal>
-      )}
-
-      {/* Incomplete Reason Modal */}
-      {showIncompleteModal && (
-        <Modal title="Why was this task not completed?" onClose={() => { setShowIncompleteModal(false); setIncompleteReason(""); setSelectedBreakId(null); }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <textarea
-              rows={4}
-              value={incompleteReason}
-              onChange={e => setIncompleteReason(e.target.value)}
-              placeholder="e.g., Delayed due to weather, equipment not available, etc."
-              style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
-            />
-            <div style={{ display: "flex", gap: 8 }}>
-              <Btn
-                onClick={async () => {
-                  if (!incompleteReason.trim()) {
-                    addToast("Please enter a reason.", "error");
-                    return;
-                  }
-                  const res = await authFetch(`/api/attendance/break/${selectedBreakId}/not-complete`, {
-                    method: "PUT",
-                    body: JSON.stringify({ reason: incompleteReason })
-                  });
-                  const data = await res.json();
-                  if (res.ok) {
-                    addToast("Break marked as not completed.", "success");
-                    setShowIncompleteModal(false);
-                    setIncompleteReason("");
-                    setSelectedBreakId(null);
-                    if (data.data) {
-                      refreshTodayData(data.data);
-                    } else {
-                      await refreshTodayData();
-                    }
-                  } else {
-                    addToast(data.error || "Failed to update.", "error");
-                  }
-                }}
-                style={{ flex: 1 }}
-              >
-                <Icon name="check" size={14} color="white" />Submit
-              </Btn>
-              <Btn onClick={() => setShowIncompleteModal(false)} variant="secondary" style={{ flex: 1 }}>Cancel</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Camera Modal */}
-      {showCamera && typeof window !== 'undefined' && (
-        <CameraModal
-          onClose={() => setShowCamera(false)}
-          onCapture={(photo) => processClockIn(photo)}
-        />
       )}
     </div>
   );
 }
-
 // ─── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
 function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
   const{employees,attendance,summary}=adminData;
