@@ -1015,20 +1015,25 @@ if (cameraRequired) {
 
       {/* Compact Time Summary */}
       <div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>{fmtMins(totalWorked)}</div>
-          {isOvertime && (
-            <div style={{ fontSize: 10, color: "var(--orange)", fontWeight: 500, marginTop: 2 }}>
-              <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
-            </div>
-          )}
-        </div>
-        <div>
-          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>{fmtMins(totalBreak)}</div>
-        </div>
+  <div style={{ flex: 1 }}>
+    <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
+    <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>
+      {fmtMins(totalWorked)}
+    </div>
+    {/* Overtime line */}
+    {overtimeMins > 0 && (
+      <div style={{ fontSize: 11, color: "var(--orange)", fontWeight: 500, marginTop: 4 }}>
+        <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
       </div>
+    )}
+  </div>
+  <div>
+    <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
+    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>
+      {fmtMins(totalBreak)}
+    </div>
+  </div>
+</div>
 
       {/* Main Action Card */}
       <Card>
@@ -3093,72 +3098,156 @@ function CameraModal({ onClose, onCapture }) {
 }
 
 // ─── ATTENDANCE PAGE ──────────────────────────────────────────────────────────
-function AttendancePage({adminData,t}){
-  const[empFilter,setEmpFilter]=useState("all");
-  const[dateFrom,setDateFrom]=useState("");
-  const[dateTo,setDateTo]=useState("");
-  const[records,setRecords]=useState([]);
-  const[loading,setLoading]=useState(true);
-  const fetch_=useCallback(async()=>{
-    const p=new URLSearchParams();if(empFilter!=="all")p.set("user_id",empFilter);if(dateFrom)p.set("date_from",dateFrom);if(dateTo)p.set("date_to",dateTo);
-    setLoading(true);try{const r=await authFetch(`/api/admin/attendance?${p}`);const d=await r.json();setRecords(Array.isArray(d)?d:[]);}catch{}setLoading(false);
-  },[empFilter,dateFrom,dateTo]);
-  useEffect(()=>{fetch_();},[fetch_]);
-  useEffect(()=>{const iv=setInterval(fetch_,30000);return()=>clearInterval(iv);},[fetch_]);
-  return(
-    <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <SectionHeader title={t.attendance} subtitle={`${records.length} records`} action={<Btn onClick={fetch_} variant="secondary" size="sm" loading={loading}><Icon name="refresh" size={13}/>{t.refresh}</Btn>}/>
+function AttendancePage({ adminData, t }) {
+  const [empFilter, setEmpFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetch_ = useCallback(async () => {
+    const p = new URLSearchParams();
+    if (empFilter !== "all") p.set("user_id", empFilter);
+    if (dateFrom) p.set("date_from", dateFrom);
+    if (dateTo) p.set("date_to", dateTo);
+    setLoading(true);
+    try {
+      const r = await authFetch(`/api/admin/attendance?${p}`);
+      const d = await r.json();
+      setRecords(Array.isArray(d) ? d : []);
+    } catch {}
+    setLoading(false);
+  }, [empFilter, dateFrom, dateTo]);
+
+  useEffect(() => {
+    fetch_();
+  }, [fetch_]);
+
+  useEffect(() => {
+    const iv = setInterval(fetch_, 30000);
+    return () => clearInterval(iv);
+  }, [fetch_]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionHeader
+        title={t.attendance}
+        subtitle={`${records.length} records`}
+        action={
+          <Btn onClick={fetch_} variant="secondary" size="sm" loading={loading}>
+            <Icon name="refresh" size={13} />
+            {t.refresh}
+          </Btn>
+        }
+      />
       <Card>
-        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
-          <select value={empFilter} onChange={e=>setEmpFilter(e.target.value)} style={{fontSize:16}}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+          <select
+            value={empFilter}
+            onChange={(e) => setEmpFilter(e.target.value)}
+            style={{ fontSize: 16 }}
+          >
             <option value="all">All Employees</option>
-            {adminData.employees.map(u=><option key={u.id} value={u.id}>{u.name}{u.user_id?` (${u.user_id})`:""}</option>)}
+            {adminData.employees.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+                {u.user_id ? ` (${u.user_id})` : ""}
+              </option>
+            ))}
           </select>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-            <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{fontSize:16}}/>
-            <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{fontSize:16}}/>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={{ fontSize: 16 }}
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={{ fontSize: 16 }}
+            />
           </div>
         </div>
-        {loading?<div style={{textAlign:"center",padding:24,color:"var(--text3)"}}>Loading...</div>:(
-          <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-            <table style={{minWidth:500}}>
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 24, color: "var(--text3)" }}>
+            Loading...
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <table style={{ minWidth: 500 }}>
               <thead>
-  <tr>
-    <th>Employee</th>
-    <th>Date</th>
-    <th>Clock In</th>
-    <th>Clock Out</th>
-    <th>Total Hours</th>
-    <th>Regular Hours</th>
-    <th>Overtime Hours</th>
-    <th>Status</th>
-  </tr>
-</thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Date</th>
+                  <th>Clock In</th>
+                  <th>Clock Out</th>
+                  <th>Total Hours</th>
+                  <th>Regular Hours</th>
+                  <th>Overtime Hours</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
               <tbody>
-  {records.length === 0 ? (
-    <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text4)", padding: 24 }}>No records found.</td></tr>
-  ) : (
-    records.map(s => (
-      <tr key={s.id}>
-        <td style={{ color: "var(--text)", fontWeight: 600, fontSize: 13.5 }}>{s.name || "—"}</td>
-        <td style={{ fontSize: 12.5 }}>{fmtDate(s.work_date)}</td>
-        <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_in_time)}</td>
-        <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_out_time)}</td>
-        <td style={{ color: s.is_overtime ? "var(--orange)" : "var(--green)", fontWeight: 600, fontSize: 13 }}>
-          {s.status === "active" && s.clock_in_time
-            ? fmtMins(Math.max(0, Math.round((Date.now() - new Date(s.clock_in_time).getTime()) / 60000) - (parseInt(s.break_minutes) || 0)))
-            : fmtMins(s.worked_minutes)}
-          {s.is_overtime && " 🔥"}
-        </td>
-        <td style={{ fontSize: 12.5 }}>{fmtMins(s.regular_minutes || 0)}</td>
-        <td style={{ fontSize: 12.5, color: (s.overtime_minutes || 0) > 0 ? "var(--orange)" : "var(--text3)" }}>
-          {fmtMins(s.overtime_minutes || 0)}
-        </td>
-        <td><StatusBadge status={s.status === "completed" ? "clocked_out" : s.is_overtime ? "overtime" : "clocked_in"} /></td>
-      </tr>
-    ))
-  )}
-</tbody>
+                {records.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: "center", color: "var(--text4)", padding: 24 }}>
+                      No records found.
+                    </td>
+                  </tr>
+                ) : (
+                  records.map((s) => (
+                    <tr key={s.id}>
+                      <td style={{ color: "var(--text)", fontWeight: 600, fontSize: 13.5 }}>
+                        {s.name || "—"}
+                      </td>
+                      <td style={{ fontSize: 12.5 }}>{fmtDate(s.work_date)}</td>
+                      <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_in_time)}</td>
+                      <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_out_time)}</td>
+                      <td
+                        style={{
+                          color: s.is_overtime ? "var(--orange)" : "var(--green)",
+                          fontWeight: 600,
+                          fontSize: 13,
+                        }}
+                      >
+                        {s.status === "active" && s.clock_in_time
+                          ? fmtMins(
+                              Math.max(
+                                0,
+                                Math.round(
+                                  (Date.now() - new Date(s.clock_in_time).getTime()) / 60000
+                                ) - (parseInt(s.break_minutes) || 0)
+                              )
+                            )
+                          : fmtMins(s.worked_minutes)}
+                        {s.is_overtime && " 🔥"}
+                      </td>
+                      <td style={{ fontSize: 12.5 }}>{fmtMins(s.regular_minutes || 0)}</td>
+                      <td
+                        style={{
+                          fontSize: 12.5,
+                          color: (s.overtime_minutes || 0) > 0 ? "var(--orange)" : "var(--text3)",
+                        }}
+                      >
+                        {fmtMins(s.overtime_minutes || 0)}
+                      </td>
+                      <td>
+                        <StatusBadge
+                          status={
+                            s.status === "completed"
+                              ? "clocked_out"
+                              : s.is_overtime
+                              ? "overtime"
+                              : "clocked_in"
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
             </table>
           </div>
         )}
