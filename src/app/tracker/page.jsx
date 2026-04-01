@@ -39,7 +39,8 @@ const T = {
     distance: "Distance",avgMPH: "Avg MPH",breaks: "Breaks",timeAtStore: "Time @ Store",remarks: "Remarks",addStop: "Add Stop",endStop: "End Stop",
     addDetails: "Add Details",storeName: "Store Name",orderAmount: "Order Amount",deliveryAmount: "Delivery Amount",productPriceRemark: "Product & Price Remark",
     storeRemark: "Store Remark",routeRemark: "Route Remark",nextSchedule: "Next Schedule",startBreak: "Start Break",endBreak: "End Break",
-    breakType: "Break Type",lunch: "Lunch",toilet: "Toilet",short: "Short Break"
+    breakType: "Break Type",lunch: "Lunch",toilet: "Toilet",short: "Short Break",
+    startRoute: "Start Route",continueRoute: "Continue Route",viewRoute: "View Route",
   },
   es: {
     signIn:"Iniciar Sesión",userId:"ID de Usuario",password:"Contraseña",clockIn:"Registrar Entrada",
@@ -64,7 +65,8 @@ const T = {
     addStop: "Agregar Parada",endStop: "Finalizar Parada",addDetails: "Agregar Detalles",storeName: "Nombre de la Tienda",
     orderAmount: "Monto del Pedido",deliveryAmount: "Monto de Entrega",productPriceRemark: "Observación de Producto y Precio",storeRemark: "Observación de la Tienda",
     routeRemark: "Observación de la Ruta",nextSchedule: "Próximo Horario",startBreak: "Iniciar Descanso",endBreak: "Finalizar Descanso",
-    breakType: "Tipo de Descanso",lunch: "Almuerzo",toilet: "Baño",short: "Descanso Corto"
+    breakType: "Tipo de Descanso",lunch: "Almuerzo",toilet: "Baño",short: "Descanso Corto",
+    startRoute: "Iniciar Ruta",continueRoute: "Continuar Ruta",viewRoute: "Ver Ruta",
   },
 };
 
@@ -646,7 +648,7 @@ useEffect(() => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")}/>)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")}/>)}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
             {page === "task_history" && <TaskHistoryPage user={currentUser} t={t} />}
@@ -784,7 +786,7 @@ function EmployeeDashboard({
   punchLoading, gpsLoading, userLat, userLon,
   isOvertime, overtimeMins, employeeWorksite,
   handleClockOut, handleBreakStart, handleBreakEnd,
-  t, addToast, refreshTodayData
+  t, addToast, refreshTodayData, onNavigateToRoute
 }) {
   const [now, setNow] = useState(new Date());
   const [showBreakModal, setShowBreakModal] = useState(false);
@@ -806,6 +808,8 @@ function EmployeeDashboard({
   const [expandedTaskId, setExpandedTaskId] = useState(null);
   const [loadingTaskId, setLoadingTaskId] = useState(null);
   const tasksPerPage = 5;
+  const [routeStatus, setRouteStatus] = useState("not_started");
+  const [routeLoading, setRouteLoading] = useState(false);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
@@ -833,6 +837,41 @@ function EmployeeDashboard({
   useEffect(() => {
   fetchEmployeeTasks(1);
 }, [fetchEmployeeTasks]);
+
+  const fetchRouteStatus = useCallback(async () => {
+    setRouteLoading(true);
+    try {
+      const res = await authFetch("/api/route/today");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.route) {
+          if (data.route.status === "completed") {
+            setRouteStatus("completed");
+          } else if (data.stops && data.stops.length > 0) {
+            setRouteStatus("in_progress");
+          } else {
+            setRouteStatus("not_started");
+          }
+        } else {
+          setRouteStatus("not_started");
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch route status", err);
+    } finally {
+      setRouteLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 👇 NEW: Fetch route status on mount
+  useEffect(() => {
+    fetchRouteStatus();
+  }, [fetchRouteStatus]);
 
   const updateTaskStatus = async (taskId, status, reason = "") => {
   const res = await authFetch(`/api/tasks/${taskId}/status`, {
@@ -1028,27 +1067,26 @@ if (cameraRequired) {
 
       {/* Compact Time Summary */}
       <div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
-  <div style={{ flex: 1 }}>
-    <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
-    <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>
-      {fmtMins(totalWorked)}
-    </div>
-    {/* Overtime line */}
-    {overtimeMins > 0 && (
-      <div style={{ fontSize: 11, color: "var(--orange)", fontWeight: 500, marginTop: 4 }}>
-        <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>
+            {fmtMins(totalWorked)}
+          </div>
+          {overtimeMins > 0 && (
+            <div style={{ fontSize: 11, color: "var(--orange)", fontWeight: 500, marginTop: 4 }}>
+              <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
+            </div>
+          )}
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>
+            {fmtMins(totalBreak)}
+          </div>
+        </div>
       </div>
-    )}
-  </div>
-  <div>
-    <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
-    <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>
-      {fmtMins(totalBreak)}
-    </div>
-  </div>
-</div>
 
-      {/* Main Action Card */}
+      {/* Main Action Card (Clock In/Out/Break) */}
       <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {empStatus === "clocked_out" && (
@@ -1090,6 +1128,36 @@ if (cameraRequired) {
             <span style={{ fontSize: 12.5, color: "var(--red)", fontWeight: 450 }}>Must be within {displayWS.radius_feet} ft of your assigned worksite.</span>
           </div>
         )}
+      </Card>
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>
+              {t.route || "Route"}
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
+              {routeStatus === "in_progress" ? "In Progress" : routeStatus === "completed" ? "Completed" : "Not Started"}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+              {routeStatus === "in_progress" && "You have an active route – continue to add stops and breaks."}
+              {routeStatus === "completed" && "Today's route completed. View details in Route history."}
+              {routeStatus === "not_started" && "Start your daily route to track stops, travel time, and store visits."}
+            </div>
+          </div>
+          <Btn
+            onClick={onNavigateToRoute}
+            variant={routeStatus === "in_progress" ? "blue" : "primary"}
+            size="md"
+            loading={routeLoading}
+          >
+            <Icon name="navigation" size={14} color="white" />
+            {routeStatus === "not_started"
+              ? t.startRoute || "Start Route"
+              : routeStatus === "in_progress"
+              ? t.continueRoute || "Continue Route"
+              : t.viewRoute || "View Route"}
+          </Btn>
+        </div>
       </Card>
 
       {/* Tasks Section */}
