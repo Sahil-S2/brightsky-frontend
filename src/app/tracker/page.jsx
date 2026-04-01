@@ -2238,106 +2238,177 @@ function MyAttendance({ t }) {
           <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
             <table style={{ minWidth: 420 }}>
               <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Clock In</th>
-                  <th>Clock Out</th>
-                  <th>Break</th>
-                  <th>Worked</th>
-                  <th>Status</th>
-                  <th>Breaks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text4)", padding: 24 }}>No records found.</td></tr>
-                ) : (
-                  filtered.map(s => (
-                    <>
-                      <tr key={s.id}>
-                        <td style={{ color: "var(--text)", fontWeight: 600, fontSize: 13 }}>{fmtDate(s.work_date)}</td>
-                        <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_in_time)}</td>
-                        <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_out_time)}</td>
-                        <td style={{ fontSize: 12.5 }}>{fmtMins(s.break_minutes)}</td>
-                        <td style={{ color: s.is_overtime ? "var(--orange)" : "var(--green)", fontWeight: 600, fontSize: 13 }}>
-                          {s.status === "active" && s.clock_in_time
-                            ? fmtMins(Math.max(0, Math.round((Date.now() - new Date(s.clock_in_time).getTime()) / 60000) - (parseInt(s.break_minutes) || 0)))
-                            : fmtMins(s.worked_minutes)}
-                          {s.is_overtime && " 🔥"}
-                        </td>
-                        <td><StatusBadge status={s.status === "completed" ? "clocked_out" : s.is_overtime ? "overtime" : "clocked_in"} /></td>
-                        <td>
-                          <button onClick={() => toggleSession(s.id)} style={{ background: "var(--blue-light)", border: "1px solid var(--blue-mid)", borderRadius: "var(--radius-sm)", padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>
-                            {expandedSessionId === s.id ? "Hide" : "Show"} Breaks
-                          </button>
-                        </td>
-                      </tr>
-                      {expandedSessionId === s.id && sessionPunches[s.id] && (
-                        <tr>
-                          <td colSpan={7} style={{ padding: "12px 16px", background: "var(--bg3)" }}>
-                            <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>Break Details</div>
-                            {(() => {
-  const clockInPunch = sessionPunches[s.id].find(p => p.punch_type === "clock_in" || p.punch_type === "auto_clock_in");
-  if (clockInPunch?.photo_data) {
-    return (
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>Clock‑in Photo:</div>
-        <img src={clockInPunch.photo_data} alt="Clock in" style={{ maxWidth: "100px", maxHeight: "100px", borderRadius: "var(--radius)", border: "1px solid var(--border)" }} />
-      </div>
-    );
-  }
-  return null;
-})()}
-                            {sessionPunches[s.id].filter(p => p.punch_type === "break_start").length === 0 ? (
-                              <div style={{ color: "var(--text4)", fontSize: 12 }}>No breaks recorded.</div>
-                            ) : (
-                              
-                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                {sessionPunches[s.id].filter(p => p.punch_type === "break_start").map((p, idx) => {
-                                  const endPunch = sessionPunches[s.id].find(
-                                    ep => ep.punch_type === "break_end" && new Date(ep.punch_time) > new Date(p.punch_time)
-                                  );
-                                  const duration = endPunch
-                                    ? Math.round((new Date(endPunch.punch_time) - new Date(p.punch_time)) / 60000)
-                                    : (s.status === "on_break" && idx === sessionPunches[s.id].filter(p => p.punch_type === "break_start").length - 1)
-                                      ? Math.round((Date.now() - new Date(p.punch_time).getTime()) / 60000)
-                                      : null;
-                                  return (
-                                    <div key={p.id} style={{ borderLeft: "3px solid", borderColor: p.break_type === "work" ? "var(--blue)" : "var(--amber)", paddingLeft: 12 }}>
-  <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>
-    {p.break_type === "work" ? "Work‑Related" : "Personal"} Break
-  </div>
-  {p.remarks && (
-    <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
-      Reason: {p.remarks}
-    </div>
+  <tr>
+    <th>Date</th>
+    <th>Clock In</th>
+    <th>Clock Out</th>
+    <th>Break</th>
+    <th>Total Hours</th>
+    <th>Regular Hours</th>
+    <th>Overtime Hours</th>
+    <th>Status</th>
+    <th>Breaks</th>
+  </tr>
+</thead>
+<tbody>
+  {filtered.length === 0 ? (
+    <tr>
+      <td colSpan={9} style={{ textAlign: "center", color: "var(--text4)", padding: 24 }}>
+        No records found.
+      </td>
+    </tr>
+  ) : (
+    filtered.map(s => (
+      <>
+        <tr key={s.id}>
+          <td style={{ color: "var(--text)", fontWeight: 600, fontSize: 13 }}>
+            {fmtDate(s.work_date)}
+          </td>
+          <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_in_time)}</td>
+          <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_out_time)}</td>
+          <td style={{ fontSize: 12.5 }}>{fmtMins(s.break_minutes)}</td>
+          <td style={{ color: s.is_overtime ? "var(--orange)" : "var(--green)", fontWeight: 600, fontSize: 13 }}>
+            {s.status === "active" && s.clock_in_time
+              ? fmtMins(Math.max(0, Math.round((Date.now() - new Date(s.clock_in_time).getTime()) / 60000) - (parseInt(s.break_minutes) || 0)))
+              : fmtMins(s.worked_minutes)}
+            {s.is_overtime && " 🔥"}
+          </td>
+          <td style={{ fontSize: 12.5 }}>{fmtMins(s.regular_minutes || 0)}</td>
+          <td style={{ fontSize: 12.5, color: (s.overtime_minutes || 0) > 0 ? "var(--orange)" : "var(--text3)" }}>
+            {fmtMins(s.overtime_minutes || 0)}
+          </td>
+          <td>
+            <StatusBadge
+              status={
+                s.status === "completed"
+                  ? "clocked_out"
+                  : s.is_overtime
+                  ? "overtime"
+                  : "clocked_in"
+              }
+            />
+          </td>
+          <td>
+            <button
+              onClick={() => toggleSession(s.id)}
+              style={{
+                background: "var(--blue-light)",
+                border: "1px solid var(--blue-mid)",
+                borderRadius: "var(--radius-sm)",
+                padding: "4px 8px",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              {expandedSessionId === s.id ? "Hide" : "Show"} Breaks
+            </button>
+          </td>
+        </tr>
+        {expandedSessionId === s.id && sessionPunches[s.id] && (
+          <tr>
+            <td colSpan={9} style={{ padding: "12px 16px", background: "var(--bg3)" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
+                Break Details
+              </div>
+              {(() => {
+                const clockInPunch = sessionPunches[s.id].find(
+                  p => p.punch_type === "clock_in" || p.punch_type === "auto_clock_in"
+                );
+                if (clockInPunch?.photo_data) {
+                  return (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>
+                        Clock‑in Photo:
+                      </div>
+                      <img
+                        src={clockInPunch.photo_data}
+                        alt="Clock in"
+                        style={{
+                          maxWidth: "100px",
+                          maxHeight: "100px",
+                          borderRadius: "var(--radius)",
+                          border: "1px solid var(--border)",
+                        }}
+                      />
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              {sessionPunches[s.id].filter(p => p.punch_type === "break_start").length === 0 ? (
+                <div style={{ color: "var(--text4)", fontSize: 12 }}>No breaks recorded.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {sessionPunches[s.id]
+                    .filter(p => p.punch_type === "break_start")
+                    .map((p, idx) => {
+                      const endPunch = sessionPunches[s.id].find(
+                        ep =>
+                          ep.punch_type === "break_end" &&
+                          new Date(ep.punch_time) > new Date(p.punch_time)
+                      );
+                      const duration = endPunch
+                        ? Math.round(
+                            (new Date(endPunch.punch_time) - new Date(p.punch_time)) / 60000
+                          )
+                        : s.status === "on_break" &&
+                          idx ===
+                            sessionPunches[s.id].filter(p => p.punch_type === "break_start")
+                              .length -
+                              1
+                        ? Math.round((Date.now() - new Date(p.punch_time).getTime()) / 60000)
+                        : null;
+                      return (
+                        <div
+                          key={p.id}
+                          style={{
+                            borderLeft: "3px solid",
+                            borderColor:
+                              p.break_type === "work" ? "var(--blue)" : "var(--amber)",
+                            paddingLeft: 12,
+                          }}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>
+                            {p.break_type === "work" ? "Work‑Related" : "Personal"} Break
+                          </div>
+                          {p.remarks && (
+                            <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
+                              Reason: {p.remarks}
+                            </div>
+                          )}
+                          <div style={{ fontSize: 11, color: "var(--text3)" }}>
+                            {fmtTime(p.punch_time)}{" "}
+                            {duration !== null && `· Duration: ${fmtMins(duration)}`}
+                          </div>
+                          {p.break_type === "work" && (
+                            <div style={{ marginTop: 4 }}>
+                              {p.break_completed === true ? (
+                                <span style={{ fontSize: 10, color: "var(--green)" }}>
+                                  ✓ Completed
+                                </span>
+                              ) : p.break_completed === false && p.break_incomplete_reason ? (
+                                <span style={{ fontSize: 10, color: "var(--red)" }}>
+                                  ✗ Not Completed – {p.break_incomplete_reason}
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 10, color: "var(--amber)" }}>
+                                  ⏳ Pending
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </td>
+          </tr>
+        )}
+      </>
+    ))
   )}
-  <div style={{ fontSize: 11, color: "var(--text3)" }}>
-    {fmtTime(p.punch_time)} {duration !== null && `· Duration: ${fmtMins(duration)}`}
-  </div>
-  {p.break_type === "work" && (
-    <div style={{ marginTop: 4 }}>
-      {p.break_completed === true ? (
-        <span style={{ fontSize: 10, color: "var(--green)" }}>✓ Completed</span>
-      ) : p.break_completed === false && p.break_incomplete_reason ? (
-        <span style={{ fontSize: 10, color: "var(--red)" }}>✗ Not Completed – {p.break_incomplete_reason}</span>
-      ) : (
-        <span style={{ fontSize: 10, color: "var(--amber)" }}>⏳ Pending</span>
-      )}
-    </div>
-  )}
-</div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  ))
-                )}
-              </tbody>
+</tbody>
             </table>
           </div>
         )}
@@ -3051,20 +3122,43 @@ function AttendancePage({adminData,t}){
         {loading?<div style={{textAlign:"center",padding:24,color:"var(--text3)"}}>Loading...</div>:(
           <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
             <table style={{minWidth:500}}>
-              <thead><tr><th>Employee</th><th>Date</th><th>Clock In</th><th>Clock Out</th><th>Worked</th><th>Status</th></tr></thead>
+              <thead>
+  <tr>
+    <th>Employee</th>
+    <th>Date</th>
+    <th>Clock In</th>
+    <th>Clock Out</th>
+    <th>Total Hours</th>
+    <th>Regular Hours</th>
+    <th>Overtime Hours</th>
+    <th>Status</th>
+  </tr>
+</thead>
               <tbody>
-                {records.length===0?<tr><td colSpan={6} style={{textAlign:"center",color:"var(--text4)",padding:24}}>No records found.</td></tr>
-                :records.map(s=>(
-                  <tr key={s.id}>
-                    <td style={{color:"var(--text)",fontWeight:600,fontSize:13.5}}>{s.name||"—"}</td>
-                    <td style={{fontSize:12.5}}>{fmtDate(s.work_date)}</td>
-                    <td style={{fontSize:12.5}}>{fmtTime(s.clock_in_time)}</td>
-                    <td style={{fontSize:12.5}}>{fmtTime(s.clock_out_time)}</td>
-                    <td style={{color:s.is_overtime?"var(--orange)":"var(--green)",fontWeight:600,fontSize:13}}>{s.status==="active"&&s.clock_in_time?fmtMins(Math.max(0,Math.round((Date.now()-new Date(s.clock_in_time).getTime())/60000)-(parseInt(s.break_minutes)||0))):fmtMins(s.worked_minutes)}{s.is_overtime&&" 🔥"}</td>
-                    <td><StatusBadge status={s.status==="completed"?"clocked_out":s.is_overtime?"overtime":"clocked_in"}/></td>
-                  </tr>
-                ))}
-              </tbody>
+  {records.length === 0 ? (
+    <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--text4)", padding: 24 }}>No records found.</td></tr>
+  ) : (
+    records.map(s => (
+      <tr key={s.id}>
+        <td style={{ color: "var(--text)", fontWeight: 600, fontSize: 13.5 }}>{s.name || "—"}</td>
+        <td style={{ fontSize: 12.5 }}>{fmtDate(s.work_date)}</td>
+        <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_in_time)}</td>
+        <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_out_time)}</td>
+        <td style={{ color: s.is_overtime ? "var(--orange)" : "var(--green)", fontWeight: 600, fontSize: 13 }}>
+          {s.status === "active" && s.clock_in_time
+            ? fmtMins(Math.max(0, Math.round((Date.now() - new Date(s.clock_in_time).getTime()) / 60000) - (parseInt(s.break_minutes) || 0)))
+            : fmtMins(s.worked_minutes)}
+          {s.is_overtime && " 🔥"}
+        </td>
+        <td style={{ fontSize: 12.5 }}>{fmtMins(s.regular_minutes || 0)}</td>
+        <td style={{ fontSize: 12.5, color: (s.overtime_minutes || 0) > 0 ? "var(--orange)" : "var(--text3)" }}>
+          {fmtMins(s.overtime_minutes || 0)}
+        </td>
+        <td><StatusBadge status={s.status === "completed" ? "clocked_out" : s.is_overtime ? "overtime" : "clocked_in"} /></td>
+      </tr>
+    ))
+  )}
+</tbody>
             </table>
           </div>
         )}
