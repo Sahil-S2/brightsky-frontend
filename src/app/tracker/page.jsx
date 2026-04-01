@@ -1531,63 +1531,76 @@ if (cameraRequired) {
 );
   return (
   <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-    {/* --- Tab Navigation (vertical buttons with collapse) --- */}
-    <div style={{ background: "var(--bg2)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border)", overflow: "hidden", marginBottom: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)" }}>Workflow</span>
-        <button onClick={() => setNavCollapsed(!navCollapsed)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text3)" }}>
-          <Icon name={navCollapsed ? "chevronDown" : "chevronUp"} size={16} />
+    {/* --- Horizontal Top Navigation with Collapse --- */}
+<div style={{ background: "var(--bg2)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border)", overflow: "hidden", marginBottom: 16 }}>
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
+    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)" }}>Workflow</span>
+    <button
+      onClick={() => setNavCollapsed(!navCollapsed)}
+      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text3)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}
+    >
+      <Icon name={navCollapsed ? "chevronDown" : "chevronUp"} size={16} />
+    </button>
+  </div>
+
+  {/* Expanded: show all five buttons horizontally */}
+  {!navCollapsed && (
+    <div style={{ display: "flex", overflowX: "auto", padding: "8px", gap: "4px", borderTop: "1px solid var(--border)" }}>
+      {["timecard", "route", "fuel", "equipment", "tasks"].map(tab => (
+        <button
+          key={tab}
+          onClick={() => setSelectedTab(tab)}
+          style={{
+            flex: "0 0 auto",
+            padding: "8px 16px",
+            borderRadius: "var(--radius-sm)",
+            background: selectedTab === tab ? "var(--blue-light)" : "transparent",
+            border: "none",
+            cursor: "pointer",
+            fontSize: 14,
+            fontWeight: selectedTab === tab ? 600 : 500,
+            color: selectedTab === tab ? "var(--blue)" : "var(--text2)",
+            transition: "all 0.2s",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {tab === "timecard" ? "Time Card" : tab === "route" ? "Route Workflow" : tab === "fuel" ? "Fuel Entry" : tab === "equipment" ? "Equipment" : "Tasks"}
         </button>
-      </div>
-      {!navCollapsed && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "8px" }}>
-          {["timecard", "route", "fuel", "equipment", "tasks"].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setSelectedTab(tab)}
-              style={{
-                padding: "10px 12px",
-                borderRadius: "var(--radius-sm)",
-                background: selectedTab === tab ? "var(--blue-light)" : "transparent",
-                border: "none",
-                cursor: "pointer",
-                textAlign: "left",
-                fontSize: 14,
-                fontWeight: selectedTab === tab ? 600 : 500,
-                color: selectedTab === tab ? "var(--blue)" : "var(--text2)",
-                transition: "all 0.2s",
-              }}
-            >
-              {tab === "timecard" ? "Time Card" : tab === "route" ? "Route Workflow" : tab === "fuel" ? "Fuel Entry" : tab === "equipment" ? "Equipment" : "Tasks"}
-            </button>
-          ))}
-        </div>
-      )}
+      ))}
     </div>
+  )}
+
+  {/* Collapsed: show only the active tab name */}
+  {navCollapsed && (
+    <div style={{ padding: "8px 12px", background: "var(--bg3)" }}>
+      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>
+        {selectedTab === "timecard" ? "Time Card" : selectedTab === "route" ? "Route Workflow" : selectedTab === "fuel" ? "Fuel Entry" : selectedTab === "equipment" ? "Equipment" : "Tasks"}
+      </span>
+    </div>
+  )}
+</div>
 
     {/* Content based on selected tab */}
-    {selectedTab === "timecard" && renderTimeCard()}
-    {selectedTab === "route" && (
-      <RouteTabContent user={user} t={t} addToast={addToast} />
-    )}
-    {selectedTab === "fuel" && (
-      <Card>
-        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Fuel Entry</h3>
-        <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
-      </Card>
-    )}
-    {selectedTab === "equipment" && (
-      <Card>
-        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Equipment</h3>
-        <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
-      </Card>
-    )}
-    {selectedTab === "tasks" && (
-      <Card>
-        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Tasks</h3>
-        <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
-      </Card>
-    )}
+{selectedTab === "timecard" && renderTimeCard()}
+{selectedTab === "route" && <RouteTabContent user={user} t={t} addToast={addToast} />}
+{selectedTab === "fuel" && (
+  <Card>
+    <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Fuel Entry</h3>
+    <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
+  </Card>
+)}
+{selectedTab === "equipment" && (
+  <Card>
+    <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Equipment</h3>
+    <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
+  </Card>
+)}
+{selectedTab === "tasks" && (
+  <Card>
+    <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Tasks</h3>
+    <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
+  </Card>
+)}
   </div>
 );
 }
