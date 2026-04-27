@@ -919,17 +919,20 @@ function EmployeeDashboard({
   }, []);
 
   const startOuting = async () => {
-    let location = null;
-    try {
-      if (navigator.geolocation) {
-        const pos = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
-        });
-        location = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      }
-    } catch (err) {
-      console.warn("Location not available");
+  let location = null;
+  try {
+    if (navigator.geolocation) {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+      });
+      location = { lat: pos.coords.latitude, lon: pos.coords.longitude };
     }
+  } catch (err) {
+    console.warn("Location not available:", err);
+    addToast("Location not available – task will be recorded without location.", "warning");
+  }
+
+  try {
     const res = await authFetch("/api/attendance/outing/start", {
       method: "POST",
       body: JSON.stringify({
@@ -938,17 +941,20 @@ function EmployeeDashboard({
         remarks: outingRemarks,
       }),
     });
-    if (res.ok) {
-      addToast("Project task started", "success");
-      setShowOutingModal(false);
-      setOutingRemarks("");
-      fetchActiveOuting();
-      fetchOutingHistory(1);
-    } else {
-      const err = await res.json();
-      addToast(err.error || "Failed to start", "error");
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to start");
     }
-  };
+    addToast("Project task started", "success");
+    setShowOutingModal(false);
+    setOutingRemarks("");
+    fetchActiveOuting();   // refresh active outing status
+    fetchOutingHistory(1); // refresh history list
+  } catch (err) {
+    console.error("Start outing error:", err);
+    addToast(err.message || "Could not start task. Please try again.", "error");
+  }
+};
 
   const endOuting = async () => {
     let location = null;
