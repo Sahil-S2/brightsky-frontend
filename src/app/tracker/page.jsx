@@ -830,6 +830,7 @@ function EmployeeDashboard({
   const [outingModalType, setOutingModalType] = useState("start");
   const [outingsPage, setOutingsPage] = useState(1);
   const [outingsTotal, setOutingsTotal] = useState(0);
+  const [outingActionLoading, setOutingActionLoading] = useState(false);
 
   // --- existing effects (keep all) ---
   useEffect(() => {
@@ -919,63 +920,57 @@ function EmployeeDashboard({
   }, []);
 
   const startOuting = async () => {
-  let location = null;
-  try {
-    if (navigator.geolocation) {
-      const pos = await new Promise((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
-      });
-      location = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-    }
-  } catch (err) {
-    console.warn("Location not available:", err);
-    addToast("Location not available – task will be recorded without location.", "warning");
-  }
+  setOutingActionLoading(true);
+  
+  // Use the globally tracked, instant location payload
+  const { latitude, longitude } = getLocationPayload();
 
   try {
+    console.log(`[Frontend] Starting project task at Lat: ${latitude}, Lon: ${longitude}`);
+    
     const res = await authFetch("/api/attendance/outing/start", {
       method: "POST",
       body: JSON.stringify({
-        latitude: location?.lat,
-        longitude: location?.lon,
+        latitude: latitude || null,
+        longitude: longitude || null,
         remarks: outingRemarks,
       }),
     });
+    
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.error || "Failed to start");
+      throw new Error(data.error || "Failed to start project task");
     }
+    
     addToast("Project task started", "success");
     setShowOutingModal(false);
     setOutingRemarks("");
-    fetchActiveOuting();   // refresh active outing status
-    fetchOutingHistory(1); // refresh history list
+    fetchActiveOuting();   
+    fetchOutingHistory(1); 
   } catch (err) {
     console.error("Start outing error:", err);
     addToast(err.message || "Could not start task. Please try again.", "error");
+  } finally {
+    setOutingActionLoading(false);
   }
 };
 
   const endOuting = async () => {
-    let location = null;
-    try {
-      if (navigator.geolocation) {
-        const pos = await new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
-        });
-        location = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-      }
-    } catch (err) {
-      console.warn("Location not available");
-    }
+  setOutingActionLoading(true);
+  const { latitude, longitude } = getLocationPayload();
+
+  try {
+    console.log(`[Frontend] Ending project task at Lat: ${latitude}, Lon: ${longitude}`);
+    
     const res = await authFetch("/api/attendance/outing/end", {
       method: "POST",
       body: JSON.stringify({
-        latitude: location?.lat,
-        longitude: location?.lon,
+        latitude: latitude || null,
+        longitude: longitude || null,
         remarks: outingRemarks,
       }),
     });
+    
     if (res.ok) {
       addToast("Project task ended", "success");
       setShowOutingModal(false);
@@ -984,9 +979,15 @@ function EmployeeDashboard({
       fetchOutingHistory(1);
     } else {
       const err = await res.json();
-      addToast(err.error || "Failed to end", "error");
+      throw new Error(err.error || "Failed to end project task");
     }
-  };
+  } catch (err) {
+    console.error("End outing error:", err);
+    addToast(err.message || "Could not end task. Please try again.", "error");
+  } finally {
+    setOutingActionLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchActiveOuting();
@@ -1244,18 +1245,14 @@ function EmployeeDashboard({
           : "Record location, purpose, and duration for project work"}
       </div>
     </div>
-    <Btn
-      onClick={() => {
-        setOutingModalType(activeOuting ? "end" : "start");
-        setOutingRemarks("");
-        setShowOutingModal(true);
-      }}
-      variant={activeOuting ? "danger" : "primary"}
-      size="md"
-    >
-      <Icon name={activeOuting ? "stop" : "play"} size={14} color="white" />
-      {activeOuting ? "End Project Task" : "Start Project Task"}
-    </Btn>
+    <Btn 
+  onClick={outingModalType === "start" ? startOuting : endOuting} 
+  loading={outingActionLoading}
+  disabled={outingActionLoading}
+  style={{ width: "100%" }}
+>
+  {outingModalType === "start" ? "Start Task" : "End Task"}
+</Btn>
   </div>
 </Card>
 
