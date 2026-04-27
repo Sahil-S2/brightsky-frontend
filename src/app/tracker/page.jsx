@@ -4316,6 +4316,8 @@ function ReportsPage({t}){
   sessions: 0,
   breaks: 0,
   breakMins: 0,
+  regularMins: 0,
+  overtimeMins: 0,
   personalBreakMins: 0,
   workBreakMins: 0
 };
@@ -4329,6 +4331,8 @@ function ReportsPage({t}){
   acc[r.user_id].sessions += 1;
   acc[r.user_id].breaks += (r.break_count || 0);
   acc[r.user_id].breakMins += parseInt(r.break_minutes) || 0;
+  acc[r.user_id].regularMins += parseInt(r.regular_minutes) || 0;
+  acc[r.user_id].overtimeMins += parseInt(r.overtime_minutes) || 0;
   acc[r.user_id].personalBreakMins += parseInt(r.personal_break_minutes) || 0;
   acc[r.user_id].workBreakMins += parseInt(r.work_break_minutes) || 0;
   return acc;
@@ -4481,13 +4485,13 @@ function ReportsPage({t}){
         </tr>
       </thead>
       <tbody>
-        {summary.map((s, i) => (
+        {empData.map((s, i) => (
           <tr key={i}>
             <td>
               <div style={{ fontWeight: 600, color: "var(--text)", fontSize: 13.5 }}>{s.name}</div>
-              <div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 1 }}>{s.user_id || s.employee_code}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 1 }}>{s.userId}</div>
             </td>
-            <td style={{ fontWeight: 600, color: "var(--text2)" }}>{s.total_sessions}</td>
+            <td style={{ fontWeight: 600, color: "var(--text2)" }}>{s.sessions}</td>
             <td>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ flex: 1, height: 6, background: "var(--bg3)", borderRadius: 3, overflow: "hidden", minWidth: 40 }}>
@@ -4496,30 +4500,30 @@ function ReportsPage({t}){
                       height: "100%",
                       background: "var(--blue)",
                       borderRadius: 3,
-                      width: `${Math.min(100, (s.total_minutes / (summary[0]?.total_minutes || 1)) * 100)}%`,
+                      width: `${Math.min(100, (s.minutes / (empData[0]?.minutes || 1)) * 100)}%`,
                       transition: "width 0.5s ease",
                     }}
                   />
                 </div>
                 <span style={{ color: "var(--blue)", fontWeight: 700, fontSize: 13, minWidth: 32 }}>
-                  {Math.round(s.total_minutes / 60)}h
+                  {Math.round(s.minutes / 60)}h
                 </span>
               </div>
             </td>
             <td style={{ color: "var(--green)", fontWeight: 600 }}>
-              {Math.round((s.total_regular_minutes || 0) / 60)}h
+              {Math.round(s.regularMins / 60)}h
             </td>
-            <td style={{ color: (s.total_overtime_minutes || 0) > 0 ? "var(--orange)" : "var(--text3)", fontWeight: 600 }}>
-              {Math.round((s.total_overtime_minutes || 0) / 60)}h
+            <td style={{ color: s.overtimeMins > 0 ? "var(--orange)" : "var(--text3)", fontWeight: 600 }}>
+              {Math.round(s.overtimeMins / 60)}h
             </td>
             <td style={{ color: "var(--text2)", fontWeight: 500 }}>
-              {fmtMins(s.total_sessions > 0 ? Math.round(s.total_minutes / s.total_sessions) : 0)}
+              {fmtMins(s.sessions > 0 ? Math.round(s.minutes / s.sessions) : 0)}
             </td>
             <td style={{ color: "var(--text3)", fontSize: 12 }}>
-              {fmtMins(s.personal_break_minutes || 0)}
+              {fmtMins(s.personalBreakMins)}
             </td>
             <td style={{ color: "var(--text3)", fontSize: 12 }}>
-              {fmtMins(s.work_break_minutes || 0)}
+              {fmtMins(s.workBreakMins)}
             </td>
           </tr>
         ))}
