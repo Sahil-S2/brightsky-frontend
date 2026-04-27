@@ -403,7 +403,7 @@ export default function App(){
   const[toasts,setToasts]=useState([]);
   const[settings,setSettings]=useState(DEFAULT_SETTINGS);
   const[todayData,setTodayData]=useState(null);
-  const[adminData,setAdminData]=useState({employees:[],attendance:[],summary:[]});
+  const[adminData,setAdminData]=useState({employees:[],attendance:[],allAttendance:[]});
   const[worksites,setWorksites]=useState([]);
   const[employeeWorksite,setEmployeeWorksite]=useState(null);
   const[gpsLoading,setGpsLoading]=useState(true);
@@ -482,8 +482,8 @@ useEffect(() => {
     if(!currentUser||(currentUser.role!=="admin"&&currentUser.role!=="manager"))return;
     try{
       const today=new Date().toISOString().slice(0,10);
-      const[eR,aR,sR]=await Promise.all([authFetch("/api/admin/employees"),authFetch(`/api/admin/attendance?date_from=${today}&date_to=${today}`),authFetch("/api/admin/reports/summary")]);
-      setAdminData({employees:eR.ok?await eR.json():[],attendance:aR.ok?await aR.json():[],summary:sR.ok?await sR.json():[]});
+      const[eR,aR,allR]=await Promise.all([authFetch("/api/admin/employees"),authFetch(`/api/admin/attendance?date_from=${today}&date_to=${today}`),authFetch("/api/admin/attendance")]);
+      setAdminData({employees:eR.ok?await eR.json():[],attendance:aR.ok?await aR.json():[],allAttendance:allR.ok?await allR.json():[]});
     }catch{}
   },[currentUser]);
   const refreshWorksites=useCallback(async()=>{if(!currentUser)return;try{const r=await authFetch("/api/worksites");if(r.ok){const d=await r.json();setWorksites(Array.isArray(d)?d:[]);}}catch{}},[currentUser]);
@@ -595,7 +595,7 @@ useEffect(() => {
   const handleLogout=async()=>{
     try{await authFetch("/api/auth/logout",{method:"POST"});}catch{}
     setCurrentUser(null);["accessToken","bsc_session","bsc_settings"].forEach(k=>localStorage.removeItem(k));
-    setPage("dashboard");setTodayData(null);setAdminData({employees:[],attendance:[],summary:[]});addToast("Signed out.","info");
+    setPage("dashboard");setTodayData(null);setAdminData({employees:[],attendance:[],allAttendance:[]});addToast("Signed out.","info");
   };
 
   const isAdmin=currentUser?.role==="admin"||currentUser?.role==="manager";
@@ -1955,9 +1955,28 @@ function RouteTabContent({ user, t, addToast }) {
 }
 // ─── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
 function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
-  const{employees,attendance,summary}=adminData;
+  const{employees,attendance,allAttendance}=adminData;
   const todayActive=attendance.filter(s=>s.status==="active").length;
   const totalMins=attendance.reduce((a,s)=>{if(s.status==="active"&&s.clock_in_time)return a+Math.max(0,Math.round((Date.now()-new Date(s.clock_in_time).getTime())/60000)-(parseInt(s.break_minutes)||0));return a+(parseInt(s.worked_minutes)||0);},0);
+
+  // Compute per-employee totals from individual attendance records (same approach as Reports page)
+  // This avoids relying on potentially stale/incorrect DB aggregates
+  const now = Date.now();
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+  const empStats = (allAttendance || []).reduce((acc, r) => {
+    if (!r.user_id) return acc;
+    if (!acc[r.user_id]) acc[r.user_id] = { totalMins: 0, weekMins: 0, personalBreakMins: 0, workBreakMins: 0 };
+    let mins = parseInt(r.worked_minutes) || 0;
+    if (r.status === "active" && r.clock_in_time) {
+      mins = Math.max(0, Math.round((now - new Date(r.clock_in_time).getTime()) / 60000) - (parseInt(r.break_minutes) || 0));
+    }
+    acc[r.user_id].totalMins += mins;
+    if (new Date(r.work_date).getTime() >= weekAgo) acc[r.user_id].weekMins += mins;
+    acc[r.user_id].personalBreakMins += parseInt(r.personal_break_minutes) || 0;
+    acc[r.user_id].workBreakMins += parseInt(r.work_break_minutes) || 0;
+    return acc;
+  }, {});
+
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div className="fade-up" style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
@@ -1975,36 +1994,37 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
         <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
           <table style={{minWidth:500}}>
             <thead>
-  <tr>
-    <th>Employee</th>
-    <th>ID</th>
-    <th>Total Hrs</th>
-    <th>This Week</th>
-    <th>Personal Break</th>
-    <th>Work Break</th>
-    <th>Status</th>
-  </tr>
-</thead>
-<tbody>
-  {summary.length === 0 ? (
-    <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text4)", padding: 24 }}>No data yet.</td></tr>
-  ) : (
-    summary.map(s => {
-      const active = attendance.find(a => a.user_id === s.id && a.status === "active");
-      return (
-        <tr key={s.id}>
-          <td><div style={{ fontWeight: 600, color: "var(--text)", fontSize: 13.5 }}>{s.name}</div><div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 1 }}>{s.designation || s.department || ""}</div></td>
-          <td><span style={{ background: "var(--blue-light)", color: "var(--blue)", padding: "2px 8px", borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: "1px solid var(--blue-mid)" }}>{s.user_id || "—"}</span></td>
-          <td style={{ color: "var(--text2)", fontWeight: 600 }}>{Math.round((s.total_minutes || 0) / 60)}h</td>
-          <td style={{ color: "var(--text2)", fontWeight: 600 }}>{Math.round((s.week_minutes || 0) / 60)}h</td>
-          <td style={{ fontSize: 12, color: "var(--text3)" }}>{fmtMins(s.personal_break_minutes || 0)}</td>
-          <td style={{ fontSize: 12, color: "var(--text3)" }}>{fmtMins(s.work_break_minutes || 0)}</td>
-          <td>{active ? <StatusBadge status="clocked_in" /> : <StatusBadge status="clocked_out" />}</td>
-        </tr>
-      );
-    })
-  )}
-</tbody>
+              <tr>
+                <th>Employee</th>
+                <th>ID</th>
+                <th>Total Hrs</th>
+                <th>This Week</th>
+                <th>Personal Break</th>
+                <th>Work Break</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {employees.length === 0 ? (
+                <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text4)", padding: 24 }}>No data yet.</td></tr>
+              ) : (
+                employees.map(emp => {
+                  const stats = empStats[emp.id] || { totalMins: 0, weekMins: 0, personalBreakMins: 0, workBreakMins: 0 };
+                  const active = attendance.find(a => a.user_id === emp.id && a.status === "active");
+                  return (
+                    <tr key={emp.id}>
+                      <td><div style={{ fontWeight: 600, color: "var(--text)", fontSize: 13.5 }}>{emp.name}</div><div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 1 }}>{emp.designation || emp.department || ""}</div></td>
+                      <td><span style={{ background: "var(--blue-light)", color: "var(--blue)", padding: "2px 8px", borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: "1px solid var(--blue-mid)" }}>{emp.user_id || "—"}</span></td>
+                      <td style={{ color: "var(--text2)", fontWeight: 600 }}>{Math.round(stats.totalMins / 60)}h</td>
+                      <td style={{ color: "var(--text2)", fontWeight: 600 }}>{Math.round(stats.weekMins / 60)}h</td>
+                      <td style={{ fontSize: 12, color: "var(--text3)" }}>{fmtMins(stats.personalBreakMins)}</td>
+                      <td style={{ fontSize: 12, color: "var(--text3)" }}>{fmtMins(stats.workBreakMins)}</td>
+                      <td>{active ? <StatusBadge status="clocked_in" /> : <StatusBadge status="clocked_out" />}</td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
           </table>
         </div>
       </Card>
