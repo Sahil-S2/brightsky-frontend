@@ -792,6 +792,7 @@ function EmployeeDashboard({
   handleClockOut, handleBreakStart, handleBreakEnd,
   t, addToast, refreshTodayData, onNavigateToRoute
 }) {
+  // --- Existing state declarations (unchanged) ---
   const [now, setNow] = useState(new Date());
   const [showBreakModal, setShowBreakModal] = useState(false);
   const [breakReason, setBreakReason] = useState("");
@@ -815,34 +816,35 @@ function EmployeeDashboard({
   const [routeStatus, setRouteStatus] = useState("not_started");
   const [routeLoading, setRouteLoading] = useState(false);
   const [selectedTab, setSelectedTab] = useState("timecard");
-  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [workflowCollapsed, setWorkflowCollapsed] = useState(false);
+  const [worksiteExpanded, setWorksiteExpanded] = useState(false); // for expandable worksite
 
+  // --- Existing effects and functions (keep exactly as they are) ---
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
 
-
   const fetchEmployeeTasks = useCallback(async (page = 1) => {
-  setTasksLoading(true);
-  try {
-    const res = await authFetch(`/api/tasks/employee/${user.id}?page=${page}&limit=${tasksPerPage}`);
-    if (res.ok) {
-      const data = await res.json();
-      setEmployeeTasks(data.tasks);
-      setTasksTotal(data.total);
-      setTasksPage(data.page);
+    setTasksLoading(true);
+    try {
+      const res = await authFetch(`/api/tasks/employee/${user.id}?page=${page}&limit=${tasksPerPage}`);
+      if (res.ok) {
+        const data = await res.json();
+        setEmployeeTasks(data.tasks);
+        setTasksTotal(data.total);
+        setTasksPage(data.page);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTasksLoading(false);
     }
-  } catch (err) {
-    console.error(err);
-  } finally {
-    setTasksLoading(false);
-  }
-}, [user.id]);
+  }, [user.id]);
 
   useEffect(() => {
-  fetchEmployeeTasks(1);
-}, [fetchEmployeeTasks]);
+    fetchEmployeeTasks(1);
+  }, [fetchEmployeeTasks]);
 
   const fetchRouteStatus = useCallback(async () => {
     setRouteLoading(true);
@@ -870,27 +872,21 @@ function EmployeeDashboard({
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // 👇 NEW: Fetch route status on mount
-  useEffect(() => {
     fetchRouteStatus();
   }, [fetchRouteStatus]);
 
   const updateTaskStatus = async (taskId, status, reason = "") => {
-  const res = await authFetch(`/api/tasks/${taskId}/status`, {
-    method: "PUT",
-    body: JSON.stringify({ status, incompleteReason: reason })
-  });
-  if (res.ok) {
-    addToast(`Task marked as ${status}`, "success");
-    fetchEmployeeTasks(tasksPage);
-  } else {
-    addToast("Failed to update task", "error");
-  }
-};
+    const res = await authFetch(`/api/tasks/${taskId}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ status, incompleteReason: reason })
+    });
+    if (res.ok) {
+      addToast(`Task marked as ${status}`, "success");
+      fetchEmployeeTasks(tasksPage);
+    } else {
+      addToast("Failed to update task", "error");
+    }
+  };
 
   const handleMarkComplete = async (taskId) => {
     try {
@@ -951,7 +947,6 @@ function EmployeeDashboard({
     }
   };
 
-  // Helper to get coordinates for clock‑in
   const getLocationPayload = useCallback(() => {
     const lat = userLat !== null ? userLat : (employeeWorksite?.latitude ?? settings.latitude ?? 0);
     const lon = userLon !== null ? userLon : (employeeWorksite?.longitude ?? settings.longitude ?? 0);
@@ -987,18 +982,15 @@ function EmployeeDashboard({
     }
   };
 
-  // NEW: Unified clock‑in handler that respects camera setting
   const handleClockIn = async () => {
     if (!onSite) {
       addToast("You must be at your assigned worksite to clock in.", "error");
       return;
     }
-    // Check if camera is required
     const cameraRequired = settings.clockInWithCameraEnabled ?? true;
-if (cameraRequired) {
-  setShowCamera(true); // open camera modal
+    if (cameraRequired) {
+      setShowCamera(true);
     } else {
-      // Direct clock‑in without photo
       setDirectClockInLoading(true);
       try {
         const { latitude, longitude } = getLocationPayload();
@@ -1027,12 +1019,8 @@ if (cameraRequired) {
     }
   };
 
-  // Compute button loading state based on mode
-  const clockInButtonLoading = (settings.clockInWithCameraEnabled ?? true)
-    ? clockInLoading   // camera flow
-    : directClockInLoading; // direct flow
+  const clockInButtonLoading = (settings.clockInWithCameraEnabled ?? true) ? clockInLoading : directClockInLoading;
 
-  // Compute session data
   const session = todayData?.session;
   const punches = todayData?.punches || [];
   let totalWorked = session?.worked_minutes || 0;
@@ -1051,558 +1039,374 @@ if (cameraRequired) {
   }
 
   const displayWS = employeeWorksite || { latitude: settings.latitude, longitude: settings.longitude, radius_feet: settings.radiusFeet, name: settings.siteName };
+
+  // --- Modified renderTimeCard (without the worksite card) ---
   const renderTimeCard = () => (
-  <>
-    {/* Assigned Worksite Card */}
-    {employeeWorksite && (
-      <Card style={{ border: "1.5px solid var(--blue-mid)", background: "var(--blue-light)" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-          <div style={{ width: 40, height: 40, borderRadius: "var(--radius)", background: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}>
-            <Icon name="pin" size={18} color="white" />
+    <>
+      {/* Compact Time Summary */}
+      <div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>
+            {fmtMins(totalWorked)}
           </div>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>{t.assignedWorksite}</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.01em" }}>{employeeWorksite.project_name || employeeWorksite.name}</div>
-            {employeeWorksite.address && <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 2, fontWeight: 400 }}>{employeeWorksite.address}</div>}
-            <div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 2 }}>{parseFloat(employeeWorksite.latitude).toFixed(4)}°, {parseFloat(employeeWorksite.longitude).toFixed(4)}° · {employeeWorksite.radius_feet}ft radius</div>
+          {overtimeMins > 0 && (
+            <div style={{ fontSize: 11, color: "var(--orange)", fontWeight: 500, marginTop: 4 }}>
+              <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
+            </div>
+          )}
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>
+            {fmtMins(totalBreak)}
           </div>
         </div>
-      </Card>
-    )}
-
-    {/* Compact Time Summary */}
-    <div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Worked Today</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: isOvertime ? "var(--orange)" : "var(--green)" }}>
-          {fmtMins(totalWorked)}
-        </div>
-        {overtimeMins > 0 && (
-          <div style={{ fontSize: 11, color: "var(--orange)", fontWeight: 500, marginTop: 4 }}>
-            <span className="overtime-glow">+{fmtMins(overtimeMins)} overtime</span>
-          </div>
-        )}
-      </div>
-      <div>
-        <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 500 }}>Break Time</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: "var(--amber)" }}>
-          {fmtMins(totalBreak)}
-        </div>
-      </div>
-    </div>
-
-    {/* Main Action Card (Clock In/Out/Break) */}
-    <Card>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {empStatus === "clocked_out" && (
-          <Btn
-            onClick={handleClockIn}
-            disabled={!onSite || clockInButtonLoading}
-            loading={clockInButtonLoading}
-            size="lg"
-            style={{ width: "100%" }}
-          >
-            <Icon name="camera" size={16} color="white" />{t.clockIn}
-          </Btn>
-        )}
-        {empStatus === "clocked_in" && (
-          <>
-            <Btn onClick={() => setShowBreakModal(true)} disabled={punchLoading} variant="secondary" size="md" style={{ width: "100%" }}>
-              <Icon name="coffee" size={15} color="var(--amber)" />Break
-            </Btn>
-            <Btn onClick={handleClockOut} disabled={punchLoading} loading={punchLoading} variant="danger" size="md" style={{ width: "100%" }}>
-              <Icon name="stop" size={15} color="var(--red)" />{t.clockOut}
-            </Btn>
-          </>
-        )}
-        {empStatus === "on_break" && (
-          <Btn onClick={handleBreakEnd} disabled={punchLoading} loading={punchLoading} variant="green" size="lg" style={{ width: "100%" }}>
-            <Icon name="play" size={16} color="var(--green)" />{t.endBreak}
-          </Btn>
-        )}
-      </div>
-      {gpsLoading && userLat == null && displayWS?.latitude != null && (
-        <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "rgba(255,255,255,0.7)", border: "1px solid rgba(217,119,6,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
-          <span className="spin" style={{ width: 12, height: 12, border: "2px solid var(--amber)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 500 }}>Getting your location…</span>
-        </div>
-      )}
-      {!gpsLoading && !onSite && displayWS?.latitude != null && userLat != null && (
-        <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "var(--red-light)", border: "1.5px solid rgba(220,38,38,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
-          <Icon name="alert" size={14} color="var(--red)" />
-          <span style={{ fontSize: 12.5, color: "var(--red)", fontWeight: 450 }}>Must be within {displayWS.radius_feet} ft of your assigned worksite.</span>
-        </div>
-      )}
-    </Card>
-
-    {/* My Tasks Section */}
-    <Card>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
-        {tasksLoading && <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />}
       </div>
 
-      {employeeTasks.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>
-          No tasks assigned.
-        </div>
-      ) : (
+      {/* Main Action Card (Clock In/Out/Break) */}
+      <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {employeeTasks.map((task) => {
-            const isExpanded = expandedTaskId === task.id;
-            const isLoading = loadingTaskId === task.id;
-
-            const handleComplete = async () => {
-              if (isLoading) return;
-              setLoadingTaskId(task.id);
-              try {
-                const res = await authFetch(`/api/tasks/${task.id}/status`, {
-                  method: "PUT",
-                  body: JSON.stringify({ status: "completed" }),
-                });
-                if (res.ok) {
-                  addToast("Task marked as completed", "success");
-                  fetchEmployeeTasks(tasksPage);
-                } else {
-                  const errData = await res.json();
-                  console.error("Task update failed:", errData);
-                  addToast(errData.error || "Failed to update", "error");
-                }
-              } catch (err) {
-                console.error("Network error:", err);
-                addToast("Network error", "error");
-              } finally {
-                setLoadingTaskId(null);
-              }
-            };
-
-            const handleIncomplete = async () => {
-              const reason = prompt("Why is this task incomplete?");
-              if (!reason) return;
-              if (isLoading) return;
-              setLoadingTaskId(task.id);
-              try {
-                const res = await authFetch(`/api/tasks/${task.id}/status`, {
-                  method: "PUT",
-                  body: JSON.stringify({ status: "incomplete", incompleteReason: reason }),
-                });
-                if (res.ok) {
-                  addToast("Task marked as incomplete", "success");
-                  fetchEmployeeTasks(tasksPage);
-                } else {
-                  addToast("Failed to update", "error");
-                }
-              } catch (err) {
-                addToast("Network error", "error");
-              } finally {
-                setLoadingTaskId(null);
-              }
-            };
-
-            return (
-              <div
-                key={task.id}
-                style={{
-                  padding: "12px",
-                  background: "var(--bg3)",
-                  borderRadius: "var(--radius)",
-                  border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                }}
-                onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>
-                      {task.title}
-                    </div>
-                    {task.description && (
-                      <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>
-                        {task.description}
-                      </div>
-                    )}
-                    {task.url && (
-                      <div style={{ marginTop: 6 }}>
-                        {task.task_type === "youtube" ? (
-                          <a
-                            href={task.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ fontSize: 12, color: "var(--blue)", display: "flex", alignItems: "center", gap: 4 }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Icon name="play" size={12} /> Watch on YouTube
-                          </a>
-                        ) : (
-                          <a
-                            href={task.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ fontSize: 12, color: "var(--blue)" }}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {task.task_type === "document" ? "📄 View Document" : "🔗 Open Link"}
-                          </a>
-                        )}
-                      </div>
-                    )}
-                    {task.due_date && (
-                      <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>
-                        Due: {fmtDate(task.due_date)}
-                      </div>
-                    )}
-                  </div>
-                  {task.status === "completed" && (
-                    <span style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)" }}>
-                      ✓ Completed
-                    </span>
-                  )}
-                  {task.status === "incomplete" && (
-                    <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>
-                      ✗ Incomplete
-                    </span>
-                  )}
-                  {task.status === "pending" && (
-                    <Icon name={isExpanded ? "chevronUp" : "chevronDown"} size={18} color="var(--text3)" />
-                  )}
-                </div>
-
-                {isExpanded && task.status === "pending" && (
-                  <div
-                    style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      onClick={handleComplete}
-                      disabled={isLoading}
-                      style={{
-                        background: "var(--green-light)",
-                        border: "1px solid rgba(5,150,105,0.2)",
-                        borderRadius: "var(--radius-sm)",
-                        padding: "6px 12px",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "var(--green)",
-                        cursor: "pointer",
-                        flex: 1,
-                        opacity: isLoading ? 0.6 : 1,
-                      }}
-                    >
-                      {isLoading ? "Updating..." : "✓ Completed"}
-                    </button>
-                    <button
-                      onClick={handleIncomplete}
-                      disabled={isLoading}
-                      style={{
-                        background: "var(--red-light)",
-                        border: "1px solid rgba(220,38,38,0.2)",
-                        borderRadius: "var(--radius-sm)",
-                        padding: "6px 12px",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "var(--red)",
-                        cursor: "pointer",
-                        flex: 1,
-                        opacity: isLoading ? 0.6 : 1,
-                      }}
-                    >
-                      ✗ Incomplete
-                    </button>
-                  </div>
-                )}
-
-                {task.status === "incomplete" && task.incomplete_reason && (
-                  <div style={{ marginTop: 12, fontSize: 11, color: "var(--red)", background: "var(--red-light)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>
-                    Reason: {task.incomplete_reason}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {empStatus === "clocked_out" && (
+            <Btn
+              onClick={handleClockIn}
+              disabled={!onSite || clockInButtonLoading}
+              loading={clockInButtonLoading}
+              size="lg"
+              style={{ width: "100%" }}
+            >
+              <Icon name="camera" size={16} color="white" />{t.clockIn}
+            </Btn>
+          )}
+          {empStatus === "clocked_in" && (
+            <>
+              <Btn onClick={() => setShowBreakModal(true)} disabled={punchLoading} variant="secondary" size="md" style={{ width: "100%" }}>
+                <Icon name="coffee" size={15} color="var(--amber)" />Break
+              </Btn>
+              <Btn onClick={handleClockOut} disabled={punchLoading} loading={punchLoading} variant="danger" size="md" style={{ width: "100%" }}>
+                <Icon name="stop" size={15} color="var(--red)" />{t.clockOut}
+              </Btn>
+            </>
+          )}
+          {empStatus === "on_break" && (
+            <Btn onClick={handleBreakEnd} disabled={punchLoading} loading={punchLoading} variant="green" size="lg" style={{ width: "100%" }}>
+              <Icon name="play" size={16} color="var(--green)" />{t.endBreak}
+            </Btn>
+          )}
         </div>
-      )}
+        {gpsLoading && userLat == null && displayWS?.latitude != null && (
+          <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "rgba(255,255,255,0.7)", border: "1px solid rgba(217,119,6,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
+            <span className="spin" style={{ width: 12, height: 12, border: "2px solid var(--amber)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 500 }}>Getting your location…</span>
+          </div>
+        )}
+        {!gpsLoading && !onSite && displayWS?.latitude != null && userLat != null && (
+          <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "var(--red-light)", border: "1.5px solid rgba(220,38,38,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
+            <Icon name="alert" size={14} color="var(--red)" />
+            <span style={{ fontSize: 12.5, color: "var(--red)", fontWeight: 450 }}>Must be within {displayWS.radius_feet} ft of your assigned worksite.</span>
+          </div>
+        )}
+      </Card>
 
-      {/* Pagination for tasks */}
-      {tasksTotal > tasksPerPage && (
-        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
-          <button
-            onClick={() => fetchEmployeeTasks(tasksPage - 1)}
-            disabled={tasksPage === 1}
-            style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage === 1 ? "not-allowed" : "pointer", opacity: tasksPage === 1 ? 0.5 : 1 }}
-          >
-            Previous
-          </button>
-          <span style={{ fontSize: 13, padding: "6px 12px" }}>
-            Page {tasksPage} of {Math.ceil(tasksTotal / tasksPerPage)}
-          </span>
-          <button
-            onClick={() => fetchEmployeeTasks(tasksPage + 1)}
-            disabled={tasksPage * tasksPerPage >= tasksTotal}
-            style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage * tasksPerPage >= tasksTotal ? "not-allowed" : "pointer", opacity: tasksPage * tasksPerPage >= tasksTotal ? 0.5 : 1 }}
-          >
-            Next
-          </button>
+      {/* My Tasks Section (unchanged) */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
+          {tasksLoading && <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />}
         </div>
-      )}
-    </Card>
 
-    {/* Today's Work Breaks */}
-    <Card>
-      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>
-        Today's Work Breaks
-      </div>
-      {(() => {
-        const workBreaks = punches.filter(p => p.punch_type === "break_start" && p.break_type === "work" && p.remarks);
-        if (workBreaks.length === 0) {
-          return <div style={{ textAlign: "center", padding: "12px 0", color: "var(--text4)", fontSize: 13 }}>No work breaks today.</div>;
-        }
-        return (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {workBreaks.map(breakRecord => {
-              const isExpanded = expandedBreakId === breakRecord.id;
+        {employeeTasks.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>No tasks assigned.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {employeeTasks.map((task) => {
+              const isExpanded = expandedTaskId === task.id;
+              const isLoading = loadingTaskId === task.id;
+
+              const handleComplete = async () => {
+                if (isLoading) return;
+                setLoadingTaskId(task.id);
+                try {
+                  const res = await authFetch(`/api/tasks/${task.id}/status`, {
+                    method: "PUT",
+                    body: JSON.stringify({ status: "completed" }),
+                  });
+                  if (res.ok) {
+                    addToast("Task marked as completed", "success");
+                    fetchEmployeeTasks(tasksPage);
+                  } else {
+                    const errData = await res.json();
+                    console.error("Task update failed:", errData);
+                    addToast(errData.error || "Failed to update", "error");
+                  }
+                } catch (err) {
+                  console.error("Network error:", err);
+                  addToast("Network error", "error");
+                } finally {
+                  setLoadingTaskId(null);
+                }
+              };
+
+              const handleIncomplete = async () => {
+                const reason = prompt("Why is this task incomplete?");
+                if (!reason) return;
+                if (isLoading) return;
+                setLoadingTaskId(task.id);
+                try {
+                  const res = await authFetch(`/api/tasks/${task.id}/status`, {
+                    method: "PUT",
+                    body: JSON.stringify({ status: "incomplete", incompleteReason: reason }),
+                  });
+                  if (res.ok) {
+                    addToast("Task marked as incomplete", "success");
+                    fetchEmployeeTasks(tasksPage);
+                  } else {
+                    addToast("Failed to update", "error");
+                  }
+                } catch (err) {
+                  addToast("Network error", "error");
+                } finally {
+                  setLoadingTaskId(null);
+                }
+              };
+
               return (
                 <div
-                  key={breakRecord.id}
-                  onClick={() => setExpandedBreakId(isExpanded ? null : breakRecord.id)}
+                  key={task.id}
                   style={{
                     padding: "12px",
                     background: "var(--bg3)",
                     borderRadius: "var(--radius)",
                     border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
                     cursor: "pointer",
-                    transition: "all 0.2s"
+                    transition: "all 0.2s",
                   }}
+                  onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.remarks}</div>
-                      <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{fmtTime(breakRecord.punch_time)}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{task.title}</div>
+                      {task.description && <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>{task.description}</div>}
+                      {task.url && (
+                        <div style={{ marginTop: 6 }}>
+                          {task.task_type === "youtube" ? (
+                            <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)", display: "flex", alignItems: "center", gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                              <Icon name="play" size={12} /> Watch on YouTube
+                            </a>
+                          ) : (
+                            <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)" }} onClick={(e) => e.stopPropagation()}>
+                              {task.task_type === "document" ? "📄 View Document" : "🔗 Open Link"}
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      {task.due_date && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Due: {fmtDate(task.due_date)}</div>}
                     </div>
-                    {breakRecord.break_completed === true && (
-                      <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>
-                    )}
-                    {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && (
-                      <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Not Completed</span>
-                    )}
+                    {task.status === "completed" && <span style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)" }}>✓ Completed</span>}
+                    {task.status === "incomplete" && <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Incomplete</span>}
+                    {task.status === "pending" && <Icon name={isExpanded ? "chevronUp" : "chevronDown"} size={18} color="var(--text3)" />}
                   </div>
 
-                  {isExpanded && breakRecord.break_completed !== true && !(breakRecord.break_completed === false && breakRecord.break_incomplete_reason) && (
-                    <div style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                      <button
-                        onClick={async () => {
-                          const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" });
-                          const data = await res.json();
-                          if (res.ok) {
-                            addToast("Break task marked as completed.", "success");
-                            if (data.data) {
-                              refreshTodayData(data.data);
-                            } else {
-                              await refreshTodayData();
-                            }
-                          } else {
-                            addToast(data.error || "Failed to update break status.", "error");
-                          }
-                        }}
-                        style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer", flex: 1 }}
-                      >
-                        ✓ Completed
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedBreakId(breakRecord.id);
-                          setShowIncompleteModal(true);
-                        }}
-                        style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer", flex: 1 }}
-                      >
-                        ✗ Not Completed
-                      </button>
+                  {isExpanded && task.status === "pending" && (
+                    <div style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }} onClick={(e) => e.stopPropagation()}>
+                      <button onClick={handleComplete} disabled={isLoading} style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "var(--green)", cursor: "pointer", flex: 1, opacity: isLoading ? 0.6 : 1 }}>{isLoading ? "Updating..." : "✓ Completed"}</button>
+                      <button onClick={handleIncomplete} disabled={isLoading} style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "var(--red)", cursor: "pointer", flex: 1, opacity: isLoading ? 0.6 : 1 }}>✗ Incomplete</button>
                     </div>
                   )}
 
-                  {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && isExpanded && (
-                    <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
-                      <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Reason for incompletion:</div>
-                      <div style={{ fontSize: 12, padding: "4px 8px", background: "var(--red-light)", borderRadius: "var(--radius-sm)", color: "var(--red)" }}>
-                        {breakRecord.break_incomplete_reason}
-                      </div>
-                    </div>
+                  {task.status === "incomplete" && task.incomplete_reason && (
+                    <div style={{ marginTop: 12, fontSize: 11, color: "var(--red)", background: "var(--red-light)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>Reason: {task.incomplete_reason}</div>
                   )}
                 </div>
               );
             })}
           </div>
-        );
-      })()}
-    </Card>
+        )}
 
-    {/* Break Modal */}
-    {showBreakModal && (
-      <Modal title="Start Break" onClose={() => { setShowBreakModal(false); setBreakType(null); setBreakReason(""); }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <p style={{ fontSize: 13, color: "var(--text3)" }}>Choose break type:</p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Btn onClick={handlePersonalBreak} loading={punchLoading} variant="green" style={{ flex: 1 }}>
-              <Icon name="coffee" size={14} color="var(--green)" />Personal Break
-            </Btn>
-            <Btn onClick={() => setBreakType("work")} variant="blue" style={{ flex: 1 }}>
-              <Icon name="briefcase" size={14} color="var(--blue)" />Work‑Related
-            </Btn>
+        {tasksTotal > tasksPerPage && (
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
+            <button onClick={() => fetchEmployeeTasks(tasksPage - 1)} disabled={tasksPage === 1} style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage === 1 ? "not-allowed" : "pointer", opacity: tasksPage === 1 ? 0.5 : 1 }}>Previous</button>
+            <span style={{ fontSize: 13, padding: "6px 12px" }}>Page {tasksPage} of {Math.ceil(tasksTotal / tasksPerPage)}</span>
+            <button onClick={() => fetchEmployeeTasks(tasksPage + 1)} disabled={tasksPage * tasksPerPage >= tasksTotal} style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage * tasksPerPage >= tasksTotal ? "not-allowed" : "pointer", opacity: tasksPage * tasksPerPage >= tasksTotal ? 0.5 : 1 }}>Next</button>
           </div>
+        )}
+      </Card>
 
-          {breakType === "work" && (
-            <div style={{ marginTop: 12 }}>
-              <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 8 }}>Reason for work‑related break:</p>
-              <textarea
-                rows={3}
-                value={breakReason}
-                onChange={e => setBreakReason(e.target.value)}
-                placeholder="e.g., Inspecting equipment at another site, delivering materials, etc."
-                style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
-              />
-              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <Btn onClick={handleCustomBreak} loading={punchLoading} style={{ flex: 1 }}>
-                  <Icon name="check" size={14} color="white" />Start Break
-                </Btn>
-                <Btn onClick={() => setBreakType(null)} variant="secondary" style={{ flex: 1 }}>Back</Btn>
+      {/* Today's Work Breaks (unchanged) */}
+      <Card>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Today's Work Breaks</div>
+        {(() => {
+          const workBreaks = punches.filter(p => p.punch_type === "break_start" && p.break_type === "work" && p.remarks);
+          if (workBreaks.length === 0) return <div style={{ textAlign: "center", padding: "12px 0", color: "var(--text4)", fontSize: 13 }}>No work breaks today.</div>;
+          return (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {workBreaks.map(breakRecord => {
+                const isExpanded = expandedBreakId === breakRecord.id;
+                return (
+                  <div key={breakRecord.id} onClick={() => setExpandedBreakId(isExpanded ? null : breakRecord.id)} style={{ padding: "12px", background: "var(--bg3)", borderRadius: "var(--radius)", border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`, cursor: "pointer", transition: "all 0.2s" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>{breakRecord.remarks}</div><div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>{fmtTime(breakRecord.punch_time)}</div></div>
+                      {breakRecord.break_completed === true && <span style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--text3)" }}>✓ Completed</span>}
+                      {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Not Completed</span>}
+                    </div>
+                    {isExpanded && breakRecord.break_completed !== true && !(breakRecord.break_completed === false && breakRecord.break_incomplete_reason) && (
+                      <div style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+                        <button onClick={async () => { const res = await authFetch(`/api/attendance/break/${breakRecord.id}/complete`, { method: "PUT" }); const data = await res.json(); if (res.ok) { addToast("Break task marked as completed.", "success"); if (data.data) refreshTodayData(data.data); else await refreshTodayData(); } else addToast(data.error || "Failed to update break status.", "error"); }} style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)", cursor: "pointer", flex: 1 }}>✓ Completed</button>
+                        <button onClick={(e) => { e.stopPropagation(); setSelectedBreakId(breakRecord.id); setShowIncompleteModal(true); }} style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)", cursor: "pointer", flex: 1 }}>✗ Not Completed</button>
+                      </div>
+                    )}
+                    {breakRecord.break_completed === false && breakRecord.break_incomplete_reason && isExpanded && (
+                      <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}><div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Reason for incompletion:</div><div style={{ fontSize: 12, padding: "4px 8px", background: "var(--red-light)", borderRadius: "var(--radius-sm)", color: "var(--red)" }}>{breakRecord.break_incomplete_reason}</div></div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </Card>
+
+      {/* Break Modal */}
+      {showBreakModal && (
+        <Modal title="Start Break" onClose={() => { setShowBreakModal(false); setBreakType(null); setBreakReason(""); }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <p style={{ fontSize: 13, color: "var(--text3)" }}>Choose break type:</p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn onClick={handlePersonalBreak} loading={punchLoading} variant="green" style={{ flex: 1 }}><Icon name="coffee" size={14} color="var(--green)" />Personal Break</Btn>
+              <Btn onClick={() => setBreakType("work")} variant="blue" style={{ flex: 1 }}><Icon name="briefcase" size={14} color="var(--blue)" />Work‑Related</Btn>
+            </div>
+            {breakType === "work" && (
+              <div style={{ marginTop: 12 }}>
+                <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 8 }}>Reason for work‑related break:</p>
+                <textarea rows={3} value={breakReason} onChange={e => setBreakReason(e.target.value)} placeholder="e.g., Inspecting equipment at another site, delivering materials, etc." style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }} />
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}><Btn onClick={handleCustomBreak} loading={punchLoading} style={{ flex: 1 }}><Icon name="check" size={14} color="white" />Start Break</Btn><Btn onClick={() => setBreakType(null)} variant="secondary" style={{ flex: 1 }}>Back</Btn></div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Incomplete Reason Modal */}
+      {showIncompleteModal && (
+        <Modal title="Why was this task not completed?" onClose={() => { setShowIncompleteModal(false); setIncompleteReason(""); setSelectedBreakId(null); }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <textarea rows={4} value={incompleteReason} onChange={e => setIncompleteReason(e.target.value)} placeholder="e.g., Delayed due to weather, equipment not available, etc." style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <Btn onClick={async () => { if (!incompleteReason.trim()) { addToast("Please enter a reason.", "error"); return; } const res = await authFetch(`/api/attendance/break/${selectedBreakId}/not-complete`, { method: "PUT", body: JSON.stringify({ reason: incompleteReason }) }); const data = await res.json(); if (res.ok) { addToast("Break marked as not completed.", "success"); setShowIncompleteModal(false); setIncompleteReason(""); setSelectedBreakId(null); if (data.data) refreshTodayData(data.data); else await refreshTodayData(); } else addToast(data.error || "Failed to update.", "error"); }} style={{ flex: 1 }}><Icon name="check" size={14} color="white" />Submit</Btn>
+              <Btn onClick={() => setShowIncompleteModal(false)} variant="secondary" style={{ flex: 1 }}>Cancel</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Camera Modal */}
+      {showCamera && typeof window !== 'undefined' && (
+        <CameraModal onClose={() => setShowCamera(false)} onCapture={(photo) => processClockIn(photo)} />
+      )}
+    </>
+  );
+
+  // --- New layout: workflow row + greeting + expandable worksite + tab content ---
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Workflow row (horizontal buttons, no Route) */}
+      <div style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)" }}>Workflow</span>
+          <button onClick={() => setWorkflowCollapsed(!workflowCollapsed)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text3)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>
+            <Icon name={workflowCollapsed ? "chevronDown" : "chevronUp"} size={16} />
+          </button>
+        </div>
+        {!workflowCollapsed && (
+          <div style={{ display: "flex", overflowX: "auto", padding: "8px", gap: "4px", borderTop: "1px solid var(--border)" }}>
+            {["timecard", "fuel", "equipment", "tasks"].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setSelectedTab(tab)}
+                style={{
+                  flex: "0 0 auto",
+                  padding: "8px 16px",
+                  borderRadius: "var(--radius-sm)",
+                  background: selectedTab === tab ? "var(--blue-light)" : "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontWeight: selectedTab === tab ? 600 : 500,
+                  color: selectedTab === tab ? "var(--blue)" : "var(--text2)",
+                  whiteSpace: "nowrap",
+                  transition: "all 0.2s",
+                }}
+              >
+                {tab === "timecard" ? "Time Card" : tab === "fuel" ? "Fuel Entry" : tab === "equipment" ? "Equipment" : "Tasks"}
+              </button>
+            ))}
+          </div>
+        )}
+        {workflowCollapsed && (
+          <div style={{ padding: "8px 12px", background: "var(--bg3)" }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>
+              {selectedTab === "timecard" ? "Time Card" : selectedTab === "fuel" ? "Fuel Entry" : selectedTab === "equipment" ? "Equipment" : "Tasks"}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Greeting */}
+      <div style={{ padding: "0 4px", marginTop: 4 }}>
+        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0, letterSpacing: "-0.01em" }}>Hello, {user?.name?.split(" ")[0] || user?.name || "Employee"}!</h2>
+      </div>
+
+      {/* Expandable Assigned Worksite (if any) */}
+      {employeeWorksite && (
+        <Card style={{ border: "1.5px solid var(--blue-mid)", background: "var(--blue-light)", padding: 16 }}>
+          <div
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
+            onClick={() => setWorksiteExpanded(!worksiteExpanded)}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: "var(--radius)", background: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}>
+                <Icon name="pin" size={18} color="white" />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>{t.assignedWorksite}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.01em" }}>{employeeWorksite.project_name || employeeWorksite.name}</div>
+              </div>
+            </div>
+            <Icon name={worksiteExpanded ? "chevronUp" : "chevronDown"} size={20} color="var(--blue)" />
+          </div>
+          {worksiteExpanded && (
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+              {employeeWorksite.address && <div style={{ fontSize: 12.5, color: "var(--text3)", marginBottom: 4 }}>{employeeWorksite.address}</div>}
+              <div style={{ fontSize: 11.5, color: "var(--text3)" }}>
+                {parseFloat(employeeWorksite.latitude).toFixed(4)}°, {parseFloat(employeeWorksite.longitude).toFixed(4)}° · {employeeWorksite.radius_feet}ft radius
               </div>
             </div>
           )}
-        </div>
-      </Modal>
-    )}
+        </Card>
+      )}
 
-    {/* Incomplete Reason Modal */}
-    {showIncompleteModal && (
-      <Modal title="Why was this task not completed?" onClose={() => { setShowIncompleteModal(false); setIncompleteReason(""); setSelectedBreakId(null); }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <textarea
-            rows={4}
-            value={incompleteReason}
-            onChange={e => setIncompleteReason(e.target.value)}
-            placeholder="e.g., Delayed due to weather, equipment not available, etc."
-            style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
-          />
-          <div style={{ display: "flex", gap: 8 }}>
-            <Btn
-              onClick={async () => {
-                if (!incompleteReason.trim()) {
-                  addToast("Please enter a reason.", "error");
-                  return;
-                }
-                const res = await authFetch(`/api/attendance/break/${selectedBreakId}/not-complete`, {
-                  method: "PUT",
-                  body: JSON.stringify({ reason: incompleteReason })
-                });
-                const data = await res.json();
-                if (res.ok) {
-                  addToast("Break marked as not completed.", "success");
-                  setShowIncompleteModal(false);
-                  setIncompleteReason("");
-                  setSelectedBreakId(null);
-                  if (data.data) {
-                    refreshTodayData(data.data);
-                  } else {
-                    await refreshTodayData();
-                  }
-                } else {
-                  addToast(data.error || "Failed to update.", "error");
-                }
-              }}
-              style={{ flex: 1 }}
-            >
-              <Icon name="check" size={14} color="white" />Submit
-            </Btn>
-            <Btn onClick={() => setShowIncompleteModal(false)} variant="secondary" style={{ flex: 1 }}>Cancel</Btn>
-          </div>
-        </div>
-      </Modal>
-    )}
-
-    {/* Camera Modal */}
-    {showCamera && typeof window !== 'undefined' && (
-      <CameraModal
-        onClose={() => setShowCamera(false)}
-        onCapture={(photo) => processClockIn(photo)}
-      />
-    )}
-  </>
-);
-  return (
-  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-    {/* --- Horizontal Top Navigation with Collapse --- */}
-<div style={{ background: "var(--bg2)", borderRadius: "var(--radius-lg)", border: "1px solid var(--border)", overflow: "hidden", marginBottom: 16 }}>
-  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
-    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)" }}>Workflow</span>
-    <button
-      onClick={() => setNavCollapsed(!navCollapsed)}
-      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text3)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}
-    >
-      <Icon name={navCollapsed ? "chevronDown" : "chevronUp"} size={16} />
-    </button>
-  </div>
-
-  {/* Expanded: show all five buttons horizontally */}
-  {!navCollapsed && (
-    <div style={{ display: "flex", overflowX: "auto", padding: "8px", gap: "4px", borderTop: "1px solid var(--border)" }}>
-      {["timecard", "route", "fuel", "equipment", "tasks"].map(tab => (
-        <button
-          key={tab}
-          onClick={() => setSelectedTab(tab)}
-          style={{
-            flex: "0 0 auto",
-            padding: "8px 16px",
-            borderRadius: "var(--radius-sm)",
-            background: selectedTab === tab ? "var(--blue-light)" : "transparent",
-            border: "none",
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: selectedTab === tab ? 600 : 500,
-            color: selectedTab === tab ? "var(--blue)" : "var(--text2)",
-            transition: "all 0.2s",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {tab === "timecard" ? "Time Card" : tab === "route" ? "Route Workflow" : tab === "fuel" ? "Fuel Entry" : tab === "equipment" ? "Equipment" : "Tasks"}
-        </button>
-      ))}
+      {/* Content based on selected tab */}
+      {selectedTab === "timecard" && renderTimeCard()}
+      {selectedTab === "fuel" && (
+        <Card>
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Fuel Entry</h3>
+          <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
+        </Card>
+      )}
+      {selectedTab === "equipment" && (
+        <Card>
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Equipment</h3>
+          <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
+        </Card>
+      )}
+      {selectedTab === "tasks" && (
+        <Card>
+          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Tasks</h3>
+          <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
+        </Card>
+      )}
     </div>
-  )}
-
-  {/* Collapsed: show only the active tab name */}
-  {navCollapsed && (
-    <div style={{ padding: "8px 12px", background: "var(--bg3)" }}>
-      <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>
-        {selectedTab === "timecard" ? "Time Card" : selectedTab === "route" ? "Route Workflow" : selectedTab === "fuel" ? "Fuel Entry" : selectedTab === "equipment" ? "Equipment" : "Tasks"}
-      </span>
-    </div>
-  )}
-</div>
-
-    {/* Content based on selected tab */}
-{selectedTab === "timecard" && renderTimeCard()}
-{selectedTab === "route" && <RouteTabContent user={user} t={t} addToast={addToast} />}
-{selectedTab === "fuel" && (
-  <Card>
-    <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Fuel Entry</h3>
-    <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
-  </Card>
-)}
-{selectedTab === "equipment" && (
-  <Card>
-    <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Equipment</h3>
-    <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
-  </Card>
-)}
-{selectedTab === "tasks" && (
-  <Card>
-    <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Tasks</h3>
-    <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
-  </Card>
-)}
-  </div>
-);
+  );
 }
 
 function RouteTabContent({ user, t, addToast }) {
