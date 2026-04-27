@@ -1222,37 +1222,36 @@ function EmployeeDashboard({
       </Card>
 
       {/* NEW: Project Work (secondary punch) – only when clocked in and off‑site */}
-      {empStatus === "clocked_in" && !onSite && (
-        <Card>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>
-                Project Work
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
-                {activeOuting ? "Active project task" : "Start a project-related task"}
-              </div>
-              <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
-                {activeOuting
-                  ? `Started at ${fmtTime(activeOuting.clock_in_time)}`
-                  : "Record location, purpose, and duration when you leave the site for project work"}
-              </div>
-            </div>
-            <Btn
-              onClick={() => {
-                setOutingModalType(activeOuting ? "end" : "start");
-                setOutingRemarks("");
-                setShowOutingModal(true);
-              }}
-              variant={activeOuting ? "danger" : "primary"}
-              size="md"
-            >
-              <Icon name={activeOuting ? "stop" : "play"} size={14} color="white" />
-              {activeOuting ? "End Project Task" : "Start Project Task"}
-            </Btn>
-          </div>
-        </Card>
-      )}
+      {/* Project Work Card – always visible */}
+<Card>
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+    <div>
+      <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>
+        Project Work
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
+        {activeOuting ? "Active project task" : "Start a project-related task"}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+        {activeOuting
+          ? `Started at ${fmtTime(activeOuting.clock_in_time)}`
+          : "Record location, purpose, and duration for project work"}
+      </div>
+    </div>
+    <Btn
+      onClick={() => {
+        setOutingModalType(activeOuting ? "end" : "start");
+        setOutingRemarks("");
+        setShowOutingModal(true);
+      }}
+      variant={activeOuting ? "danger" : "primary"}
+      size="md"
+    >
+      <Icon name={activeOuting ? "stop" : "play"} size={14} color="white" />
+      {activeOuting ? "End Project Task" : "Start Project Task"}
+    </Btn>
+  </div>
+</Card>
 
       {/* My Tasks Section (unchanged) */}
       <Card>
