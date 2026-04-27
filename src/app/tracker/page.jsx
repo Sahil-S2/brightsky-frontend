@@ -4279,13 +4279,14 @@ function ReportsPage({t}){
   const[period,setPeriod]=useState("month"); // week | month | all
   const[chartView,setChartView]=useState("employees"); // employees | weekdays | month
 
-  const fetchAll=useCallback(async()=>{
-    setLoading(true);
-    try{
-      const[sumRes,recRes]=await Promise.all([
-        authFetch("/api/admin/reports/summary"),
-        authFetch("/api/admin/attendance"),
-      ]);
+  const fetchAll = useCallback(async () => {
+  setLoading(true);
+  try {
+    const timestamp = Date.now();
+    const [sumRes, recRes] = await Promise.all([
+      authFetch(`/api/admin/reports/summary?_=${timestamp}`),
+      authFetch(`/api/admin/attendance?_=${timestamp}`),
+    ]);
       if(sumRes.ok){const d=await sumRes.json();setSummary(Array.isArray(d)?d:[]);}
       if(recRes.ok){const d=await recRes.json();setAllRecords(Array.isArray(d)?d:[]);}
     }catch{}
