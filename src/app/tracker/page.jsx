@@ -601,7 +601,7 @@ useEffect(() => {
   const isAdmin=currentUser?.role==="admin"||currentUser?.role==="manager";
   const navItems=currentUser?[
     {id:"dashboard",label:isAdmin?t.dashboard:`My ${t.dashboard}`,icon:"home"},
-    ...(isAdmin?[{id:"employees",label:t.employees,icon:"users"},{id:"worksites",label:t.worksites,icon:"map"},{ id: "tasks", label: t.tasks, icon: "briefcase" },{id:"attendance",label:t.attendance,icon:"calendar"},{id:"reports",label:t.reports,icon:"bar"},{id:"settings",label:t.settings,icon:"settings"},{id:"export",label:t.export,icon:"download"},{id:"audit",label:t.auditLogs,icon:"log"},{ id: "route", label: t.route || "Route", icon: "navigation" }]:[{id:"my_attendance",label:t.myAttendance,icon:"calendar"},{ id: "task_history", label: t.taskHistory || "Task History", icon: "log" },{ id: "route", label: t.route || "Route", icon: "navigation" },{id:"my_profile",label:t.myProfile,icon:"user"}]),
+    ...(isAdmin?[{id:"employees",label:t.employees,icon:"users"},{id:"worksites",label:t.worksites,icon:"map"},{ id: "tasks", label: t.tasks, icon: "briefcase" },{id:"attendance",label:t.attendance,icon:"calendar"},{id:"reports",label:t.reports,icon:"bar"},{ id: "project_outings", label: t.projectOutings || "Project Outings", icon: "briefcase" },{id:"settings",label:t.settings,icon:"settings"},{id:"export",label:t.export,icon:"download"},{id:"audit",label:t.auditLogs,icon:"log"},{ id: "route", label: t.route || "Route", icon: "navigation" }]:[{id:"my_attendance",label:t.myAttendance,icon:"calendar"},{ id: "task_history", label: t.taskHistory || "Task History", icon: "log" },{ id: "route", label: t.route || "Route", icon: "navigation" },{id:"my_profile",label:t.myProfile,icon:"user"}]),
   ]:[];
 
   if(!mounted)return null;
@@ -662,6 +662,7 @@ useEffect(() => {
             {page === "tasks" && isAdmin && <TasksPage adminData={adminData} addToast={addToast} t={t} />}
             {page==="attendance"&&isAdmin&&<AttendancePage adminData={adminData} t={t}/>}
             {page==="reports"&&isAdmin&&<ReportsPage t={t}/>}
+            {page === "project_outings" && isAdmin && <AdminOutingsPage adminData={adminData} t={t} />}
             {page==="settings"&&isAdmin&&<SettingsPage settings={settings} addToast={addToast} refreshSettings={refreshSettings} t={t}/>}
             {page==="export"&&isAdmin&&<ExportPage adminData={adminData} addToast={addToast} t={t}/>}
             {page==="audit"&&isAdmin&&<AuditPage t={t}/>}
@@ -792,7 +793,7 @@ function EmployeeDashboard({
   handleClockOut, handleBreakStart, handleBreakEnd,
   t, addToast, refreshTodayData, onNavigateToRoute
 }) {
-  // --- Existing state declarations (unchanged) ---
+  // --- existing state declarations (unchanged) ---
   const [now, setNow] = useState(new Date());
   const [showBreakModal, setShowBreakModal] = useState(false);
   const [breakReason, setBreakReason] = useState("");
@@ -817,9 +818,19 @@ function EmployeeDashboard({
   const [routeLoading, setRouteLoading] = useState(false);
   const [selectedTab, setSelectedTab] = useState("timecard");
   const [workflowCollapsed, setWorkflowCollapsed] = useState(false);
-  const [worksiteExpanded, setWorksiteExpanded] = useState(false); // for expandable worksite
+  const [worksiteExpanded, setWorksiteExpanded] = useState(false);
 
-  // --- Existing effects and functions (keep exactly as they are) ---
+  // --- NEW: Project Outing state ---
+  const [activeOuting, setActiveOuting] = useState(null);
+  const [outingHistory, setOutingHistory] = useState([]);
+  const [outingLoading, setOutingLoading] = useState(false);
+  const [showOutingModal, setShowOutingModal] = useState(false);
+  const [outingRemarks, setOutingRemarks] = useState("");
+  const [outingModalType, setOutingModalType] = useState("start");
+  const [outingsPage, setOutingsPage] = useState(1);
+  const [outingsTotal, setOutingsTotal] = useState(0);
+
+  // --- existing effects (keep all) ---
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(interval);
@@ -875,6 +886,107 @@ function EmployeeDashboard({
     fetchRouteStatus();
   }, [fetchRouteStatus]);
 
+  // --- NEW: Project Outing functions ---
+  const fetchActiveOuting = useCallback(async () => {
+    try {
+      const res = await authFetch("/api/attendance/outing/history?page=1&limit=1");
+      if (res.ok) {
+        const data = await res.json();
+        const ongoing = data.outings.find(o => !o.clock_out_time);
+        setActiveOuting(ongoing || null);
+      }
+    } catch (err) {
+      console.error("Failed to fetch active outing", err);
+    }
+  }, []);
+
+  const fetchOutingHistory = useCallback(async (page = 1) => {
+    setOutingLoading(true);
+    try {
+      const res = await authFetch(`/api/attendance/outing/history?page=${page}&limit=5`);
+      if (res.ok) {
+        const data = await res.json();
+        setOutingHistory(data.outings);
+        setOutingsTotal(data.total);
+        setOutingsPage(data.page);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setOutingLoading(false);
+    }
+  }, []);
+
+  const startOuting = async () => {
+    let location = null;
+    try {
+      if (navigator.geolocation) {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+        });
+        location = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      }
+    } catch (err) {
+      console.warn("Location not available");
+    }
+    const res = await authFetch("/api/attendance/outing/start", {
+      method: "POST",
+      body: JSON.stringify({
+        latitude: location?.lat,
+        longitude: location?.lon,
+        remarks: outingRemarks,
+      }),
+    });
+    if (res.ok) {
+      addToast("Project task started", "success");
+      setShowOutingModal(false);
+      setOutingRemarks("");
+      fetchActiveOuting();
+      fetchOutingHistory(1);
+    } else {
+      const err = await res.json();
+      addToast(err.error || "Failed to start", "error");
+    }
+  };
+
+  const endOuting = async () => {
+    let location = null;
+    try {
+      if (navigator.geolocation) {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+        });
+        location = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      }
+    } catch (err) {
+      console.warn("Location not available");
+    }
+    const res = await authFetch("/api/attendance/outing/end", {
+      method: "POST",
+      body: JSON.stringify({
+        latitude: location?.lat,
+        longitude: location?.lon,
+        remarks: outingRemarks,
+      }),
+    });
+    if (res.ok) {
+      addToast("Project task ended", "success");
+      setShowOutingModal(false);
+      setOutingRemarks("");
+      fetchActiveOuting();
+      fetchOutingHistory(1);
+    } else {
+      const err = await res.json();
+      addToast(err.error || "Failed to end", "error");
+    }
+  };
+
+  useEffect(() => {
+    fetchActiveOuting();
+    fetchOutingHistory(1);
+  }, [fetchActiveOuting, fetchOutingHistory]);
+
+  // --- existing functions (keep exactly as they are) ---
   const updateTaskStatus = async (taskId, status, reason = "") => {
     const res = await authFetch(`/api/tasks/${taskId}/status`, {
       method: "PUT",
@@ -1040,7 +1152,7 @@ function EmployeeDashboard({
 
   const displayWS = employeeWorksite || { latitude: settings.latitude, longitude: settings.longitude, radius_feet: settings.radiusFeet, name: settings.siteName };
 
-  // --- Modified renderTimeCard (without the worksite card) ---
+  // --- renderTimeCard (includes the new Project Outing section) ---
   const renderTimeCard = () => (
     <>
       {/* Compact Time Summary */}
@@ -1108,13 +1220,45 @@ function EmployeeDashboard({
         )}
       </Card>
 
+      {/* NEW: Project Work (secondary punch) – only when clocked in and off‑site */}
+      {empStatus === "clocked_in" && !onSite && (
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>
+                Project Work
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
+                {activeOuting ? "Active project task" : "Start a project-related task"}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+                {activeOuting
+                  ? `Started at ${fmtTime(activeOuting.clock_in_time)}`
+                  : "Record location, purpose, and duration when you leave the site for project work"}
+              </div>
+            </div>
+            <Btn
+              onClick={() => {
+                setOutingModalType(activeOuting ? "end" : "start");
+                setOutingRemarks("");
+                setShowOutingModal(true);
+              }}
+              variant={activeOuting ? "danger" : "primary"}
+              size="md"
+            >
+              <Icon name={activeOuting ? "stop" : "play"} size={14} color="white" />
+              {activeOuting ? "End Project Task" : "Start Project Task"}
+            </Btn>
+          </div>
+        </Card>
+      )}
+
       {/* My Tasks Section (unchanged) */}
       <Card>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
           {tasksLoading && <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />}
         </div>
-
         {employeeTasks.length === 0 ? (
           <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>No tasks assigned.</div>
         ) : (
@@ -1222,7 +1366,6 @@ function EmployeeDashboard({
             })}
           </div>
         )}
-
         {tasksTotal > tasksPerPage && (
           <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
             <button onClick={() => fetchEmployeeTasks(tasksPage - 1)} disabled={tasksPage === 1} style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage === 1 ? "not-allowed" : "pointer", opacity: tasksPage === 1 ? 0.5 : 1 }}>Previous</button>
@@ -1266,7 +1409,44 @@ function EmployeeDashboard({
         })()}
       </Card>
 
-      {/* Break Modal */}
+      {/* NEW: Recent Project Outings History */}
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Recent Project Outings</div>
+          {outingLoading && <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />}
+        </div>
+        {outingHistory.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "12px 0", color: "var(--text4)", fontSize: 13 }}>No project outings recorded yet.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {outingHistory.map(outing => (
+              <div key={outing.id} style={{ padding: "12px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                      {fmtDate(outing.clock_in_time)} · {fmtTime(outing.clock_in_time)} → {outing.clock_out_time ? fmtTime(outing.clock_out_time) : "In progress"}
+                    </div>
+                    {outing.duration_minutes && <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>Duration: {fmtMins(outing.duration_minutes)}</div>}
+                    {outing.clock_in_location && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>📍 Start: {outing.clock_in_location}</div>}
+                    {outing.clock_out_location && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>📍 End: {outing.clock_out_location}</div>}
+                    {outing.clock_in_remarks && <div style={{ fontSize: 11, color: "var(--blue)", marginTop: 2, fontStyle: "italic" }}>Purpose: {outing.clock_in_remarks}</div>}
+                    {outing.clock_out_remarks && <div style={{ fontSize: 11, color: "var(--green)", marginTop: 2 }}>Completion: {outing.clock_out_remarks}</div>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {outingsTotal > 5 && (
+          <div style={{ textAlign: "center", marginTop: 12 }}>
+            <Btn variant="secondary" size="sm" onClick={() => fetchOutingHistory(outingsPage + 1)} disabled={outingsPage * 5 >= outingsTotal}>
+              Load More
+            </Btn>
+          </div>
+        )}
+      </Card>
+
+      {/* Break Modal (unchanged) */}
       {showBreakModal && (
         <Modal title="Start Break" onClose={() => { setShowBreakModal(false); setBreakType(null); setBreakReason(""); }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1286,7 +1466,7 @@ function EmployeeDashboard({
         </Modal>
       )}
 
-      {/* Incomplete Reason Modal */}
+      {/* Incomplete Reason Modal (unchanged) */}
       {showIncompleteModal && (
         <Modal title="Why was this task not completed?" onClose={() => { setShowIncompleteModal(false); setIncompleteReason(""); setSelectedBreakId(null); }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1299,14 +1479,39 @@ function EmployeeDashboard({
         </Modal>
       )}
 
-      {/* Camera Modal */}
+      {/* Camera Modal (unchanged) */}
       {showCamera && typeof window !== 'undefined' && (
         <CameraModal onClose={() => setShowCamera(false)} onCapture={(photo) => processClockIn(photo)} />
+      )}
+
+      {/* NEW: Remarks Modal for Project Outing */}
+      {showOutingModal && (
+        <Modal
+          title={outingModalType === "start" ? "Start Project Task" : "End Project Task"}
+          onClose={() => setShowOutingModal(false)}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <textarea
+              rows={3}
+              value={outingRemarks}
+              onChange={e => setOutingRemarks(e.target.value)}
+              placeholder={
+                outingModalType === "start"
+                  ? "Optional: Reason for going out (e.g., Material pickup, Site inspection)"
+                  : "Optional: Task completion status / remarks"
+              }
+              style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
+            />
+            <Btn onClick={outingModalType === "start" ? startOuting : endOuting} style={{ width: "100%" }}>
+              {outingModalType === "start" ? "Start Task" : "End Task"}
+            </Btn>
+          </div>
+        </Modal>
       )}
     </>
   );
 
-  // --- New layout: workflow row + greeting + expandable worksite + tab content ---
+  // --- Return JSX (workflow row + greeting + expandable worksite + tab content) ---
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Workflow row (horizontal buttons, no Route) */}
@@ -2991,6 +3196,111 @@ function RouteHistoryPage({ adminData, t }) {
     </div>
   );
 }
+
+function AdminOutingsPage({ adminData, t }) {
+  const [outings, setOutings] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [filterUser, setFilterUser] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const itemsPerPage = 15;
+
+  const fetchOutings = useCallback(async () => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (filterUser !== "all") params.set("user_id", filterUser);
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    params.set("page", page);
+    params.set("limit", itemsPerPage);
+    try {
+      const res = await authFetch(`/api/attendance/outing/admin/history?${params}`);
+      if (res.ok) {
+        const data = await res.json();
+        setOutings(data.outings);
+        setTotal(data.total);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [filterUser, dateFrom, dateTo, page]);
+
+  useEffect(() => {
+    fetchOutings();
+  }, [fetchOutings]);
+
+  const totalPages = Math.ceil(total / itemsPerPage);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionHeader title="Project Outings" subtitle="Monitor employee project tasks" />
+      <Card>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+          <select value={filterUser} onChange={e => setFilterUser(e.target.value)} style={{ fontSize: 16 }}>
+            <option value="all">All Employees</option>
+            {adminData.employees.map(emp => (
+              <option key={emp.id} value={emp.id}>{emp.name} ({emp.user_id})</option>
+            ))}
+          </select>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
+          <Btn onClick={fetchOutings} variant="secondary" size="sm">Filter</Btn>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 24 }}>Loading...</div>
+        ) : outings.length === 0 ? (
+          <div style={{ textAlign: "center", padding: 24, color: "var(--text4)" }}>No project outings found.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ minWidth: 700 }}>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Start Time</th>
+                  <th>End Time</th>
+                  <th>Duration</th>
+                  <th>Start Location</th>
+                  <th>End Location</th>
+                  <th>Purpose</th>
+                  <th>Completion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {outings.map(o => (
+                  <tr key={o.id}>
+                    <td>{o.user_name}<br/><span style={{ fontSize: 11, color: "var(--blue)" }}>{o.employee_code}</span></td>
+                    <td>{fmtDate(o.clock_in_time)}<br/>{fmtTime(o.clock_in_time)}</td>
+                    <td>{o.clock_out_time ? fmtDate(o.clock_out_time) + "<br/>" + fmtTime(o.clock_out_time) : "—"}</td>
+                    <td>{o.duration_minutes ? fmtMins(o.duration_minutes) : "—"}</td>
+                    <td>{o.clock_in_location || "—"}</td>
+                    <td>{o.clock_out_location || "—"}</td>
+                    <td>{o.clock_in_remarks || "—"}</td>
+                    <td>{o.clock_out_remarks || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {totalPages > 1 && (
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16 }}>
+            <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>Previous</button>
+            <span>Page {page} of {totalPages}</span>
+            <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>Next</button>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 // ─── MY ATTENDANCE ────────────────────────────────────────────────────────────
 function MyAttendance({ t }) {
   const [sessions, setSessions] = useState([]);
