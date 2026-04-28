@@ -485,6 +485,9 @@ useEffect(() => {
       const today=new Date().toISOString().slice(0,10);
       const[eR,aR,allR]=await Promise.all([authFetch("/api/admin/employees"),authFetch(`/api/admin/attendance?date_from=${today}&date_to=${today}`),authFetch("/api/admin/attendance")]);
       const[eD,aD,allD]=await Promise.all([eR.ok?eR.json():null,aR.ok?aR.json():null,allR.ok?allR.json():null]);
+      const eD=eR.ok?await eR.json():null;
+      const aD=aR.ok?await aR.json():null;
+      const allD=allR.ok?await allR.json():null;
       setAdminData({employees:eD?.employees||[],attendance:aD?.sessions||[],allAttendance:allD?.sessions||[]});
     }catch{}
   },[currentUser]);
@@ -4724,7 +4727,7 @@ function AttendancePage({ adminData, t }) {
     try {
       const r = await authFetch(`/api/admin/attendance?${p}`);
       const d = await r.json();
-      setRecords(Array.isArray(d) ? d : []);
+      setRecords(Array.isArray(d?.sessions) ? d.sessions : []);
     } catch {}
     setLoading(false);
   }, [empFilter, dateFrom, dateTo]);
@@ -4883,8 +4886,8 @@ function ReportsPage({t}){
       authFetch(`/api/admin/reports/summary?_=${timestamp}`),
       authFetch(`/api/admin/attendance?_=${timestamp}`),
     ]);
-      if(sumRes.ok){const d=await sumRes.json();setSummary(Array.isArray(d.summary)?d.summary:[]);}
-      if(recRes.ok){const d=await recRes.json();setAllRecords(Array.isArray(d.sessions)?d.sessions:[]);}
+      if(sumRes.ok){const d=await sumRes.json();setSummary(Array.isArray(d?.summary)?d.summary:[]);}
+      if(recRes.ok){const d=await recRes.json();setAllRecords(Array.isArray(d?.sessions)?d.sessions:[]);}
     }catch{}
     setLoading(false);
   },[]);
@@ -5319,7 +5322,7 @@ function ExportPage({adminData,addToast,t}){
 function AuditPage({t}){
   const[logs,setLogs]=useState([]);
   const[loading,setLoading]=useState(true);
-  useEffect(()=>{authFetch("/api/audit-logs").then(r=>r.json()).then(d=>{setLogs(Array.isArray(d.logs)?d.logs:[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
+  useEffect(()=>{authFetch("/api/audit-logs").then(r=>r.json()).then(d=>{setLogs(Array.isArray(d?.logs)?d.logs:[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
   const dotColor={clock_in:"var(--green)",clock_out:"var(--red)",break_start:"var(--amber)",break_end:"var(--amber)",update_settings:"var(--blue)",auto_clock_in:"var(--purple)"};
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
