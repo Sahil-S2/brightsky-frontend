@@ -485,9 +485,6 @@ useEffect(() => {
       const today=new Date().toISOString().slice(0,10);
       const[eR,aR,allR]=await Promise.all([authFetch("/api/admin/employees"),authFetch(`/api/admin/attendance?date_from=${today}&date_to=${today}`),authFetch("/api/admin/attendance")]);
       const[eD,aD,allD]=await Promise.all([eR.ok?eR.json():null,aR.ok?aR.json():null,allR.ok?allR.json():null]);
-      const eD=eR.ok?await eR.json():null;
-      const aD=aR.ok?await aR.json():null;
-      const allD=allR.ok?await allR.json():null;
       setAdminData({employees:eD?.employees||[],attendance:aD?.sessions||[],allAttendance:allD?.sessions||[]});
     }catch{}
   },[currentUser]);
