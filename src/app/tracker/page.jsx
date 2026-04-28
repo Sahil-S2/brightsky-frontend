@@ -484,7 +484,8 @@ useEffect(() => {
     try{
       const today=new Date().toISOString().slice(0,10);
       const[eR,aR,allR]=await Promise.all([authFetch("/api/admin/employees"),authFetch(`/api/admin/attendance?date_from=${today}&date_to=${today}`),authFetch("/api/admin/attendance")]);
-      setAdminData({employees:eR.ok?await eR.json():[],attendance:aR.ok?await aR.json():[],allAttendance:allR.ok?await allR.json():[]});
+      const[eD,aD,allD]=await Promise.all([eR.ok?eR.json():null,aR.ok?aR.json():null,allR.ok?allR.json():null]);
+      setAdminData({employees:eD?.employees||[],attendance:aD?.sessions||[],allAttendance:allD?.sessions||[]});
     }catch{}
   },[currentUser]);
   const refreshWorksites=useCallback(async()=>{if(!currentUser)return;try{const r=await authFetch("/api/worksites");if(r.ok){const d=await r.json();setWorksites(Array.isArray(d)?d:[]);}}catch{}},[currentUser]);
@@ -4882,8 +4883,8 @@ function ReportsPage({t}){
       authFetch(`/api/admin/reports/summary?_=${timestamp}`),
       authFetch(`/api/admin/attendance?_=${timestamp}`),
     ]);
-      if(sumRes.ok){const d=await sumRes.json();setSummary(Array.isArray(d)?d:[]);}
-      if(recRes.ok){const d=await recRes.json();setAllRecords(Array.isArray(d)?d:[]);}
+      if(sumRes.ok){const d=await sumRes.json();setSummary(Array.isArray(d.summary)?d.summary:[]);}
+      if(recRes.ok){const d=await recRes.json();setAllRecords(Array.isArray(d.sessions)?d.sessions:[]);}
     }catch{}
     setLoading(false);
   },[]);
@@ -5318,7 +5319,7 @@ function ExportPage({adminData,addToast,t}){
 function AuditPage({t}){
   const[logs,setLogs]=useState([]);
   const[loading,setLoading]=useState(true);
-  useEffect(()=>{authFetch("/api/audit-logs").then(r=>r.json()).then(d=>{setLogs(Array.isArray(d)?d:[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
+  useEffect(()=>{authFetch("/api/audit-logs").then(r=>r.json()).then(d=>{setLogs(Array.isArray(d.logs)?d.logs:[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
   const dotColor={clock_in:"var(--green)",clock_out:"var(--red)",break_start:"var(--amber)",break_end:"var(--amber)",update_settings:"var(--blue)",auto_clock_in:"var(--purple)"};
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
