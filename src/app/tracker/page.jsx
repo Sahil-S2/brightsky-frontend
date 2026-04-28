@@ -2412,7 +2412,6 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
   const totalMins=attendance.reduce((a,s)=>{if(s.status==="active"&&s.clock_in_time)return a+Math.max(0,Math.round((Date.now()-new Date(s.clock_in_time).getTime())/60000)-(parseInt(s.break_minutes)||0));return a+(parseInt(s.worked_minutes)||0);},0);
 
   // Compute per-employee totals from individual attendance records (same approach as Reports page)
-  // This avoids relying on potentially stale/incorrect DB aggregates
   const now = Date.now();
   const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
   const empStats = (allAttendance || []).reduce((acc, r) => {
@@ -2429,49 +2428,115 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
     return acc;
   }, {});
 
+  // Active employees surface first, then alphabetical
+  const sortedEmployees = [...employees].sort((a, b) => {
+    const aActive = attendance.some(s => s.user_id === a.id && s.status === "active");
+    const bActive = attendance.some(s => s.user_id === b.id && s.status === "active");
+    if (aActive && !bActive) return -1;
+    if (!aActive && bActive) return 1;
+    return (a.name || "").localeCompare(b.name || "");
+  });
+
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <style>{`
+        .bsk-adm-active-row td{background:var(--green-dim)!important;}
+        .bsk-adm-active-row:hover td{background:rgba(5,150,105,0.12)!important;}
+        @media(max-width:599px){
+          .bsk-adm-hide-mob{display:none!important;}
+          .bsk-adm-tbl th,.bsk-adm-tbl td{padding:9px 10px!important;font-size:12.5px!important;}
+          .bsk-adm-name{font-size:13px!important;}
+          .bsk-adm-sub{display:none!important;}
+        }
+      `}</style>
+
+      {/* ── Header ── */}
       <div className="fade-up" style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-        <div><h1 style={{fontSize:22,fontWeight:800,color:"var(--text)",letterSpacing:"-0.02em"}}>{t.dashboard}</h1><p style={{color:"var(--text3)",fontSize:13,marginTop:3,fontWeight:400}}>{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</p></div>
+        <div>
+          <h1 style={{fontSize:22,fontWeight:800,color:"var(--text)",letterSpacing:"-0.02em"}}>{t.dashboard}</h1>
+          <p style={{color:"var(--text3)",fontSize:13,marginTop:3,fontWeight:400}}>{new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</p>
+        </div>
         <Btn onClick={refreshAdminData} variant="secondary" size="sm"><Icon name="refresh" size={13}/>{t.refresh}</Btn>
       </div>
+
+      {/* ── Stat cards ── */}
       <div className="fade-up-d1" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <StatCard label="Total Employees" value={employees.length} icon="users" color="var(--blue)"/>
         <StatCard label="Active Now" value={todayActive} icon="clock" color="var(--green)" sub={`of ${employees.length}`}/>
         <StatCard label="Sessions Today" value={attendance.length} icon="calendar" color="var(--purple)"/>
         <StatCard label="Hours Today" value={`${Math.round(totalMins/60)}h`} icon="trend" color="var(--amber)"/>
       </div>
+
+      {/* ── Today's Sessions (first — prioritises active-shift visibility) ── */}
       <Card className="fade-up-d2">
-        <SectionHeader title="Employee Summary"/>
+        <SectionHeader title="Today's Sessions"/>
         <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-          <table style={{minWidth:500}}>
+          <table className="bsk-adm-tbl" style={{minWidth:280}}>
             <thead>
               <tr>
                 <th>Employee</th>
-                <th>ID</th>
-                <th>Total Hrs</th>
-                <th>This Week</th>
-                <th>Personal Break</th>
-                <th>Work Break</th>
+                <th>Clock In</th>
+                <th className="bsk-adm-hide-mob">Clock Out</th>
+                <th>Worked</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {employees.length === 0 ? (
-                <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--text4)", padding: 24 }}>No data yet.</td></tr>
+              {attendance.length===0
+                ?<tr><td colSpan={5} style={{textAlign:"center",color:"var(--text4)",padding:24}}>No sessions today.</td></tr>
+                :attendance.slice(0,12).map(s=>(
+                  <tr key={s.id} className={s.status==="active"?"bsk-adm-active-row":""}>
+                    <td style={{color:"var(--text)",fontWeight:500,fontSize:13}}>{s.name||"—"}</td>
+                    <td style={{fontSize:12.5}}>{fmtTime(s.clock_in_time)}</td>
+                    <td className="bsk-adm-hide-mob" style={{fontSize:12.5}}>{fmtTime(s.clock_out_time)}</td>
+                    <td style={{color:"var(--green)",fontWeight:600,fontSize:13}}>{s.status==="active"&&s.clock_in_time?fmtMins(Math.max(0,Math.round((Date.now()-new Date(s.clock_in_time).getTime())/60000)-(parseInt(s.break_minutes)||0))):fmtMins(s.worked_minutes)}</td>
+                    <td><StatusBadge status={s.status==="completed"?"clocked_out":"clocked_in"}/></td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* ── Employee Summary ── */}
+      <Card className="fade-up-d3">
+        <SectionHeader title="Employee Summary"/>
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+          <table className="bsk-adm-tbl" style={{minWidth:300}}>
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th className="bsk-adm-hide-mob">ID</th>
+                <th className="bsk-adm-hide-mob">Total Hrs</th>
+                <th>This Week</th>
+                <th className="bsk-adm-hide-mob">Personal Break</th>
+                <th className="bsk-adm-hide-mob">Work Break</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedEmployees.length === 0 ? (
+                <tr><td colSpan={7} style={{textAlign:"center",color:"var(--text4)",padding:24}}>No data yet.</td></tr>
               ) : (
-                employees.map(emp => {
+                sortedEmployees.map(emp => {
                   const stats = empStats[emp.id] || { totalMins: 0, weekMins: 0, personalBreakMins: 0, workBreakMins: 0 };
                   const active = attendance.find(a => a.user_id === emp.id && a.status === "active");
                   return (
-                    <tr key={emp.id}>
-                      <td><div style={{ fontWeight: 600, color: "var(--text)", fontSize: 13.5 }}>{emp.name}</div><div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 1 }}>{emp.designation || emp.department || ""}</div></td>
-                      <td><span style={{ background: "var(--blue-light)", color: "var(--blue)", padding: "2px 8px", borderRadius: 6, fontSize: 11.5, fontWeight: 700, border: "1px solid var(--blue-mid)" }}>{emp.user_id || "—"}</span></td>
-                      <td style={{ color: "var(--text2)", fontWeight: 600 }}>{Math.round(stats.totalMins / 60)}h</td>
-                      <td style={{ color: "var(--text2)", fontWeight: 600 }}>{Math.round(stats.weekMins / 60)}h</td>
-                      <td style={{ fontSize: 12, color: "var(--text3)" }}>{fmtMins(stats.personalBreakMins)}</td>
-                      <td style={{ fontSize: 12, color: "var(--text3)" }}>{fmtMins(stats.workBreakMins)}</td>
-                      <td>{active ? <StatusBadge status="clocked_in" /> : <StatusBadge status="clocked_out" />}</td>
+                    <tr key={emp.id} className={active ? "bsk-adm-active-row" : ""}>
+                      <td>
+                        <div className="bsk-adm-name" style={{fontWeight:600,color:"var(--text)",fontSize:13.5,display:"flex",alignItems:"center",gap:7}}>
+                          {active && <span style={{width:7,height:7,borderRadius:"50%",background:"var(--green)",flexShrink:0,boxShadow:"0 0 0 2px var(--green-light)"}}/>}
+                          {emp.name}
+                        </div>
+                        <div className="bsk-adm-sub" style={{fontSize:11.5,color:"var(--text3)",marginTop:2,paddingLeft:active?14:0}}>{emp.designation||emp.department||""}</div>
+                      </td>
+                      <td className="bsk-adm-hide-mob"><span style={{background:"var(--blue-light)",color:"var(--blue)",padding:"2px 8px",borderRadius:6,fontSize:11.5,fontWeight:700,border:"1px solid var(--blue-mid)"}}>{emp.user_id||"—"}</span></td>
+                      <td className="bsk-adm-hide-mob" style={{color:"var(--text2)",fontWeight:600}}>{Math.round(stats.totalMins/60)}h</td>
+                      <td style={{color:"var(--text2)",fontWeight:600}}>{Math.round(stats.weekMins/60)}h</td>
+                      <td className="bsk-adm-hide-mob" style={{fontSize:12,color:"var(--text3)"}}>{fmtMins(stats.personalBreakMins)}</td>
+                      <td className="bsk-adm-hide-mob" style={{fontSize:12,color:"var(--text3)"}}>{fmtMins(stats.workBreakMins)}</td>
+                      <td>{active?<StatusBadge status="clocked_in"/>:<StatusBadge status="clocked_out"/>}</td>
                     </tr>
                   );
                 })
@@ -2480,29 +2545,10 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
           </table>
         </div>
       </Card>
-      <Card className="fade-up-d3">
-        <SectionHeader title="Today's Sessions"/>
-        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-          <table style={{minWidth:480}}>
-            <thead><tr><th>Employee</th><th>Clock In</th><th>Clock Out</th><th>Worked</th><th>Status</th></tr></thead>
-            <tbody>
-              {attendance.length===0?<tr><td colSpan={5} style={{textAlign:"center",color:"var(--text4)",padding:24}}>No sessions today.</td></tr>
-              :attendance.slice(0,12).map(s=>(
-                <tr key={s.id}>
-                  <td style={{color:"var(--text)",fontWeight:500,fontSize:13}}>{s.name||"—"}</td>
-                  <td style={{fontSize:12.5}}>{fmtTime(s.clock_in_time)}</td>
-                  <td style={{fontSize:12.5}}>{fmtTime(s.clock_out_time)}</td>
-                  <td style={{color:"var(--green)",fontWeight:600,fontSize:13}}>{s.status==="active"&&s.clock_in_time?fmtMins(Math.max(0,Math.round((Date.now()-new Date(s.clock_in_time).getTime())/60000)-(parseInt(s.break_minutes)||0))):fmtMins(s.worked_minutes)}</td>
-                  <td><StatusBadge status={s.status==="completed"?"clocked_out":"clocked_in"}/></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
     </div>
   );
 }
+
 
 // ─── WORKSITES PAGE (Flash Cards) ─────────────────────────────────────────────
   // ── Worksite Form — uses controlled state, never resets sibling fields ──────
