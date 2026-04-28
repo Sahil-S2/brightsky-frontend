@@ -1,7 +1,8 @@
 "use client";
 
 export const dynamic = "force-dynamic";
-export const runtime = "edge";
+// NOTE: "runtime = edge" removed – it strips browser APIs (localStorage,
+// navigator.geolocation, navigator.vibrate) that this page relies on.
 import { useState, useEffect, useCallback, useRef } from "react";
 
 const API = "https://brightsky-api.sahilswarajjena456.workers.dev";
@@ -830,7 +831,6 @@ function EmployeeDashboard({
   const [outingModalType, setOutingModalType] = useState("start");
   const [outingsPage, setOutingsPage] = useState(1);
   const [outingsTotal, setOutingsTotal] = useState(0);
-  const [outingActionLoading, setOutingActionLoading] = useState(false);
 
   // --- existing effects (keep all) ---
   useEffect(() => {
@@ -891,14 +891,19 @@ function EmployeeDashboard({
   // --- NEW: Project Outing functions ---
   const fetchActiveOuting = useCallback(async () => {
     try {
-      const res = await authFetch("/api/attendance/outing/history?page=1&limit=1");
+      // FIX: use the dedicated /outing/active endpoint instead of guessing
+      // from paginated history – far more reliable and efficient.
+      console.log("[fetchActiveOuting] Checking for active project outing…");
+      const res = await authFetch("/api/attendance/outing/active");
       if (res.ok) {
         const data = await res.json();
-        const ongoing = data.outings.find(o => !o.clock_out_time);
-        setActiveOuting(ongoing || null);
+        console.log("[fetchActiveOuting] Result:", data.outing ? `id=${data.outing.id}` : "none");
+        setActiveOuting(data.outing || null);
+      } else {
+        console.error("[fetchActiveOuting] Server error", res.status);
       }
     } catch (err) {
-      console.error("Failed to fetch active outing", err);
+      console.error("[fetchActiveOuting] Network error:", err);
     }
   }, []);
 
@@ -920,72 +925,99 @@ function EmployeeDashboard({
   }, []);
 
   const startOuting = async () => {
-  setOutingActionLoading(true);
-  
-  // Use the globally tracked, instant location payload
-  const { latitude, longitude } = getLocationPayload();
+  // FIX: loading state was never set – spinner never appeared, errors crashed silently
+  setOutingLoading(true);
+
+  let location = null;
+  try {
+    if (navigator.geolocation) {
+      console.log("[startOuting] Requesting GPS…");
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+      });
+      location = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      console.log("[startOuting] GPS obtained:", location);
+    }
+  } catch (err) {
+    console.warn("[startOuting] Location not available:", err);
+    addToast("Location not available – task will be recorded without GPS.", "warning");
+  }
 
   try {
-    console.log(`[Frontend] Starting project task at Lat: ${latitude}, Lon: ${longitude}`);
-    
+    console.log("[startOuting] Calling /api/attendance/outing/start…");
     const res = await authFetch("/api/attendance/outing/start", {
       method: "POST",
       body: JSON.stringify({
-        latitude: latitude || null,
-        longitude: longitude || null,
-        remarks: outingRemarks,
+        latitude:  location?.lat  ?? null,
+        longitude: location?.lon  ?? null,
+        remarks:   outingRemarks,
       }),
     });
-    
     const data = await res.json();
     if (!res.ok) {
+      console.error("[startOuting] API error:", data);
       throw new Error(data.error || "Failed to start project task");
     }
-    
-    addToast("Project task started", "success");
+    console.log("[startOuting] Success:", data);
+    addToast("Project task started ✓", "success");
     setShowOutingModal(false);
     setOutingRemarks("");
-    fetchActiveOuting();   
-    fetchOutingHistory(1); 
+    fetchActiveOuting();
+    fetchOutingHistory(1);
   } catch (err) {
-    console.error("Start outing error:", err);
+    console.error("[startOuting] Error:", err);
     addToast(err.message || "Could not start task. Please try again.", "error");
   } finally {
-    setOutingActionLoading(false);
+    setOutingLoading(false); // always reset, even on error
   }
 };
 
   const endOuting = async () => {
-  setOutingActionLoading(true);
-  const { latitude, longitude } = getLocationPayload();
+  // FIX: loading state was never set AND the authFetch call was outside the
+  // try/catch – any network error would throw silently with a frozen UI.
+  setOutingLoading(true);
+
+  let location = null;
+  try {
+    if (navigator.geolocation) {
+      console.log("[endOuting] Requesting GPS…");
+      const pos = await new Promise((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+      );
+      location = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+      console.log("[endOuting] GPS obtained:", location);
+    }
+  } catch (err) {
+    console.warn("[endOuting] Location not available:", err);
+    addToast("Location not available – end time will be recorded without GPS.", "warning");
+  }
 
   try {
-    console.log(`[Frontend] Ending project task at Lat: ${latitude}, Lon: ${longitude}`);
-    
+    console.log("[endOuting] Calling /api/attendance/outing/end…");
     const res = await authFetch("/api/attendance/outing/end", {
       method: "POST",
       body: JSON.stringify({
-        latitude: latitude || null,
-        longitude: longitude || null,
-        remarks: outingRemarks,
+        latitude:  location?.lat  ?? null,
+        longitude: location?.lon  ?? null,
+        remarks:   outingRemarks,
       }),
     });
-    
-    if (res.ok) {
-      addToast("Project task ended", "success");
-      setShowOutingModal(false);
-      setOutingRemarks("");
-      fetchActiveOuting();
-      fetchOutingHistory(1);
-    } else {
-      const err = await res.json();
-      throw new Error(err.error || "Failed to end project task");
+    const data = await res.json();
+    if (!res.ok) {
+      console.error("[endOuting] API error:", data);
+      throw new Error(data.error || "Failed to end project task");
     }
+    console.log("[endOuting] Success:", data);
+    addToast("Project task ended ✓", "success");
+    setShowOutingModal(false);
+    setOutingRemarks("");
+    fetchActiveOuting();
+    fetchOutingHistory(1);
   } catch (err) {
-    console.error("End outing error:", err);
+    console.error("[endOuting] Error:", err);
     addToast(err.message || "Could not end task. Please try again.", "error");
   } finally {
-    setOutingActionLoading(false);
+    setOutingLoading(false); // always reset, even on error
   }
 };
 
@@ -1245,14 +1277,18 @@ function EmployeeDashboard({
           : "Record location, purpose, and duration for project work"}
       </div>
     </div>
-    <Btn 
-  onClick={outingModalType === "start" ? startOuting : endOuting} 
-  loading={outingActionLoading}
-  disabled={outingActionLoading}
-  style={{ width: "100%" }}
->
-  {outingModalType === "start" ? "Start Task" : "End Task"}
-</Btn>
+    <Btn
+      onClick={() => {
+        setOutingModalType(activeOuting ? "end" : "start");
+        setOutingRemarks("");
+        setShowOutingModal(true);
+      }}
+      variant={activeOuting ? "danger" : "primary"}
+      size="md"
+    >
+      <Icon name={activeOuting ? "stop" : "play"} size={14} color="white" />
+      {activeOuting ? "End Project Task" : "Start Project Task"}
+    </Btn>
   </div>
 </Card>
 
@@ -1491,21 +1527,46 @@ function EmployeeDashboard({
       {showOutingModal && (
         <Modal
           title={outingModalType === "start" ? "Start Project Task" : "End Project Task"}
-          onClose={() => setShowOutingModal(false)}
+          onClose={() => {
+            // FIX: prevent modal close while request is in flight
+            if (!outingLoading) setShowOutingModal(false);
+          }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <textarea
               rows={3}
               value={outingRemarks}
               onChange={e => setOutingRemarks(e.target.value)}
+              disabled={outingLoading}
               placeholder={
                 outingModalType === "start"
                   ? "Optional: Reason for going out (e.g., Material pickup, Site inspection)"
                   : "Optional: Task completion status / remarks"
               }
-              style={{ fontSize: 14, padding: "10px", borderRadius: "var(--radius)", border: "1.5px solid var(--border)", resize: "vertical", fontFamily: "inherit" }}
+              style={{
+                fontSize: 14,
+                padding: "10px",
+                borderRadius: "var(--radius)",
+                border: "1.5px solid var(--border)",
+                resize: "vertical",
+                fontFamily: "inherit",
+                opacity: outingLoading ? 0.6 : 1,
+              }}
             />
-            <Btn onClick={outingModalType === "start" ? startOuting : endOuting} style={{ width: "100%" }}>
+            {/* GPS notice */}
+            <div style={{ fontSize: 12, color: "var(--text3)", display: "flex", alignItems: "center", gap: 6 }}>
+              <Icon name="pin" size={12} color="var(--text3)" />
+              Your live location will be captured automatically.
+            </div>
+            {/* FIX: loading prop was missing – spinner never appeared */}
+            <Btn
+              onClick={outingModalType === "start" ? startOuting : endOuting}
+              loading={outingLoading}
+              disabled={outingLoading}
+              variant={outingModalType === "start" ? "primary" : "danger"}
+              style={{ width: "100%" }}
+            >
+              <Icon name={outingModalType === "start" ? "play" : "stop"} size={14} color="white" />
               {outingModalType === "start" ? "Start Task" : "End Task"}
             </Btn>
           </div>
