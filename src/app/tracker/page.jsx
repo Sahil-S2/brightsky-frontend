@@ -788,6 +788,356 @@ function LoginPage({onLogin,lang,setLang}){
 }
 
 // ─── EMPLOYEE DASHBOARD ───────────────────────────────────────────────────────
+// ─── FREE MAP STACK (Leaflet + OpenStreetMap + Nominatim) ────────────────────
+// No API key, no billing. Tiles from openstreetmap.org, geocoding from
+// nominatim.openstreetmap.org. Both require attribution (rendered below).
+
+let _leafletPromise = null;
+function loadLeaflet() {
+  if (typeof window === "undefined") return Promise.reject(new Error("SSR"));
+  if (window.L) return Promise.resolve(window.L);
+  if (_leafletPromise) return _leafletPromise;
+  _leafletPromise = new Promise((resolve, reject) => {
+    if (!document.querySelector('link[data-leaflet="1"]')) {
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      css.integrity = "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=";
+      css.crossOrigin = "";
+      css.dataset.leaflet = "1";
+      document.head.appendChild(css);
+    }
+    const s = document.createElement("script");
+    s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    s.integrity = "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=";
+    s.crossOrigin = "";
+    s.async = true;
+    s.onload = () => resolve(window.L);
+    s.onerror = () => { _leafletPromise = null; reject(new Error("Failed to load Leaflet")); };
+    document.head.appendChild(s);
+  });
+  return _leafletPromise;
+}
+
+// Nominatim has a 1 req/sec usage policy. We cache results forever (per
+// page-load) and serialise calls through a tiny in-memory queue.
+const _addrCache = new Map();
+let _nominatimQueue = Promise.resolve();
+function reverseGeocode(lat, lng) {
+  const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+  if (_addrCache.has(key)) return Promise.resolve(_addrCache.get(key));
+  _nominatimQueue = _nominatimQueue.then(async () => {
+    if (_addrCache.has(key)) return _addrCache.get(key);
+    await new Promise(r => setTimeout(r, 1100)); // respect rate limit
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error("geocoder " + res.status);
+      const data = await res.json();
+      const addr = data.display_name || "";
+      _addrCache.set(key, addr);
+      return addr;
+    } catch {
+      _addrCache.set(key, "");
+      return "";
+    }
+  });
+  return _nominatimQueue;
+}
+
+function parseLatLng(str) {
+  if (!str || typeof str !== "string") return null;
+  const parts = str.split(",").map(Number);
+  if (parts.length !== 2) return null;
+  const [lat, lng] = parts;
+  if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
+const fmtFullDate = d => d
+  ? new Date(d).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", year: "numeric" })
+  : "—";
+
+// ─── OutingDetailModal ───────────────────────────────────────────────────────
+// Single-outing popup with map + reverse-geocoded addresses.
+// Reuses the page-level <Modal> (passed in as ModalShell) so styling stays
+// consistent with every other modal in the app.
+function OutingDetailModal({ outing, onClose, isAdmin = false, ModalShell }) {
+  const mapHostRef = useRef(null);
+  const mapRef     = useRef(null);
+  const [addrIn,  setAddrIn]  = useState(null); // null = loading, "" = unknown
+  const [addrOut, setAddrOut] = useState(null);
+  const [mapErr,  setMapErr]  = useState(null);
+  const [ready,   setReady]   = useState(false);
+
+  const inLoc      = parseLatLng(outing?.clock_in_location);
+  const outLoc     = parseLatLng(outing?.clock_out_location);
+  const haveAnyLoc = !!(inLoc || outLoc);
+
+  useEffect(() => {
+    if (!haveAnyLoc) return;
+    let cancelled = false;
+    let map;
+    loadLeaflet().then(L => {
+      if (cancelled || !mapHostRef.current) return;
+
+      map = L.map(mapHostRef.current, { zoomControl: true, attributionControl: true });
+      mapRef.current = map;
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      }).addTo(map);
+
+      const makeIcon = (label, color) => L.divIcon({
+        className: "bsk-outing-pin",
+        html: `<div style="
+                  width:28px;height:28px;border-radius:50%;
+                  background:${color};color:#fff;
+                  display:flex;align-items:center;justify-content:center;
+                  font-weight:700;font-size:13px;font-family:Inter,sans-serif;
+                  border:3px solid #fff;
+                  box-shadow:0 2px 8px rgba(0,0,0,0.3);">${label}</div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      });
+
+      const markers = [];
+      if (inLoc) {
+        markers.push(
+          L.marker([inLoc.lat, inLoc.lng], { icon: makeIcon("A", "#059669"), title: "Clock In" })
+            .addTo(map).bindPopup("<b>Clock In</b>")
+        );
+      }
+      if (outLoc) {
+        markers.push(
+          L.marker([outLoc.lat, outLoc.lng], { icon: makeIcon("B", "#dc2626"), title: "Clock Out" })
+            .addTo(map).bindPopup("<b>Clock Out</b>")
+        );
+      }
+
+      if (inLoc && outLoc) {
+        L.polyline([[inLoc.lat, inLoc.lng], [outLoc.lat, outLoc.lng]], {
+          color: "#2563eb", weight: 3, opacity: 0.85, dashArray: "6 6",
+        }).addTo(map);
+        map.fitBounds(L.latLngBounds([
+          [inLoc.lat, inLoc.lng], [outLoc.lat, outLoc.lng]
+        ]), { padding: [40, 40], maxZoom: 17 });
+      } else {
+        const c = inLoc || outLoc;
+        map.setView([c.lat, c.lng], 16);
+      }
+
+      // Map needs a re-flow after the modal animates in
+      setTimeout(() => map && map.invalidateSize(), 80);
+      setReady(true);
+
+      // Reverse geocode (queued, cached)
+      if (inLoc) reverseGeocode(inLoc.lat, inLoc.lng).then(a => !cancelled && setAddrIn(a));
+      else setAddrIn("");
+      if (outLoc) reverseGeocode(outLoc.lat, outLoc.lng).then(a => !cancelled && setAddrOut(a));
+      else setAddrOut("");
+    }).catch(err => {
+      if (!cancelled) setMapErr(err.message || "Could not load the map");
+    });
+
+    return () => {
+      cancelled = true;
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    };
+  }, [outing && outing.id, haveAnyLoc]); // eslint-disable-line
+
+  const sectionStyle = {
+    background: "var(--bg3)", border: "1px solid var(--border)",
+    borderRadius: "var(--radius)", padding: 12,
+  };
+
+  const Body = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* header */}
+      <div style={sectionStyle}>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.05em", color: "var(--blue)", textTransform: "uppercase", marginBottom: 4 }}>
+          Project Outing
+        </div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>
+          {fmtFullDate(outing.clock_in_time)}
+        </div>
+        {isAdmin && (outing.user_name || outing.employee_code) && (
+          <div style={{ marginTop: 6, fontSize: 13, color: "var(--text2)" }}>
+            {outing.user_name}
+            {outing.employee_code && (
+              <span style={{ marginLeft: 6, color: "var(--blue)", fontWeight: 600 }}>
+                ({outing.employee_code})
+              </span>
+            )}
+          </div>
+        )}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
+          <span style={{
+            background: outing.clock_out_time ? "var(--green-light)" : "var(--amber-light)",
+            color:      outing.clock_out_time ? "var(--green)"        : "var(--amber)",
+            fontWeight: 600, fontSize: 12, padding: "4px 10px",
+            borderRadius: 999, border: `1px solid ${outing.clock_out_time ? "rgba(5,150,105,0.25)" : "rgba(217,119,6,0.25)"}`,
+          }}>
+            {outing.clock_out_time ? "Completed" : "In progress"}
+          </span>
+          {outing.duration_minutes != null && (
+            <span style={{
+              background: "var(--blue-light)", color: "var(--blue)",
+              fontWeight: 600, fontSize: 12, padding: "4px 10px",
+              borderRadius: 999, border: "1px solid var(--blue-mid)",
+            }}>
+              Duration · {fmtMins(outing.duration_minutes)}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* map */}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text3)", marginBottom: 4 }}>
+          Live Location
+        </div>
+        <div style={{
+          width: "100%", height: 280,
+          borderRadius: "var(--radius)", overflow: "hidden",
+          border: "1px solid var(--border)", background: "#f1f5f9",
+          position: "relative",
+        }}>
+          {!haveAnyLoc && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text4)", fontSize: 13, padding: 16, textAlign: "center" }}>
+              No GPS coordinates were captured for this outing.
+            </div>
+          )}
+          {haveAnyLoc && mapErr && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--red)", fontSize: 13, padding: 16, textAlign: "center" }}>
+              {mapErr}
+            </div>
+          )}
+          {haveAnyLoc && !mapErr && !ready && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text3)", fontSize: 13 }}>
+              <span className="spin" style={{ width: 18, height: 18, border: "2.5px solid var(--border2)", borderTopColor: "var(--blue)", borderRadius: "50%", marginRight: 8 }} />
+              Loading map…
+            </div>
+          )}
+          <div ref={mapHostRef} style={{ width: "100%", height: "100%", display: haveAnyLoc && !mapErr ? "block" : "none" }} />
+        </div>
+
+        {haveAnyLoc && !mapErr && (
+          <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap", fontSize: 12, color: "var(--text2)" }}>
+            {inLoc && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#059669", border: "2px solid #fff", boxShadow: "0 0 0 1px #059669" }} />
+                A · Clock In
+              </span>
+            )}
+            {outLoc && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 10, height: 10, borderRadius: "50%", background: "#dc2626", border: "2px solid #fff", boxShadow: "0 0 0 1px #dc2626" }} />
+                B · Clock Out
+              </span>
+            )}
+            {inLoc && outLoc && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span style={{ width: 22, height: 0, borderTop: "3px dashed #2563eb" }} />
+                Travelled path
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* clock-in / clock-out detail cards */}
+      <div className="bsk-outing-grid" style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+        <DetailCard
+          accent="#059669" icon="▶" title="Clock In"
+          time={fmtTime(outing.clock_in_time)}
+          coords={inLoc} rawCoords={outing.clock_in_location}
+          address={addrIn}
+          remarks={outing.clock_in_remarks} remarksLabel="Purpose"
+        />
+        <DetailCard
+          accent="#dc2626" icon="■" title="Clock Out"
+          time={outing.clock_out_time ? fmtTime(outing.clock_out_time) : "Not yet"}
+          coords={outLoc} rawCoords={outing.clock_out_location}
+          address={addrOut}
+          remarks={outing.clock_out_remarks} remarksLabel="Completion"
+          dim={!outing.clock_out_time}
+        />
+      </div>
+
+      <div style={{ fontSize: 10.5, color: "var(--text4)", textAlign: "right" }}>
+        Map © OpenStreetMap contributors · Geocoding by Nominatim
+      </div>
+
+      <style>{`
+        @media (min-width: 640px) {
+          .bsk-outing-grid { grid-template-columns: 1fr 1fr !important; }
+        }
+        .bsk-outing-pin { background: transparent !important; border: none !important; }
+        .leaflet-container { font-family: 'Inter', sans-serif; }
+      `}</style>
+    </div>
+  );
+
+  return (
+    <ModalShell title="Outing Details" onClose={onClose}>
+      {Body}
+    </ModalShell>
+  );
+}
+
+function DetailCard({ accent, icon, title, time, coords, rawCoords, address, remarks, remarksLabel, dim }) {
+  return (
+    <div style={{
+      borderLeft: `4px solid ${accent}`, background: "var(--bg2)",
+      border: "1px solid var(--border)", borderLeftWidth: 4,
+      borderRadius: "var(--radius)", padding: "12px 14px",
+      opacity: dim ? 0.7 : 1,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <span style={{ color: accent, fontSize: 14, fontWeight: 700 }}>{icon}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", letterSpacing: "0.02em" }}>{title}</span>
+        <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 600, color: "var(--text3)" }}>{time}</span>
+      </div>
+
+      <DetailField label="Address">
+        {address === null
+          ? <span aria-hidden="true" style={{ display: "inline-block", height: 14, width: 180, background: "linear-gradient(90deg, var(--bg3), var(--bg2), var(--bg3))", backgroundSize: "200% 100%", animation: "spin 1.4s linear infinite", borderRadius: 4 }} />
+          : (address || <span style={{ color: "var(--text4)" }}>Not available</span>)}
+      </DetailField>
+      <DetailField label="Coordinates">
+        {coords ? (
+          <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12.5 }}>
+            {coords.lat.toFixed(6)}, {coords.lng.toFixed(6)}
+          </span>
+        ) : (
+          <span style={{ color: "var(--text4)" }}>{rawCoords || "Not captured"}</span>
+        )}
+      </DetailField>
+      {remarks && (
+        <DetailField label={remarksLabel || "Remarks"}>
+          <span style={{ fontStyle: "italic" }}>{remarks}</span>
+        </DetailField>
+      )}
+    </div>
+  );
+}
+
+function DetailField({ label, children }) {
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text3)", marginBottom: 2 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 13.5, color: "var(--text)", lineHeight: 1.4, wordBreak: "break-word" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function EmployeeDashboard({
   user, todayData, empStatus, onSite, settings,
   punchLoading, gpsLoading, userLat, userLon,
@@ -831,6 +1181,7 @@ function EmployeeDashboard({
   const [outingModalType, setOutingModalType] = useState("start");
   const [outingsPage, setOutingsPage] = useState(1);
   const [outingsTotal, setOutingsTotal] = useState(0);
+  const [selectedOuting, setSelectedOuting] = useState(null);
 
   // --- existing effects (keep all) ---
   useEffect(() => {
@@ -1459,7 +1810,24 @@ function EmployeeDashboard({
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {outingHistory.map(outing => (
-              <div key={outing.id} style={{ padding: "12px", background: "var(--bg3)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+              <div
+                key={outing.id}
+                onClick={() => setSelectedOuting(outing)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedOuting(outing); } }}
+                title="View full details"
+                style={{
+                  padding: "12px",
+                  background: "var(--bg3)",
+                  borderRadius: "var(--radius)",
+                  border: "1px solid var(--border)",
+                  cursor: "pointer",
+                  transition: "border-color 0.15s, box-shadow 0.15s, transform 0.1s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--blue)"; e.currentTarget.style.boxShadow = "0 2px 10px rgba(37,99,235,0.10)"; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.boxShadow = "none"; }}
+              >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
@@ -1571,6 +1939,16 @@ function EmployeeDashboard({
             </Btn>
           </div>
         </Modal>
+      )}
+
+      {/* NEW: Outing details popup with map + reverse-geocoded address */}
+      {selectedOuting && (
+        <OutingDetailModal
+          outing={selectedOuting}
+          onClose={() => setSelectedOuting(null)}
+          isAdmin={false}
+          ModalShell={Modal}
+        />
       )}
     </>
   );
@@ -3270,6 +3648,7 @@ function AdminOutingsPage({ adminData, t }) {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const itemsPerPage = 15;
+  const [selectedOuting, setSelectedOuting] = useState(null);
 
   const fetchOutings = useCallback(async () => {
     setLoading(true);
@@ -3323,6 +3702,9 @@ function AdminOutingsPage({ adminData, t }) {
           <div style={{ textAlign: "center", padding: 24, color: "var(--text4)" }}>No project outings found.</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
+            <div style={{ fontSize: 12, color: "var(--text3)", marginBottom: 8 }}>
+              Click any row to view full details and a map of the clock-in / clock-out locations.
+            </div>
             <table style={{ minWidth: 700 }}>
               <thead>
                 <tr>
@@ -3338,7 +3720,12 @@ function AdminOutingsPage({ adminData, t }) {
               </thead>
               <tbody>
                 {outings.map(o => (
-                  <tr key={o.id}>
+                  <tr
+                    key={o.id}
+                    onClick={() => setSelectedOuting(o)}
+                    style={{ cursor: "pointer" }}
+                    title="Click to view full details"
+                  >
                     <td>{o.user_name}<br/><span style={{ fontSize: 11, color: "var(--blue)" }}>{o.employee_code}</span></td>
                     <td>{fmtDate(o.clock_in_time)}<br/>{fmtTime(o.clock_in_time)}</td>
                     <td>{o.clock_out_time ? fmtDate(o.clock_out_time) + "<br/>" + fmtTime(o.clock_out_time) : "—"}</td>
@@ -3361,6 +3748,16 @@ function AdminOutingsPage({ adminData, t }) {
           </div>
         )}
       </Card>
+
+      {/* NEW: Outing details popup */}
+      {selectedOuting && (
+        <OutingDetailModal
+          outing={selectedOuting}
+          onClose={() => setSelectedOuting(null)}
+          isAdmin={true}
+          ModalShell={Modal}
+        />
+      )}
     </div>
   );
 }
