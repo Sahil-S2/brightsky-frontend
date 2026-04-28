@@ -1586,6 +1586,10 @@ function EmployeeDashboard({
   }
 
   const displayWS = employeeWorksite || { latitude: settings.latitude, longitude: settings.longitude, radius_feet: settings.radiusFeet, name: settings.siteName };
+  // Compute local distance for the Warning Clock-In modal (distanceFt is outer-scope only)
+  const distanceFt = (userLat != null && userLon != null && displayWS?.latitude != null && displayWS?.longitude != null)
+    ? distanceFeet(userLat, userLon, displayWS.latitude, displayWS.longitude)
+    : null;
 
   // --- renderTimeCard (includes the new Project Outing section) ---
   const renderTimeCard = () => (
