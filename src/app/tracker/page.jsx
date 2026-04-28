@@ -176,6 +176,17 @@ const StatusBadge=({status})=>{
   </span>);
 };
 
+// ── Warning Clock-In badge — shown wherever is_outside_geofence=true ────────
+const WarnBadge = () => (
+  <span title="Clocked in outside assigned worksite" style={{
+    display:"inline-flex",alignItems:"center",gap:3,
+    background:"var(--amber-light)",color:"var(--amber)",
+    border:"1px solid rgba(217,119,6,0.3)",borderRadius:5,
+    fontSize:10.5,fontWeight:700,padding:"2px 6px",whiteSpace:"nowrap",
+    letterSpacing:"0.02em",verticalAlign:"middle"
+  }}>⚠ Off-Site</span>
+);
+
 const Card=({children,style={},className=""})=>(
   <div className={className} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:"var(--radius-lg)",padding:20,boxShadow:"var(--shadow-sm)",...style}}>{children}</div>
 );
@@ -1184,6 +1195,13 @@ function EmployeeDashboard({
   const [outingsTotal, setOutingsTotal] = useState(0);
   const [selectedOuting, setSelectedOuting] = useState(null);
 
+  // --- Warning Clock-In state ---
+  const [showWarnModal, setShowWarnModal] = useState(false);
+  const [warnEstHours, setWarnEstHours] = useState("0");
+  const [warnEstMins, setWarnEstMins] = useState("0");
+  const [warnRemarks, setWarnRemarks] = useState("");
+  const [pendingWarn, setPendingWarn] = useState(null); // carries forceOutside data through camera flow
+
   // --- existing effects (keep all) ---
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000);
@@ -1457,13 +1475,20 @@ function EmployeeDashboard({
     return { latitude: lat, longitude: lon };
   }, [userLat, userLon, employeeWorksite, settings]);
 
-  const processClockIn = async (photoData) => {
+  // Accepts optional forceOutside + estimatedMinutes for Warning Clock-In flow
+  const processClockIn = async (photoData, forceOutside = false, estimatedMinutes = null, warnNote = "") => {
     setClockInLoading(true);
     try {
       const { latitude, longitude } = getLocationPayload();
+      const body = { latitude, longitude, photo: photoData };
+      if (forceOutside) {
+        body.forceOutside = true;
+        body.estimatedMinutes = estimatedMinutes;
+        body.remarks = warnNote;
+      }
       const res = await authFetch("/api/attendance/clock-in", {
         method: "POST",
-        body: JSON.stringify({ latitude, longitude, photo: photoData }),
+        body: JSON.stringify(body),
       });
       const d = await res.json();
       if (!res.ok) {
@@ -1471,7 +1496,7 @@ function EmployeeDashboard({
         vibrate([100, 50, 100]);
         return;
       }
-      addToast("Clocked in ✓", "success");
+      addToast(forceOutside ? "⚠ Warning Clock-In recorded" : "Clocked in ✓", forceOutside ? "warning" : "success");
       vibrate([50]);
       if (d.data) {
         refreshTodayData(d.data);
@@ -1483,12 +1508,15 @@ function EmployeeDashboard({
     } finally {
       setClockInLoading(false);
       setShowCamera(false);
+      setPendingWarn(null);
     }
   };
 
+  // Called when employee taps Clock In
   const handleClockIn = async () => {
     if (!onSite) {
-      addToast("You must be at your assigned worksite to clock in.", "error");
+      // Outside geofence → open Warning Clock-In modal instead of blocking
+      setShowWarnModal(true);
       return;
     }
     const cameraRequired = settings.clockInWithCameraEnabled ?? true;
@@ -1520,6 +1548,21 @@ function EmployeeDashboard({
       } finally {
         setDirectClockInLoading(false);
       }
+    }
+  };
+
+  // Warning modal confirmed — carry forceOutside data into camera flow (or clock in directly)
+  const handleWarnConfirm = (estimatedMinutes, note) => {
+    setShowWarnModal(false);
+    setWarnEstHours("0");
+    setWarnEstMins("0");
+    setWarnRemarks("");
+    const cameraRequired = settings.clockInWithCameraEnabled ?? true;
+    if (cameraRequired) {
+      setPendingWarn({ forceOutside: true, estimatedMinutes, note });
+      setShowCamera(true);
+    } else {
+      processClockIn(null, true, estimatedMinutes, note);
     }
   };
 
@@ -1572,15 +1615,23 @@ function EmployeeDashboard({
       <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {empStatus === "clocked_out" && (
-            <Btn
-              onClick={handleClockIn}
-              disabled={!onSite || clockInButtonLoading}
-              loading={clockInButtonLoading}
-              size="lg"
-              style={{ width: "100%" }}
-            >
-              <Icon name="camera" size={16} color="white" />{t.clockIn}
-            </Btn>
+            <>
+              <Btn
+                onClick={handleClockIn}
+                disabled={clockInButtonLoading}
+                loading={clockInButtonLoading}
+                size="lg"
+                style={{ width: "100%", ...(onSite ? {} : { background:"var(--amber)", borderColor:"var(--amber)" }) }}
+              >
+                <Icon name={onSite ? "camera" : "alert"} size={16} color="white" />
+                {onSite ? t.clockIn : "⚠ Warning Clock-In"}
+              </Btn>
+              {!onSite && displayWS?.latitude != null && userLat != null && (
+                <div style={{ fontSize:12, color:"var(--amber)", textAlign:"center", fontWeight:500, marginTop:-4 }}>
+                  You are outside your assigned worksite — tap to proceed with a warning
+                </div>
+              )}
+            </>
           )}
           {empStatus === "clocked_in" && (
             <>
@@ -1887,9 +1938,84 @@ function EmployeeDashboard({
         </Modal>
       )}
 
+      {/* ── Warning Clock-In Confirmation Modal ─────────────────────────── */}
+      {showWarnModal && (
+        <Modal title="⚠ Warning: Outside Worksite" onClose={() => setShowWarnModal(false)}>
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+
+            {/* Alert banner */}
+            <div style={{ background:"var(--amber-light)", border:"1.5px solid rgba(217,119,6,0.35)", borderRadius:"var(--radius)", padding:"12px 14px", display:"flex", gap:10, alignItems:"flex-start" }}>
+              <span style={{ fontSize:20, flexShrink:0 }}>⚠️</span>
+              <div>
+                <div style={{ fontWeight:700, color:"var(--amber)", fontSize:14 }}>You are outside your assigned worksite</div>
+                {distanceFt != null && displayWS?.radius_feet != null && (
+                  <div style={{ fontSize:12.5, color:"var(--text2)", marginTop:4 }}>
+                    You are <strong>{Math.round(distanceFt)} ft</strong> from <strong>{displayWS?.name || "your worksite"}</strong> (allowed radius: {displayWS.radius_feet} ft).
+                  </div>
+                )}
+                <div style={{ fontSize:12.5, color:"var(--text3)", marginTop:4 }}>
+                  Clocking in from outside the site will be flagged for manager review.
+                </div>
+              </div>
+            </div>
+
+            {/* Estimated time */}
+            <div>
+              <label style={{ fontSize:12, fontWeight:600, color:"var(--text2)", display:"block", marginBottom:6 }}>
+                Estimated time to complete task <span style={{ color:"var(--text4)", fontWeight:400 }}>(optional)</span>
+              </label>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                <div>
+                  <label style={{ fontSize:11.5, color:"var(--text3)", display:"block", marginBottom:4 }}>Hours</label>
+                  <select value={warnEstHours} onChange={e => setWarnEstHours(e.target.value)} style={{ fontSize:16 }}>
+                    {Array.from({length:13},(_,i)=>i).map(h=><option key={h} value={h}>{h}h</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize:11.5, color:"var(--text3)", display:"block", marginBottom:4 }}>Minutes</label>
+                  <select value={warnEstMins} onChange={e => setWarnEstMins(e.target.value)} style={{ fontSize:16 }}>
+                    {[0,15,30,45].map(m=><option key={m} value={m}>{m}m</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Remarks */}
+            <div>
+              <label style={{ fontSize:12, fontWeight:600, color:"var(--text2)", display:"block", marginBottom:6 }}>
+                Remarks <span style={{ color:"var(--text4)", fontWeight:400 }}>(reason for off-site work)</span>
+              </label>
+              <textarea
+                rows={3}
+                value={warnRemarks}
+                onChange={e => setWarnRemarks(e.target.value)}
+                placeholder="e.g. Client meeting at external location, site visit, etc."
+                style={{ fontSize:14, resize:"vertical", fontFamily:"inherit" }}
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display:"flex", gap:8 }}>
+              <Btn
+                onClick={() => {
+                  const estMins = (parseInt(warnEstHours)||0)*60 + (parseInt(warnEstMins)||0);
+                  handleWarnConfirm(estMins || null, warnRemarks.trim());
+                }}
+                style={{ flex:1, background:"var(--amber)", borderColor:"var(--amber)" }}
+              >
+                <Icon name="alert" size={14} color="white" /> Confirm Warning Clock-In
+              </Btn>
+              <Btn onClick={() => setShowWarnModal(false)} variant="secondary" style={{ flex:1 }}>
+                Cancel
+              </Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Camera Modal (unchanged) */}
       {showCamera && typeof window !== 'undefined' && (
-        <CameraModal onClose={() => setShowCamera(false)} onCapture={(photo) => processClockIn(photo)} />
+        <CameraModal onClose={() => { setShowCamera(false); setPendingWarn(null); }} onCapture={(photo) => { if (pendingWarn) { processClockIn(photo, pendingWarn.forceOutside, pendingWarn.estimatedMinutes, pendingWarn.note); } else { processClockIn(photo); } }} />
       )}
 
       {/* NEW: Remarks Modal for Project Outing */}
@@ -2486,7 +2612,7 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
                 ?<tr><td colSpan={5} style={{textAlign:"center",color:"var(--text4)",padding:24}}>No sessions today.</td></tr>
                 :attendance.slice(0,12).map(s=>(
                   <tr key={s.id} className={s.status==="active"?"bsk-adm-active-row":""}>
-                    <td style={{color:"var(--text)",fontWeight:500,fontSize:13}}>{s.name||"—"}</td>
+                    <td style={{color:"var(--text)",fontWeight:500,fontSize:13}}>{s.name||"—"}{s.is_outside_geofence&&<span style={{marginLeft:5}}><WarnBadge/></span>}</td>
                     <td style={{fontSize:12.5}}>{fmtTime(s.clock_in_time)}</td>
                     <td className="bsk-adm-hide-mob" style={{fontSize:12.5}}>{fmtTime(s.clock_out_time)}</td>
                     <td style={{color:"var(--green)",fontWeight:600,fontSize:13}}>{s.status==="active"&&s.clock_in_time?fmtMins(Math.max(0,Math.round((Date.now()-new Date(s.clock_in_time).getTime())/60000)-(parseInt(s.break_minutes)||0))):fmtMins(s.worked_minutes)}</td>
@@ -2528,6 +2654,7 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
                         <div className="bsk-adm-name" style={{fontWeight:600,color:"var(--text)",fontSize:13.5,display:"flex",alignItems:"center",gap:7}}>
                           {active && <span style={{width:7,height:7,borderRadius:"50%",background:"var(--green)",flexShrink:0,boxShadow:"0 0 0 2px var(--green-light)"}}/>}
                           {emp.name}
+                          {active && active.is_outside_geofence && <WarnBadge/>}
                         </div>
                         <div className="bsk-adm-sub" style={{fontSize:11.5,color:"var(--text3)",marginTop:2,paddingLeft:active?14:0}}>{emp.designation||emp.department||""}</div>
                       </td>
@@ -3936,6 +4063,7 @@ function MyAttendance({ t }) {
                   : "clocked_in"
               }
             />
+            {s.is_outside_geofence && <div style={{marginTop:4}}><WarnBadge/></div>}
           </td>
           <td>
             <button
@@ -3959,6 +4087,23 @@ function MyAttendance({ t }) {
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
                 Break Details
               </div>
+              {s.is_outside_geofence && (
+                <div style={{ marginBottom:12, padding:"8px 12px", background:"var(--amber-light)", border:"1px solid rgba(217,119,6,0.25)", borderRadius:"var(--radius)", fontSize:12 }}>
+                  <div style={{ fontWeight:700, color:"var(--amber)", marginBottom:4 }}>⚠ Off-Site Clock-In</div>
+                  {s.estimated_minutes ? (
+                    <div style={{ color:"var(--text2)" }}>
+                      Estimated: <strong>{fmtMins(s.estimated_minutes)}</strong> &nbsp;·&nbsp;
+                      Actual: <strong>{fmtMins(s.worked_minutes || 0)}</strong>
+                      {(s.worked_minutes || 0) > s.estimated_minutes
+                        ? <span style={{ color:"var(--red)", marginLeft:6 }}>⚠ Exceeded by {fmtMins((s.worked_minutes||0) - s.estimated_minutes)}</span>
+                        : <span style={{ color:"var(--green)", marginLeft:6 }}>✓ Within estimate</span>
+                      }
+                    </div>
+                  ) : (
+                    <div style={{ color:"var(--text3)" }}>No estimated time was provided at clock-in.</div>
+                  )}
+                </div>
+              )}
               {(() => {
                 const clockInPunch = sessionPunches[s.id].find(
                   p => p.punch_type === "clock_in" || p.punch_type === "auto_clock_in"
@@ -4899,6 +5044,15 @@ function AttendancePage({ adminData, t }) {
                               : "clocked_in"
                           }
                         />
+                        {s.is_outside_geofence && <div style={{marginTop:4}}><WarnBadge/></div>}
+                        {s.is_outside_geofence && s.estimated_minutes != null && (
+                          <div style={{ fontSize:11, color:"var(--amber)", marginTop:3, whiteSpace:"nowrap" }}>
+                            Est: {fmtMins(s.estimated_minutes)}
+                            {(s.worked_minutes||0) > s.estimated_minutes &&
+                              <span style={{ color:"var(--red)", marginLeft:4 }}>▲{fmtMins((s.worked_minutes||0)-s.estimated_minutes)}</span>
+                            }
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))
