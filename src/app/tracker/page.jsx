@@ -3945,29 +3945,86 @@ function AdminOutingsPage({ adminData, t }) {
 
 
 // ─── SESSION DETAIL PANEL (shared by MyAttendance + AttendancePage) ──────────
+
+// Module-level geocode cache — persists across renders, avoids duplicate calls
+const _geocodeCache = {};
+
+// Reverse-geocode a lat/lon to a human-readable address via OpenStreetMap Nominatim.
+// Returns null while loading, and the address string once resolved.
+function useReverseGeocode(lat, lon) {
+  const [address, setAddress] = React.useState(null);
+  React.useEffect(() => {
+    const latN = parseFloat(lat);
+    const lonN = parseFloat(lon);
+    if (isNaN(latN) || isNaN(lonN)) return;
+    const key = `${latN.toFixed(4)},${lonN.toFixed(4)}`;
+    if (_geocodeCache[key]) { setAddress(_geocodeCache[key]); return; }
+    let cancelled = false;
+    fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latN}&lon=${lonN}&format=json`, {
+      headers: { "Accept-Language": "en" }
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (cancelled || !d) return;
+        const addr = d.display_name || null;
+        if (addr) { _geocodeCache[key] = addr; setAddress(addr); }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [lat, lon]);
+  return address;
+}
+
+// Standalone location block — must be a top-level component so hooks work correctly.
+function PunchLocationBlock({ punch }) {
+  // Support both "latitude"/"longitude" (DB column names) and "lat"/"lon" (legacy)
+  const rawLat = punch?.latitude ?? punch?.lat;
+  const rawLon = punch?.longitude ?? punch?.lon;
+  const lat = rawLat != null ? parseFloat(rawLat) : NaN;
+  const lon = rawLon != null ? parseFloat(rawLon) : NaN;
+  const address = useReverseGeocode(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon);
+
+  if (!punch || isNaN(lat)) return null;   // nothing to show
+
+  const latStr = lat.toFixed(6);
+  const lonStr = !isNaN(lon) ? lon.toFixed(6) : null;
+  const mapsUrl = lonStr
+    ? `https://www.google.com/maps?q=${latStr},${lonStr}`
+    : `https://www.google.com/maps?q=${latStr}`;
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      {/* Address line (loads asynchronously) */}
+      {address ? (
+        <div style={{ fontSize: 11, color: "var(--text2)", fontWeight: 500, lineHeight: 1.4, marginBottom: 3 }}>
+          📍 {address}
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 3 }}>📍 Fetching address…</div>
+      )}
+      {/* Coordinates + map link */}
+      <div style={{ fontSize: 10.5, color: "var(--text3)", display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
+        <span>Lat: {latStr}</span>
+        {lonStr && <><span style={{ color: "var(--border)" }}>·</span><span>Lon: {lonStr}</span></>}
+        <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+          style={{ color: "var(--blue)", textDecoration: "underline", fontSize: 10.5 }}>
+          View on Map ↗
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function SessionDetailPanel({ session, punches, isAdmin = false }) {
   const clockInPunch  = punches.find(p => p.punch_type === "clock_in"  || p.punch_type === "auto_clock_in");
   const clockOutPunch = punches.find(p => p.punch_type === "clock_out" || p.punch_type === "auto_clock_out");
   const breakPunches  = punches.filter(p => p.punch_type === "break_start");
 
-  const LocationBlock = ({ punch }) => {
-    if (!punch || (!punch.latitude && !punch.longitude)) return null;
-    const lat = parseFloat(punch.latitude).toFixed(6);
-    const lon = parseFloat(punch.longitude).toFixed(6);
-    const mapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
-    return (
-      <div style={{ marginTop: 4 }}>
-        <div style={{ fontSize: 11, color: "var(--text3)" }}>
-          📍 {lat}, {lon}
-          &nbsp;
-          <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-            style={{ color: "var(--blue)", textDecoration: "underline", fontSize: 11 }}>
-            View on Map
-          </a>
-        </div>
-      </div>
-    );
-  };
+  // Compute total worked duration for the duration summary row
+  const workedMins = session.worked_minutes
+    || (session.status === "active" && session.clock_in_time
+        ? Math.max(0, Math.round((Date.now() - new Date(session.clock_in_time).getTime()) / 60000) - (parseInt(session.break_minutes) || 0))
+        : 0);
 
   const sectionLabel = { fontSize: 11, fontWeight: 700, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
   const card = { background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "10px 14px" };
@@ -3975,53 +4032,70 @@ function SessionDetailPanel({ session, punches, isAdmin = false }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-      {/* ── Off-site warning ── */}
-      {session.is_outside_geofence && (
-        <div style={{ padding: "10px 14px", background: "var(--amber-light)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: "var(--radius)" }}>
-          <div style={{ fontWeight: 700, color: "var(--amber)", marginBottom: 4, fontSize: 12 }}>⚠ Off-Site Clock-In</div>
-          {session.estimated_minutes ? (
-            <div style={{ fontSize: 12, color: "var(--text2)" }}>
-              Estimated: <strong>{fmtMins(session.estimated_minutes)}</strong>
-              &nbsp;·&nbsp;
-              Actual: <strong>{fmtMins(session.worked_minutes || 0)}</strong>
-              {(session.worked_minutes || 0) > session.estimated_minutes
-                ? <span style={{ color: "var(--red)", marginLeft: 6 }}>⚠ Exceeded by {fmtMins((session.worked_minutes || 0) - session.estimated_minutes)}</span>
-                : <span style={{ color: "var(--green)", marginLeft: 6 }}>✓ Within estimate</span>
-              }
+      {/* ── Duration summary row ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
+        <div style={{ ...card, textAlign: "center" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Duration</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: workedMins > 0 ? "var(--green)" : "var(--text3)" }}>
+            {workedMins > 0 ? fmtMins(workedMins) : "—"}
+          </div>
+          {session.status === "active" && <div style={{ fontSize: 10, color: "var(--amber)", marginTop: 2 }}>● Live</div>}
+        </div>
+        <div style={{ ...card, textAlign: "center" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Break Time</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text2)" }}>{fmtMins(session.break_minutes || 0)}</div>
+        </div>
+        {session.estimated_minutes != null && (
+          <div style={{ ...card, textAlign: "center", background: session.is_outside_geofence ? "var(--amber-light)" : "var(--bg2)", border: session.is_outside_geofence ? "1px solid rgba(217,119,6,0.3)" : "1px solid var(--border)" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: session.is_outside_geofence ? "var(--amber)" : "var(--text3)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
+              {session.is_outside_geofence ? "⚠ Est. (Off-Site)" : "Estimated"}
             </div>
-          ) : (
-            <div style={{ fontSize: 12, color: "var(--text3)" }}>No estimated time was provided at clock-in.</div>
-          )}
+            <div style={{ fontSize: 16, fontWeight: 800, color: session.is_outside_geofence ? "var(--amber)" : "var(--text2)" }}>
+              {fmtMins(session.estimated_minutes)}
+            </div>
+            {session.is_outside_geofence && workedMins > 0 && (
+              <div style={{ fontSize: 10, marginTop: 2, color: workedMins > session.estimated_minutes ? "var(--red)" : "var(--green)" }}>
+                {workedMins > session.estimated_minutes
+                  ? `▲ +${fmtMins(workedMins - session.estimated_minutes)}`
+                  : `✓ within`}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Off-site warning banner ── */}
+      {session.is_outside_geofence && (
+        <div style={{ padding: "8px 12px", background: "var(--amber-light)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: "var(--radius)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontWeight: 700, color: "var(--amber)" }}>⚠ Off-Site Clock-In</span>
+          <span style={{ color: "var(--text3)" }}>Employee confirmed they were outside the geofence at clock-in.</span>
         </div>
       )}
 
-      {/* ── Clock-In / Clock-Out row ── */}
+      {/* ── Clock-In / Clock-Out grid ── */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
 
         {/* Clock-In */}
         <div style={card}>
           <div style={sectionLabel}>🟢 Clock In</div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>
             {fmtTime(clockInPunch?.punch_time || session.clock_in_time)}
           </div>
           {clockInPunch?.source === "auto" && (
-            <div style={{ fontSize: 10, color: "var(--amber)", marginTop: 2 }}>Auto clock-in</div>
+            <div style={{ fontSize: 10, color: "var(--amber)", marginBottom: 2 }}>Auto clock-in</div>
           )}
-          <LocationBlock punch={clockInPunch} />
-          {session.is_outside_geofence && clockInPunch && (
-            <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 3, fontWeight: 600 }}>⚠ Off-Site at clock-in</div>
+          {session.is_outside_geofence && (
+            <div style={{ fontSize: 11, color: "var(--amber)", fontWeight: 600, marginBottom: 2 }}>⚠ Off-Site</div>
           )}
-          {clockInPunch?.remarks && !session.is_outside_geofence && (
-            <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>Note: {clockInPunch.remarks}</div>
+          {clockInPunch?.remarks && (
+            <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Note: {clockInPunch.remarks}</div>
           )}
-          {session.is_outside_geofence && clockInPunch?.remarks && (
-            <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>Note: {clockInPunch.remarks}</div>
-          )}
+          <PunchLocationBlock punch={clockInPunch} />
           {clockInPunch?.photo_data && (
-            <div style={{ marginTop: 8 }}>
-              <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 4 }}>Photo</div>
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Photo</div>
               <img src={clockInPunch.photo_data} alt="Clock-in"
-                style={{ width: 72, height: 72, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "block" }} />
+                style={{ width: 80, height: 80, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "2px solid var(--border)", display: "block" }} />
             </div>
           )}
         </div>
@@ -4031,21 +4105,21 @@ function SessionDetailPanel({ session, punches, isAdmin = false }) {
           <div style={sectionLabel}>🔴 Clock Out</div>
           {(clockOutPunch || session.clock_out_time) ? (
             <>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>
                 {fmtTime(clockOutPunch?.punch_time || session.clock_out_time)}
               </div>
               {clockOutPunch?.source === "auto" && (
-                <div style={{ fontSize: 10, color: "var(--amber)", marginTop: 2 }}>Auto clock-out</div>
+                <div style={{ fontSize: 10, color: "var(--amber)", marginBottom: 2 }}>Auto clock-out</div>
               )}
-              <LocationBlock punch={clockOutPunch} />
               {clockOutPunch?.remarks && (
-                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>Note: {clockOutPunch.remarks}</div>
+                <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Note: {clockOutPunch.remarks}</div>
               )}
+              <PunchLocationBlock punch={clockOutPunch} />
               {clockOutPunch?.photo_data && (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 4 }}>Photo</div>
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Photo</div>
                   <img src={clockOutPunch.photo_data} alt="Clock-out"
-                    style={{ width: 72, height: 72, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "block" }} />
+                    style={{ width: 80, height: 80, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "2px solid var(--border)", display: "block" }} />
                 </div>
               )}
             </>
