@@ -3952,8 +3952,8 @@ const _geocodeCache = {};
 // Reverse-geocode a lat/lon to a human-readable address via OpenStreetMap Nominatim.
 // Returns null while loading, and the address string once resolved.
 function useReverseGeocode(lat, lon) {
-  const [address, setAddress] = React.useState(null);
-  React.useEffect(() => {
+  const [address, setAddress] = useState(null);
+  useEffect(() => {
     const latN = parseFloat(lat);
     const lonN = parseFloat(lon);
     if (isNaN(latN) || isNaN(lonN)) return;
