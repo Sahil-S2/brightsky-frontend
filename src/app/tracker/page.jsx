@@ -1662,7 +1662,15 @@ function EmployeeDashboard({
             <span style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 500 }}>Getting your location…</span>
           </div>
         )}
-        {!gpsLoading && !onSite && displayWS?.latitude != null && userLat != null && (
+        {/* Off-site session banner — clocked in via warning, geofence not required */}
+        {todayData?.is_outside_geofence && (empStatus === "clocked_in" || empStatus === "on_break") && (
+          <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "var(--amber-light)", border: "1.5px solid rgba(217,119,6,0.3)", display: "flex", gap: 8, alignItems: "center" }}>
+            <Icon name="alert" size={14} color="var(--amber)" />
+            <span style={{ fontSize: 12.5, color: "var(--amber)", fontWeight: 500 }}>⚠ Off-site session · Clock out and end breaks are available from anywhere.</span>
+          </div>
+        )}
+        {/* Normal geofence warning — only shown for on-site sessions when outside range */}
+        {!gpsLoading && !onSite && displayWS?.latitude != null && userLat != null && !todayData?.is_outside_geofence && (
           <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "var(--red-light)", border: "1.5px solid rgba(220,38,38,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
             <Icon name="alert" size={14} color="var(--red)" />
             <span style={{ fontSize: 12.5, color: "var(--red)", fontWeight: 450 }}>Must be within {displayWS.radius_feet} ft of your assigned worksite.</span>
