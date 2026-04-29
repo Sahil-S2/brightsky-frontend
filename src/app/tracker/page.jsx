@@ -1639,9 +1639,12 @@ function EmployeeDashboard({
           )}
           {empStatus === "clocked_in" && (
             <>
-              <Btn onClick={() => setShowBreakModal(true)} disabled={punchLoading} variant="secondary" size="md" style={{ width: "100%" }}>
-                <Icon name="coffee" size={15} color="var(--amber)" />Break
-              </Btn>
+              {/* Break hidden for off-site employees — they only need Clock In / Clock Out */}
+              {user.work_mode !== "offsite" && (
+                <Btn onClick={() => setShowBreakModal(true)} disabled={punchLoading} variant="secondary" size="md" style={{ width: "100%" }}>
+                  <Icon name="coffee" size={15} color="var(--amber)" />Break
+                </Btn>
+              )}
               <Btn onClick={handleClockOut} disabled={punchLoading} loading={punchLoading} variant="danger" size="md" style={{ width: "100%" }}>
                 <Icon name="stop" size={15} color="var(--red)" />{t.clockOut}
               </Btn>
@@ -3940,6 +3943,172 @@ function AdminOutingsPage({ adminData, t }) {
   );
 }
 
+
+// ─── SESSION DETAIL PANEL (shared by MyAttendance + AttendancePage) ──────────
+function SessionDetailPanel({ session, punches, isAdmin = false }) {
+  const clockInPunch  = punches.find(p => p.punch_type === "clock_in"  || p.punch_type === "auto_clock_in");
+  const clockOutPunch = punches.find(p => p.punch_type === "clock_out" || p.punch_type === "auto_clock_out");
+  const breakPunches  = punches.filter(p => p.punch_type === "break_start");
+
+  const LocationBlock = ({ punch }) => {
+    if (!punch || (!punch.latitude && !punch.longitude)) return null;
+    const lat = parseFloat(punch.latitude).toFixed(6);
+    const lon = parseFloat(punch.longitude).toFixed(6);
+    const mapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+    return (
+      <div style={{ marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: "var(--text3)" }}>
+          📍 {lat}, {lon}
+          &nbsp;
+          <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
+            style={{ color: "var(--blue)", textDecoration: "underline", fontSize: 11 }}>
+            View on Map
+          </a>
+        </div>
+      </div>
+    );
+  };
+
+  const sectionLabel = { fontSize: 11, fontWeight: 700, color: "var(--text2)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
+  const card = { background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "10px 14px" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      {/* ── Off-site warning ── */}
+      {session.is_outside_geofence && (
+        <div style={{ padding: "10px 14px", background: "var(--amber-light)", border: "1px solid rgba(217,119,6,0.3)", borderRadius: "var(--radius)" }}>
+          <div style={{ fontWeight: 700, color: "var(--amber)", marginBottom: 4, fontSize: 12 }}>⚠ Off-Site Clock-In</div>
+          {session.estimated_minutes ? (
+            <div style={{ fontSize: 12, color: "var(--text2)" }}>
+              Estimated: <strong>{fmtMins(session.estimated_minutes)}</strong>
+              &nbsp;·&nbsp;
+              Actual: <strong>{fmtMins(session.worked_minutes || 0)}</strong>
+              {(session.worked_minutes || 0) > session.estimated_minutes
+                ? <span style={{ color: "var(--red)", marginLeft: 6 }}>⚠ Exceeded by {fmtMins((session.worked_minutes || 0) - session.estimated_minutes)}</span>
+                : <span style={{ color: "var(--green)", marginLeft: 6 }}>✓ Within estimate</span>
+              }
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "var(--text3)" }}>No estimated time was provided at clock-in.</div>
+          )}
+        </div>
+      )}
+
+      {/* ── Clock-In / Clock-Out row ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+
+        {/* Clock-In */}
+        <div style={card}>
+          <div style={sectionLabel}>🟢 Clock In</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+            {fmtTime(clockInPunch?.punch_time || session.clock_in_time)}
+          </div>
+          {clockInPunch?.source === "auto" && (
+            <div style={{ fontSize: 10, color: "var(--amber)", marginTop: 2 }}>Auto clock-in</div>
+          )}
+          <LocationBlock punch={clockInPunch} />
+          {session.is_outside_geofence && clockInPunch && (
+            <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 3, fontWeight: 600 }}>⚠ Off-Site at clock-in</div>
+          )}
+          {clockInPunch?.remarks && !session.is_outside_geofence && (
+            <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>Note: {clockInPunch.remarks}</div>
+          )}
+          {session.is_outside_geofence && clockInPunch?.remarks && (
+            <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>Note: {clockInPunch.remarks}</div>
+          )}
+          {clockInPunch?.photo_data && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 4 }}>Photo</div>
+              <img src={clockInPunch.photo_data} alt="Clock-in"
+                style={{ width: 72, height: 72, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "block" }} />
+            </div>
+          )}
+        </div>
+
+        {/* Clock-Out */}
+        <div style={card}>
+          <div style={sectionLabel}>🔴 Clock Out</div>
+          {(clockOutPunch || session.clock_out_time) ? (
+            <>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                {fmtTime(clockOutPunch?.punch_time || session.clock_out_time)}
+              </div>
+              {clockOutPunch?.source === "auto" && (
+                <div style={{ fontSize: 10, color: "var(--amber)", marginTop: 2 }}>Auto clock-out</div>
+              )}
+              <LocationBlock punch={clockOutPunch} />
+              {clockOutPunch?.remarks && (
+                <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 3 }}>Note: {clockOutPunch.remarks}</div>
+              )}
+              {clockOutPunch?.photo_data && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 4 }}>Photo</div>
+                  <img src={clockOutPunch.photo_data} alt="Clock-out"
+                    style={{ width: 72, height: 72, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "block" }} />
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ fontSize: 12, color: "var(--text4)" }}>Still clocked in</div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Breaks ── */}
+      <div style={card}>
+        <div style={sectionLabel}>☕ Breaks ({breakPunches.length})</div>
+        {breakPunches.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--text4)" }}>No breaks recorded.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {breakPunches.map((p, idx) => {
+              const endPunch = punches.find(ep =>
+                ep.punch_type === "break_end" && new Date(ep.punch_time) > new Date(p.punch_time)
+              );
+              const duration = endPunch
+                ? Math.round((new Date(endPunch.punch_time) - new Date(p.punch_time)) / 60000)
+                : session.status === "on_break" && idx === breakPunches.length - 1
+                  ? Math.round((Date.now() - new Date(p.punch_time).getTime()) / 60000)
+                  : null;
+              return (
+                <div key={p.id} style={{
+                  borderLeft: "3px solid",
+                  borderColor: p.break_type === "work" ? "var(--blue)" : "var(--amber)",
+                  paddingLeft: 10, paddingTop: 4, paddingBottom: 4,
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
+                    {p.break_type === "work" ? "🔧 Work-Related" : "☕ Personal"} Break
+                    {duration !== null && (
+                      <span style={{ fontWeight: 400, color: "var(--text3)", marginLeft: 6 }}>{fmtMins(duration)}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
+                    {fmtTime(p.punch_time)}{endPunch ? ` → ${fmtTime(endPunch.punch_time)}` : session.status === "on_break" && idx === breakPunches.length - 1 ? " (ongoing)" : ""}
+                  </div>
+                  {p.remarks && (
+                    <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 1 }}>Reason: {p.remarks}</div>
+                  )}
+                  {p.break_type === "work" && (
+                    <div style={{ marginTop: 3 }}>
+                      {p.break_completed === true
+                        ? <span style={{ fontSize: 10, color: "var(--green)" }}>✓ Completed</span>
+                        : p.break_completed === false && p.break_incomplete_reason
+                          ? <span style={{ fontSize: 10, color: "var(--red)" }}>✗ Not Completed – {p.break_incomplete_reason}</span>
+                          : <span style={{ fontSize: 10, color: "var(--amber)" }}>⏳ Pending</span>
+                      }
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── MY ATTENDANCE ────────────────────────────────────────────────────────────
 function MyAttendance({ t }) {
   const [sessions, setSessions] = useState([]);
@@ -4027,7 +4196,7 @@ function MyAttendance({ t }) {
     <th>Regular Hours</th>
     <th>Overtime Hours</th>
     <th>Status</th>
-    <th>Breaks</th>
+    <th>More Details</th>
   </tr>
 </thead>
 <tbody>
@@ -4081,125 +4250,14 @@ function MyAttendance({ t }) {
                 cursor: "pointer",
               }}
             >
-              {expandedSessionId === s.id ? "Hide" : "Show"} Breaks
+              {expandedSessionId === s.id ? "Hide" : "More Details"}
             </button>
           </td>
         </tr>
         {expandedSessionId === s.id && sessionPunches[s.id] && (
           <tr>
-            <td colSpan={9} style={{ padding: "12px 16px", background: "var(--bg3)" }}>
-              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-                Break Details
-              </div>
-              {s.is_outside_geofence && (
-                <div style={{ marginBottom:12, padding:"8px 12px", background:"var(--amber-light)", border:"1px solid rgba(217,119,6,0.25)", borderRadius:"var(--radius)", fontSize:12 }}>
-                  <div style={{ fontWeight:700, color:"var(--amber)", marginBottom:4 }}>⚠ Off-Site Clock-In</div>
-                  {s.estimated_minutes ? (
-                    <div style={{ color:"var(--text2)" }}>
-                      Estimated: <strong>{fmtMins(s.estimated_minutes)}</strong> &nbsp;·&nbsp;
-                      Actual: <strong>{fmtMins(s.worked_minutes || 0)}</strong>
-                      {(s.worked_minutes || 0) > s.estimated_minutes
-                        ? <span style={{ color:"var(--red)", marginLeft:6 }}>⚠ Exceeded by {fmtMins((s.worked_minutes||0) - s.estimated_minutes)}</span>
-                        : <span style={{ color:"var(--green)", marginLeft:6 }}>✓ Within estimate</span>
-                      }
-                    </div>
-                  ) : (
-                    <div style={{ color:"var(--text3)" }}>No estimated time was provided at clock-in.</div>
-                  )}
-                </div>
-              )}
-              {(() => {
-                const clockInPunch = sessionPunches[s.id].find(
-                  p => p.punch_type === "clock_in" || p.punch_type === "auto_clock_in"
-                );
-                if (clockInPunch?.photo_data) {
-                  return (
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>
-                        Clock‑in Photo:
-                      </div>
-                      <img
-                        src={clockInPunch.photo_data}
-                        alt="Clock in"
-                        style={{
-                          maxWidth: "100px",
-                          maxHeight: "100px",
-                          borderRadius: "var(--radius)",
-                          border: "1px solid var(--border)",
-                        }}
-                      />
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-              {sessionPunches[s.id].filter(p => p.punch_type === "break_start").length === 0 ? (
-                <div style={{ color: "var(--text4)", fontSize: 12 }}>No breaks recorded.</div>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {sessionPunches[s.id]
-                    .filter(p => p.punch_type === "break_start")
-                    .map((p, idx) => {
-                      const endPunch = sessionPunches[s.id].find(
-                        ep =>
-                          ep.punch_type === "break_end" &&
-                          new Date(ep.punch_time) > new Date(p.punch_time)
-                      );
-                      const duration = endPunch
-                        ? Math.round(
-                            (new Date(endPunch.punch_time) - new Date(p.punch_time)) / 60000
-                          )
-                        : s.status === "on_break" &&
-                          idx ===
-                            sessionPunches[s.id].filter(p => p.punch_type === "break_start")
-                              .length -
-                              1
-                        ? Math.round((Date.now() - new Date(p.punch_time).getTime()) / 60000)
-                        : null;
-                      return (
-                        <div
-                          key={p.id}
-                          style={{
-                            borderLeft: "3px solid",
-                            borderColor:
-                              p.break_type === "work" ? "var(--blue)" : "var(--amber)",
-                            paddingLeft: 12,
-                          }}
-                        >
-                          <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text)" }}>
-                            {p.break_type === "work" ? "Work‑Related" : "Personal"} Break
-                          </div>
-                          {p.remarks && (
-                            <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 2 }}>
-                              Reason: {p.remarks}
-                            </div>
-                          )}
-                          <div style={{ fontSize: 11, color: "var(--text3)" }}>
-                            {fmtTime(p.punch_time)}{" "}
-                            {duration !== null && `· Duration: ${fmtMins(duration)}`}
-                          </div>
-                          {p.break_type === "work" && (
-                            <div style={{ marginTop: 4 }}>
-                              {p.break_completed === true ? (
-                                <span style={{ fontSize: 10, color: "var(--green)" }}>
-                                  ✓ Completed
-                                </span>
-                              ) : p.break_completed === false && p.break_incomplete_reason ? (
-                                <span style={{ fontSize: 10, color: "var(--red)" }}>
-                                  ✗ Not Completed – {p.break_incomplete_reason}
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: 10, color: "var(--amber)" }}>
-                                  ⏳ Pending
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
+            <td colSpan={9} style={{ padding: "14px 16px", background: "var(--bg3)", borderTop: "1px solid var(--border)" }}>
+              <SessionDetailPanel session={s} punches={sessionPunches[s.id]} />
             </td>
           </tr>
         )}
@@ -4242,6 +4300,19 @@ function MyProfile({user,addToast,employeeWorksite,t,onViewTaskHistory}){
   </div>
 )}
             {user.userId&&<div style={{marginTop:6,display:"inline-flex",alignItems:"center",gap:5,background:"var(--blue-light)",padding:"3px 10px",borderRadius:999,border:"1px solid var(--blue-mid)"}}><Icon name="key" size={11} color="var(--blue)"/><span style={{fontSize:12,fontWeight:700,color:"var(--blue)"}}>{user.userId}</span></div>}
+            {/* On-site / Off-site work-mode badge */}
+            {user.work_mode && (
+              <div style={{marginTop:6,display:"inline-flex",alignItems:"center",gap:5,
+                background: user.work_mode==="offsite" ? "var(--amber-light)" : "var(--green-light)",
+                padding:"3px 10px",borderRadius:999,
+                border: `1px solid ${user.work_mode==="offsite" ? "rgba(217,119,6,0.3)" : "rgba(5,150,105,0.25)"}`
+              }}>
+                <span style={{fontSize:11}}>{user.work_mode==="offsite" ? "📍" : "🏗️"}</span>
+                <span style={{fontSize:12,fontWeight:700,
+                  color: user.work_mode==="offsite" ? "var(--amber)" : "var(--green)"
+                }}>{user.work_mode==="offsite" ? "Off-Site" : "On-Site"}</span>
+              </div>
+            )}
           </div>
         </div>
         {[["Email",user.email||"—"],["Role",user.role]].map(([k,v])=>(
@@ -4308,6 +4379,7 @@ function AddEmployeeForm({ onDone, addToast, refreshAdminData }) {
   const [fcode, setFcode] = useState("");
   const [frole, setFrole] = useState("employee");
   const [ftz, setFtz] = useState("America/New_York");
+  const [fworkMode, setFworkMode] = useState("onsite");
   const [fshowPass, setFshowPass] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -4329,6 +4401,7 @@ function AddEmployeeForm({ onDone, addToast, refreshAdminData }) {
         employeeCode: fcode,
         userId: fuid || null,
         timezone: ftz,
+        workMode: fworkMode,
       }),
     });
     const d = await res.json();
@@ -4455,6 +4528,14 @@ function AddEmployeeForm({ onDone, addToast, refreshAdminData }) {
             <option value="Asia/Kolkata">🇮🇳 Kolkata (UTC+5:30)</option>
           </select>
         </div>
+
+        <div>
+          <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 5, fontWeight: 600 }}>Work Mode</label>
+          <select value={fworkMode} onChange={e => setFworkMode(e.target.value)} style={{ fontSize: 16 }}>
+            <option value="onsite">🏗️ On-Site</option>
+            <option value="offsite">📍 Off-Site</option>
+          </select>
+        </div>
       </div>
 
       <Btn onClick={handleAdd} loading={saving} style={{ width: "100%" }}>
@@ -4468,6 +4549,7 @@ function AddEmployeeForm({ onDone, addToast, refreshAdminData }) {
   // ─── EMPLOYEE LIST ────────────────────────────────────────────────────────────
 function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
   const [search, setSearch] = useState("");
+  const [workModeFilter, setWorkModeFilter] = useState("all"); // "all" | "onsite" | "offsite"
   const [adding, setAdding] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null);
   const [scheduleData, setScheduleData] = useState(null);
@@ -4491,12 +4573,18 @@ function EmployeeList({ adminData, refreshAdminData, addToast, worksites, t }) {
   }
 }, [scheduleData]);
 
-  const employees = adminData.employees.filter(u =>
-    u.name?.toLowerCase().includes(search.toLowerCase()) ||
-    u.email?.toLowerCase().includes(search.toLowerCase()) ||
-    u.employee_code?.toLowerCase().includes(search.toLowerCase()) ||
-    u.user_id?.includes(search)
-  );
+  const employees = adminData.employees.filter(u => {
+    const matchSearch =
+      u.name?.toLowerCase().includes(search.toLowerCase()) ||
+      u.email?.toLowerCase().includes(search.toLowerCase()) ||
+      u.employee_code?.toLowerCase().includes(search.toLowerCase()) ||
+      u.user_id?.includes(search);
+    const matchMode =
+      workModeFilter === "all" ||
+      (workModeFilter === "onsite"  && (u.work_mode || "onsite") === "onsite") ||
+      (workModeFilter === "offsite" && u.work_mode === "offsite");
+    return matchSearch && matchMode;
+  });
 
   const handleDelete = async (uid) => {
     if (!confirm("Deactivate this employee?")) return;
@@ -4560,13 +4648,14 @@ const saveSchedule = async () => {
       phone: emp.phone || "",
       joinedAt: emp.joined_at?.slice(0,10) || "",
       userId: emp.user_id || "",
+      workMode: emp.work_mode || "onsite",
     });
   };
 
   const saveEmployeeDetails = async () => {
     const res = await authFetch(`/api/admin/employees/${editingEmployee.id}`, {
       method: "PUT",
-      body: JSON.stringify(editForm)
+      body: JSON.stringify({ ...editForm, workMode: editForm.workMode || "onsite" })
     });
     if (res.ok) {
       addToast("Employee details updated", "success");
@@ -4608,6 +4697,20 @@ const saveSchedule = async () => {
       />
       {adding && <AddEmployeeForm onDone={() => { setAdding(false); refreshAdminData(); }} addToast={addToast} refreshAdminData={refreshAdminData} />}
       <Card>
+        {/* Work-mode filter pills */}
+        <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap" }}>
+          {[["all","All"],["onsite","🏗️ On-Site"],["offsite","📍 Off-Site"]].map(([v,l])=>(
+            <button key={v} onClick={() => setWorkModeFilter(v)} style={{
+              padding:"5px 12px", borderRadius:999, fontSize:12, fontWeight:600, cursor:"pointer",
+              border: workModeFilter===v ? "none" : "1px solid var(--border)",
+              background: workModeFilter===v
+                ? (v==="offsite" ? "var(--amber)" : v==="onsite" ? "var(--green)" : "var(--blue)")
+                : "var(--bg3)",
+              color: workModeFilter===v ? "#fff" : "var(--text3)",
+              transition:"all 0.15s",
+            }}>{l}</button>
+          ))}
+        </div>
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -4631,6 +4734,13 @@ const saveSchedule = async () => {
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 5, alignItems: "center" }}>
                     {u.user_id && <span style={{ background: "var(--blue-light)", color: "var(--blue)", padding: "2px 8px", borderRadius: 999, fontSize: 11.5, fontWeight: 700, border: "1px solid var(--blue-mid)" }}>ID: {u.user_id}</span>}
                     <span style={{ background: "var(--bg2)", color: "var(--text3)", padding: "2px 8px", borderRadius: 999, fontSize: 11.5, textTransform: "capitalize", border: "1px solid var(--border)" }}>{u.role}</span>
+                    {/* Work mode badge */}
+                    <span style={{
+                      padding:"2px 8px", borderRadius:999, fontSize:11.5, fontWeight:600,
+                      background: u.work_mode==="offsite" ? "var(--amber-light)" : "var(--green-light)",
+                      color: u.work_mode==="offsite" ? "var(--amber)" : "var(--green)",
+                      border: `1px solid ${u.work_mode==="offsite" ? "rgba(217,119,6,0.3)" : "rgba(5,150,105,0.25)"}`,
+                    }}>{u.work_mode==="offsite" ? "📍 Off-Site" : "🏗️ On-Site"}</span>
                     <select
                       value={u.timezone || "America/New_York"}
                       onChange={async (e) => {
@@ -4794,6 +4904,13 @@ const saveSchedule = async () => {
             <div><label style={{ fontSize: 12, fontWeight: 600 }}>Employee Code</label><input type="text" value={editForm.employeeCode} onChange={e => setEditForm({...editForm, employeeCode: e.target.value})} style={{ fontSize: 16 }} /></div>
             <div><label style={{ fontSize: 12, fontWeight: 600 }}>Phone</label><input type="text" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} style={{ fontSize: 16 }} /></div>
             <div><label style={{ fontSize: 12, fontWeight: 600 }}>Joined At</label><input type="date" value={editForm.joinedAt} onChange={e => setEditForm({...editForm, joinedAt: e.target.value})} style={{ fontSize: 16 }} /></div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, display:"block", marginBottom:5 }}>Work Mode</label>
+              <select value={editForm.workMode || "onsite"} onChange={e => setEditForm({...editForm, workMode: e.target.value})} style={{ fontSize: 16 }}>
+                <option value="onsite">🏗️ On-Site</option>
+                <option value="offsite">📍 Off-Site</option>
+              </select>
+            </div>
             <div style={{ display: "flex", gap: 8 }}>
               <Btn onClick={saveEmployeeDetails} variant="primary" style={{ flex: 1 }}>Save Changes</Btn>
               <Btn onClick={() => setShowPasswordModal(true)} variant="secondary" style={{ flex: 1 }}>Change Password</Btn>
@@ -4909,6 +5026,8 @@ function AttendancePage({ adminData, t }) {
   const [dateTo, setDateTo] = useState("");
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [expandedSessionId, setExpandedSessionId] = useState(null);
+  const [sessionPunches, setSessionPunches] = useState({});
 
   const fetch_ = useCallback(async () => {
     const p = new URLSearchParams();
@@ -4924,64 +5043,49 @@ function AttendancePage({ adminData, t }) {
     setLoading(false);
   }, [empFilter, dateFrom, dateTo]);
 
-  useEffect(() => {
-    fetch_();
-  }, [fetch_]);
+  useEffect(() => { fetch_(); }, [fetch_]);
+  useEffect(() => { const iv = setInterval(fetch_, 30000); return () => clearInterval(iv); }, [fetch_]);
 
-  useEffect(() => {
-    const iv = setInterval(fetch_, 30000);
-    return () => clearInterval(iv);
-  }, [fetch_]);
+  const toggleSession = async (sessionId) => {
+    if (expandedSessionId === sessionId) { setExpandedSessionId(null); return; }
+    setExpandedSessionId(sessionId);
+    if (!sessionPunches[sessionId]) {
+      try {
+        const res = await authFetch(`/api/admin/attendance/session/${sessionId}/punches`);
+        const data = await res.json();
+        setSessionPunches(prev => ({ ...prev, [sessionId]: Array.isArray(data) ? data : [] }));
+      } catch (err) {
+        console.error("Failed to fetch punches", err);
+        setSessionPunches(prev => ({ ...prev, [sessionId]: [] }));
+      }
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionHeader
         title={t.attendance}
         subtitle={`${records.length} records`}
-        action={
-          <Btn onClick={fetch_} variant="secondary" size="sm" loading={loading}>
-            <Icon name="refresh" size={13} />
-            {t.refresh}
-          </Btn>
-        }
+        action={<Btn onClick={fetch_} variant="secondary" size="sm" loading={loading}><Icon name="refresh" size={13} />{t.refresh}</Btn>}
       />
       <Card>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-          <select
-            value={empFilter}
-            onChange={(e) => setEmpFilter(e.target.value)}
-            style={{ fontSize: 16 }}
-          >
+          <select value={empFilter} onChange={e => setEmpFilter(e.target.value)} style={{ fontSize: 16 }}>
             <option value="all">All Employees</option>
-            {adminData.employees.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-                {u.user_id ? ` (${u.user_id})` : ""}
-              </option>
+            {adminData.employees.map(u => (
+              <option key={u.id} value={u.id}>{u.name}{u.user_id ? ` (${u.user_id})` : ""}</option>
             ))}
           </select>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              style={{ fontSize: 16 }}
-            />
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              style={{ fontSize: 16 }}
-            />
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ fontSize: 16 }} />
+            <input type="date" value={dateTo}   onChange={e => setDateTo(e.target.value)}   style={{ fontSize: 16 }} />
           </div>
         </div>
         {loading ? (
-          <div style={{ textAlign: "center", padding: 24, color: "var(--text3)" }}>
-            Loading...
-          </div>
+          <div style={{ textAlign: "center", padding: 24, color: "var(--text3)" }}>Loading...</div>
         ) : (
           <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-            <table style={{ minWidth: 500 }}>
+            <table style={{ minWidth: 600 }}>
               <thead>
                 <tr>
                   <th>Employee</th>
@@ -4992,73 +5096,81 @@ function AttendancePage({ adminData, t }) {
                   <th>Regular Hours</th>
                   <th>Overtime Hours</th>
                   <th>Status</th>
+                  <th>More Details</th>
                 </tr>
               </thead>
               <tbody>
                 {records.length === 0 ? (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: "center", color: "var(--text4)", padding: 24 }}>
-                      No records found.
-                    </td>
+                    <td colSpan={9} style={{ textAlign: "center", color: "var(--text4)", padding: 24 }}>No records found.</td>
                   </tr>
                 ) : (
-                  records.map((s) => (
-                    <tr key={s.id}>
-                      <td style={{ color: "var(--text)", fontWeight: 600, fontSize: 13.5 }}>
-                        {s.name || "—"}
-                      </td>
-                      <td style={{ fontSize: 12.5 }}>{fmtDate(s.work_date)}</td>
-                      <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_in_time)}</td>
-                      <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_out_time)}</td>
-                      <td
-                        style={{
-                          color: s.is_overtime ? "var(--orange)" : "var(--green)",
-                          fontWeight: 600,
-                          fontSize: 13,
-                        }}
-                      >
-                        {s.status === "active" && s.clock_in_time
-                          ? fmtMins(
-                              Math.max(
-                                0,
-                                Math.round(
-                                  (Date.now() - new Date(s.clock_in_time).getTime()) / 60000
-                                ) - (parseInt(s.break_minutes) || 0)
-                              )
-                            )
-                          : fmtMins(s.worked_minutes)}
-                        {s.is_overtime && " 🔥"}
-                      </td>
-                      <td style={{ fontSize: 12.5 }}>{fmtMins(s.regular_minutes || 0)}</td>
-                      <td
-                        style={{
-                          fontSize: 12.5,
-                          color: (s.overtime_minutes || 0) > 0 ? "var(--orange)" : "var(--text3)",
-                        }}
-                      >
-                        {fmtMins(s.overtime_minutes || 0)}
-                      </td>
-                      <td>
-                        <StatusBadge
-                          status={
-                            s.status === "completed"
-                              ? "clocked_out"
-                              : s.is_overtime
-                              ? "overtime"
-                              : "clocked_in"
-                          }
-                        />
-                        {s.is_outside_geofence && <div style={{marginTop:4}}><WarnBadge/></div>}
-                        {s.is_outside_geofence && s.estimated_minutes != null && (
-                          <div style={{ fontSize:11, color:"var(--amber)", marginTop:3, whiteSpace:"nowrap" }}>
-                            Est: {fmtMins(s.estimated_minutes)}
-                            {(s.worked_minutes||0) > s.estimated_minutes &&
-                              <span style={{ color:"var(--red)", marginLeft:4 }}>▲{fmtMins((s.worked_minutes||0)-s.estimated_minutes)}</span>
-                            }
-                          </div>
-                        )}
-                      </td>
-                    </tr>
+                  records.map(s => (
+                    <>
+                      <tr key={s.id}>
+                        <td style={{ color: "var(--text)", fontWeight: 600, fontSize: 13.5 }}>
+                          {s.name || "—"}
+                          {s.work_mode === "offsite" && (
+                            <span style={{ marginLeft: 5, fontSize: 10, background: "var(--amber-light)", color: "var(--amber)", padding: "1px 5px", borderRadius: 999, border: "1px solid rgba(217,119,6,0.25)", verticalAlign: "middle" }}>📍 Off-Site</span>
+                          )}
+                        </td>
+                        <td style={{ fontSize: 12.5 }}>{fmtDate(s.work_date)}</td>
+                        <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_in_time)}</td>
+                        <td style={{ fontSize: 12.5 }}>{fmtTime(s.clock_out_time)}</td>
+                        <td style={{ color: s.is_overtime ? "var(--orange)" : "var(--green)", fontWeight: 600, fontSize: 13 }}>
+                          {s.status === "active" && s.clock_in_time
+                            ? fmtMins(Math.max(0, Math.round((Date.now() - new Date(s.clock_in_time).getTime()) / 60000) - (parseInt(s.break_minutes) || 0)))
+                            : fmtMins(s.worked_minutes)}
+                          {s.is_overtime && " 🔥"}
+                        </td>
+                        <td style={{ fontSize: 12.5 }}>{fmtMins(s.regular_minutes || 0)}</td>
+                        <td style={{ fontSize: 12.5, color: (s.overtime_minutes || 0) > 0 ? "var(--orange)" : "var(--text3)" }}>
+                          {fmtMins(s.overtime_minutes || 0)}
+                        </td>
+                        <td>
+                          <StatusBadge status={s.status === "completed" ? "clocked_out" : s.is_overtime ? "overtime" : "clocked_in"} />
+                          {s.is_outside_geofence && <div style={{ marginTop: 4 }}><WarnBadge /></div>}
+                          {s.is_outside_geofence && s.estimated_minutes != null && (
+                            <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 3, whiteSpace: "nowrap" }}>
+                              Est: {fmtMins(s.estimated_minutes)}
+                              {(s.worked_minutes || 0) > s.estimated_minutes &&
+                                <span style={{ color: "var(--red)", marginLeft: 4 }}>▲{fmtMins((s.worked_minutes || 0) - s.estimated_minutes)}</span>
+                              }
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            onClick={() => toggleSession(s.id)}
+                            style={{
+                              background: expandedSessionId === s.id ? "var(--blue)" : "var(--blue-light)",
+                              color: expandedSessionId === s.id ? "#fff" : "var(--blue)",
+                              border: "1px solid var(--blue-mid)",
+                              borderRadius: "var(--radius-sm)",
+                              padding: "4px 10px",
+                              fontSize: 11,
+                              cursor: "pointer",
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {expandedSessionId === s.id ? "Hide" : "Show Details"}
+                          </button>
+                        </td>
+                      </tr>
+                      {expandedSessionId === s.id && sessionPunches[s.id] && (
+                        <tr>
+                          <td colSpan={9} style={{ padding: "14px 16px", background: "var(--bg3)", borderTop: "1px solid var(--border)" }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                              <span>🧾 Full Record — {s.name}</span>
+                              {s.employee_code && <span style={{ fontWeight: 400, color: "var(--text3)" }}>({s.employee_code})</span>}
+                              <span style={{ fontWeight: 400, color: "var(--text3)" }}>· {fmtDate(s.work_date)}</span>
+                            </div>
+                            <SessionDetailPanel session={s} punches={sessionPunches[s.id]} isAdmin={true} />
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   ))
                 )}
               </tbody>
