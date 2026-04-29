@@ -524,7 +524,10 @@ useEffect(() => {
   try {
     const res = await authFetch(`/api/attendance/${endpoint}`, {
       method: "POST",
-      body: JSON.stringify({ latitude: userLat || geoTarget?.latitude || 0, longitude: userLon || geoTarget?.longitude || 0 })
+      body: JSON.stringify({
+        latitude:  userLat  !== null ? userLat  : (geoTarget?.latitude  ?? 0),
+        longitude: userLon  !== null ? userLon  : (geoTarget?.longitude ?? 0),
+      })
     });
     const d = await res.json();
     if (!res.ok) {
@@ -4008,26 +4011,35 @@ function PunchLocationBlock({ punch }) {
       {/* Address line */}
       {hasValidCoords ? (
         address ? (
-          <div style={{ fontSize: 11, color: "var(--text2)", fontWeight: 500, lineHeight: 1.5, marginBottom: 3 }}>
+          <div style={{ fontSize: 12, color: "var(--text)", fontWeight: 500, lineHeight: 1.5, marginBottom: 4,
+            background: "var(--bg3)", borderRadius: "var(--radius-sm)", padding: "5px 8px",
+            border: "1px solid var(--border)" }}>
             📍 {address}
           </div>
         ) : (
-          <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 3 }}>📍 Fetching address…</div>
+          <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 3, display: "flex", alignItems: "center", gap: 4 }}>
+            <span className="spin" style={{ width: 9, height: 9, border: "2px solid var(--text4)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block", flexShrink: 0 }} />
+            Fetching address…
+          </div>
         )
       ) : (
-        <div style={{ fontSize: 11, color: "var(--amber)", marginBottom: 3 }}>
-          📍 Partial location (longitude not captured)
+        <div style={{ fontSize: 11, color: "var(--amber)", marginBottom: 3, fontWeight: 600,
+          background: "var(--amber-light)", borderRadius: "var(--radius-sm)", padding: "4px 7px",
+          border: "1px solid rgba(217,119,6,0.25)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+          ⚠ Partial location — longitude not captured
         </div>
       )}
       {/* Coordinates + map link */}
-      <div style={{ fontSize: 10.5, color: "var(--text3)", display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
-        <span>Lat: {latStr}</span>
+      <div style={{ fontSize: 11, color: "var(--text3)", display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center", marginTop: hasValidCoords && address ? 4 : 2 }}>
+        <span style={{ fontFamily: "monospace", fontSize: 10.5 }}>Lat: {latStr}</span>
         {lonStr
-          ? <><span style={{ color: "var(--border)" }}>·</span><span>Lon: {lonStr}</span></>
+          ? <><span style={{ color: "var(--border2)" }}>·</span><span style={{ fontFamily: "monospace", fontSize: 10.5 }}>Lon: {lonStr}</span></>
           : <span style={{ color: "var(--amber)" }}>· Lon: not available</span>
         }
         <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-          style={{ color: "var(--blue)", textDecoration: "underline", fontSize: 10.5 }}>
+          style={{ color: "var(--blue)", textDecoration: "none", fontSize: 10.5, fontWeight: 600,
+            background: "var(--blue-light)", padding: "1px 6px", borderRadius: 4,
+            border: "1px solid var(--blue-mid)" }}>
           View on Map ↗
         </a>
       </div>
@@ -4130,6 +4142,9 @@ function SessionDetailPanel({ session, punches, isAdmin = false }) {
               </div>
               {clockOutPunch?.source === "auto" && (
                 <div style={{ fontSize: 10, color: "var(--amber)", marginBottom: 2 }}>Auto clock-out</div>
+              )}
+              {session.is_outside_geofence && (
+                <div style={{ fontSize: 11, color: "var(--amber)", fontWeight: 600, marginBottom: 2 }}>⚠ Off-Site</div>
               )}
               {clockOutPunch?.remarks && (
                 <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Note: {clockOutPunch.remarks}</div>
@@ -4331,17 +4346,28 @@ function MyAttendance({ t }) {
               }
             />
             {s.is_outside_geofence && <div style={{marginTop:4}}><WarnBadge/></div>}
+            {s.is_outside_geofence && s.estimated_minutes != null && (
+              <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 3, whiteSpace: "nowrap" }}>
+                Est: {fmtMins(s.estimated_minutes)}
+                {(s.worked_minutes || 0) > s.estimated_minutes &&
+                  <span style={{ color: "var(--red)", marginLeft: 4 }}>▲{fmtMins((s.worked_minutes || 0) - s.estimated_minutes)}</span>
+                }
+              </div>
+            )}
           </td>
           <td>
             <button
               onClick={() => toggleSession(s.id)}
               style={{
-                background: "var(--blue-light)",
+                background: expandedSessionId === s.id ? "var(--blue)" : "var(--blue-light)",
+                color: expandedSessionId === s.id ? "#fff" : "var(--blue)",
                 border: "1px solid var(--blue-mid)",
                 borderRadius: "var(--radius-sm)",
-                padding: "4px 8px",
+                padding: "4px 10px",
                 fontSize: 11,
                 cursor: "pointer",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
               }}
             >
               {expandedSessionId === s.id ? "Hide" : "More Details"}
@@ -4351,6 +4377,11 @@ function MyAttendance({ t }) {
         {expandedSessionId === s.id && sessionPunches[s.id] && (
           <tr>
             <td colSpan={9} style={{ padding: "14px 16px", background: "var(--bg3)", borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text2)", marginBottom: 10, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span>🧾 Full Record</span>
+                <span style={{ fontWeight: 400, color: "var(--text3)" }}>· {fmtDate(s.work_date)}</span>
+                {s.is_outside_geofence && <WarnBadge />}
+              </div>
               <SessionDetailPanel session={s} punches={sessionPunches[s.id]} />
             </td>
           </tr>
