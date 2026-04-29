@@ -665,7 +665,7 @@ useEffect(() => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")}/>)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")}/>)}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
             {page === "task_history" && <TaskHistoryPage user={currentUser} t={t} />}
@@ -3982,30 +3982,42 @@ function PunchLocationBlock({ punch }) {
   const rawLon = punch?.longitude ?? punch?.lon;
   const lat = rawLat != null ? parseFloat(rawLat) : NaN;
   const lon = rawLon != null ? parseFloat(rawLon) : NaN;
-  const address = useReverseGeocode(isNaN(lat) ? null : lat, isNaN(lon) ? null : lon);
+  const hasValidCoords = !isNaN(lat) && !isNaN(lon);
 
-  if (!punch || isNaN(lat)) return null;   // nothing to show
+  // Only attempt geocoding when BOTH coordinates are valid numbers
+  const address = useReverseGeocode(hasValidCoords ? lat : null, hasValidCoords ? lon : null);
+
+  if (!punch || isNaN(lat)) return null;   // nothing at all to show
 
   const latStr = lat.toFixed(6);
   const lonStr = !isNaN(lon) ? lon.toFixed(6) : null;
-  const mapsUrl = lonStr
+  const mapsUrl = hasValidCoords
     ? `https://www.google.com/maps?q=${latStr},${lonStr}`
-    : `https://www.google.com/maps?q=${latStr}`;
+    : `https://www.google.com/maps/search/?api=1&query=${latStr}`;
 
   return (
     <div style={{ marginTop: 6 }}>
-      {/* Address line (loads asynchronously) */}
-      {address ? (
-        <div style={{ fontSize: 11, color: "var(--text2)", fontWeight: 500, lineHeight: 1.4, marginBottom: 3 }}>
-          📍 {address}
-        </div>
+      {/* Address line */}
+      {hasValidCoords ? (
+        address ? (
+          <div style={{ fontSize: 11, color: "var(--text2)", fontWeight: 500, lineHeight: 1.5, marginBottom: 3 }}>
+            📍 {address}
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 3 }}>📍 Fetching address…</div>
+        )
       ) : (
-        <div style={{ fontSize: 11, color: "var(--text4)", marginBottom: 3 }}>📍 Fetching address…</div>
+        <div style={{ fontSize: 11, color: "var(--amber)", marginBottom: 3 }}>
+          📍 Partial location (longitude not captured)
+        </div>
       )}
       {/* Coordinates + map link */}
       <div style={{ fontSize: 10.5, color: "var(--text3)", display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center" }}>
         <span>Lat: {latStr}</span>
-        {lonStr && <><span style={{ color: "var(--border)" }}>·</span><span>Lon: {lonStr}</span></>}
+        {lonStr
+          ? <><span style={{ color: "var(--border)" }}>·</span><span>Lon: {lonStr}</span></>
+          : <span style={{ color: "var(--amber)" }}>· Lon: not available</span>
+        }
         <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
           style={{ color: "var(--blue)", textDecoration: "underline", fontSize: 10.5 }}>
           View on Map ↗
