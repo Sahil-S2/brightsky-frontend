@@ -673,7 +673,7 @@ useEffect(() => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")}/>)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")}/>)}
             {page==="fuel"&&<FuelEntryPage currentUser={currentUser} t={t} addToast={addToast} worksites={worksites}/>}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
@@ -2107,47 +2107,8 @@ function EmployeeDashboard({
   // --- Return JSX (workflow row + greeting + expandable worksite + tab content) ---
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Workflow row (horizontal buttons, no Route) */}
-      <div style={{ background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid var(--border)" }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)" }}>Workflow</span>
-          <button onClick={() => setWorkflowCollapsed(!workflowCollapsed)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text3)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>
-            <Icon name={workflowCollapsed ? "chevronDown" : "chevronUp"} size={16} />
-          </button>
-        </div>
-        {!workflowCollapsed && (
-          <div style={{ display: "flex", overflowX: "auto", padding: "8px", gap: "4px", borderTop: "1px solid var(--border)" }}>
-            {["timecard", "fuel", "equipment", "tasks"].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setSelectedTab(tab)}
-                style={{
-                  flex: "0 0 auto",
-                  padding: "8px 16px",
-                  borderRadius: "var(--radius-sm)",
-                  background: selectedTab === tab ? "var(--blue-light)" : "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  fontSize: 14,
-                  fontWeight: selectedTab === tab ? 600 : 500,
-                  color: selectedTab === tab ? "var(--blue)" : "var(--text2)",
-                  whiteSpace: "nowrap",
-                  transition: "all 0.2s",
-                }}
-              >
-                {tab === "timecard" ? "Time Card" : tab === "fuel" ? "Fuel Entry" : tab === "equipment" ? "Equipment" : "Tasks"}
-              </button>
-            ))}
-          </div>
-        )}
-        {workflowCollapsed && (
-          <div style={{ padding: "8px 12px", background: "var(--bg3)" }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--text)" }}>
-              {selectedTab === "timecard" ? "Time Card" : selectedTab === "fuel" ? "Fuel Entry" : selectedTab === "equipment" ? "Equipment" : "Tasks"}
-            </span>
-          </div>
-        )}
-      </div>
+      {/* ── WORKFLOW SECTION ─────────────────────────────────────────────── */}
+      <WorkflowSection selectedTab={selectedTab} setSelectedTab={setSelectedTab} isAdmin={false}/>
 
       {/* Greeting */}
       <div style={{ padding: "0 4px", marginTop: 4 }}>
@@ -2186,22 +2147,13 @@ function EmployeeDashboard({
       {/* Content based on selected tab */}
       {selectedTab === "timecard" && renderTimeCard()}
       {selectedTab === "fuel" && (
-        <Card>
-          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Fuel Entry</h3>
-          <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
-        </Card>
+        <FuelEntryPage currentUser={user} t={t} addToast={addToast} worksites={[employeeWorksite].filter(Boolean)}/>
       )}
       {selectedTab === "equipment" && (
-        <Card>
-          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Equipment</h3>
-          <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
-        </Card>
+        <WorkflowEquipmentTab isAdmin={false} addToast={addToast}/>
       )}
       {selectedTab === "tasks" && (
-        <Card>
-          <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Tasks</h3>
-          <p style={{ color: "var(--text3)" }}>This feature will be available soon.</p>
-        </Card>
+        <RouteTabContent user={user} t={t} addToast={addToast}/>
       )}
     </div>
   );
@@ -2556,7 +2508,7 @@ function RouteTabContent({ user, t, addToast }) {
   );
 }
 // ─── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
-function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
+function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{},currentUser=null,worksites=[]}){
   const{employees,attendance,allAttendance}=adminData;
   const todayActive=attendance.filter(s=>s.status==="active").length;
   const totalMins=attendance.reduce((a,s)=>{if(s.status==="active"&&s.clock_in_time)return a+Math.max(0,Math.round((Date.now()-new Date(s.clock_in_time).getTime())/60000)-(parseInt(s.break_minutes)||0));return a+(parseInt(s.worked_minutes)||0);},0);
@@ -2696,6 +2648,9 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t}){
           </table>
         </div>
       </Card>
+
+      {/* ── ADMIN WORKFLOW SECTION ────────────────────────────────────────── */}
+      <AdminWorkflowSection addToast={addToast} currentUser={currentUser} worksites={worksites}/>
     </div>
   );
 }
@@ -6072,6 +6027,8 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
 // ─── EQUIPMENT GRID ───────────────────────────────────────────────────────────
 function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs }) {
   const today = new Date().toISOString().slice(0, 10);
+  // Pull custom images from the shared localStorage hook
+  const { images: customImages } = useEquipmentImages();
 
   // Last known fuel level per equipment from logs
   const lastLevel = {};
@@ -6104,6 +6061,7 @@ function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs })
           const eodDone = eodStatus[eq.id];
           const level = lastLevel[eq.id];
           const hasTrailer = eq.type === "trailer";
+          const customImg = customImages[eq.id];
           return (
             <div key={eq.id} className="fade-up" style={{ background: "var(--card)", border: `1.5px solid ${eodDone ? "rgba(5,150,105,0.25)" : "var(--border)"}`, borderRadius: "var(--radius-lg)", padding: 16, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", gap: 12, position: "relative", overflow: "hidden" }}>
               {/* EOD status ribbon */}
@@ -6113,8 +6071,11 @@ function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs })
 
               {/* Equipment thumbnail + info */}
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 64, height: 48, borderRadius: "var(--radius)", background: `${eq.color}10`, border: `1.5px solid ${eq.color}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <EquipmentThumb type={eq.type} color={eq.color} size={50}/>
+                <div style={{ width: 64, height: 48, borderRadius: "var(--radius)", background: customImg ? "transparent" : `${eq.color}10`, border: `1.5px solid ${eq.color}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+                  {customImg
+                    ? <img src={customImg} alt={eq.brand} style={{ width: "100%", height: "100%", objectFit: "cover" }}/>
+                    : <EquipmentThumb type={eq.type} color={eq.color} size={50}/>
+                  }
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", lineHeight: 1.3 }}>{eq.brand}</div>
@@ -6837,6 +6798,462 @@ function FuelMyLogs({ logs, loadingLogs, currentUser }) {
               </div>
             </Card>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =============================================================================
+// WORKFLOW COMPONENTS
+// WorkflowSection        — shared tab bar used inside EmployeeDashboard
+// AdminWorkflowSection   — full workflow panel added to AdminDashboard
+// WorkflowEquipmentTab   — equipment grid with custom image upload
+// useEquipmentImages     — localStorage hook for custom equipment thumbnails
+// =============================================================================
+
+// ─── EQUIPMENT IMAGE HOOK ────────────────────────────────────────────────────
+// Persists custom equipment images in localStorage so they survive refreshes.
+// Key per equipment: "bsc_eq_img_<id>"
+function useEquipmentImages() {
+  const [images, setImages] = useState(() => {
+    const result = {};
+    try {
+      EQUIPMENT_LIST.forEach(eq => {
+        const stored = localStorage.getItem(`bsc_eq_img_${eq.id}`);
+        if (stored) result[eq.id] = stored;
+      });
+    } catch {}
+    return result;
+  });
+
+  const setImage = (eqId, dataUrl) => {
+    try { localStorage.setItem(`bsc_eq_img_${eqId}`, dataUrl); } catch {}
+    setImages(prev => ({ ...prev, [eqId]: dataUrl }));
+  };
+
+  const removeImage = (eqId) => {
+    try { localStorage.removeItem(`bsc_eq_img_${eqId}`); } catch {}
+    setImages(prev => { const next = { ...prev }; delete next[eqId]; return next; });
+  };
+
+  return { images, setImage, removeImage };
+}
+
+// ─── WORKFLOW SECTION (Employee) ─────────────────────────────────────────────
+// A redesigned, professional tab bar replacing the old plain-button row.
+// Accepts selectedTab + setSelectedTab from the parent EmployeeDashboard.
+
+const WORKFLOW_TABS = [
+  { id: "timecard",  label: "Time Card",   icon: "clock",    color: "var(--blue)"   },
+  { id: "fuel",      label: "Fuel Entry",  icon: "fuel",     color: "var(--amber)"  },
+  { id: "equipment", label: "Equipment",   icon: "hard_hat", color: "var(--green)"  },
+  { id: "tasks",     label: "Tasks",       icon: "briefcase",color: "var(--purple)" },
+];
+
+function WorkflowSection({ selectedTab, setSelectedTab }) {
+  return (
+    <div style={{
+      background: "var(--card)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius-lg)",
+      overflow: "hidden",
+      boxShadow: "var(--shadow-sm)",
+    }}>
+      {/* Header strip */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "9px 14px",
+        background: "linear-gradient(90deg, #1e3a5f 0%, #1a4971 100%)",
+      }}>
+        <div style={{
+          width: 22, height: 22, borderRadius: 6,
+          background: "rgba(255,255,255,0.15)",
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+          </svg>
+        </div>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: "rgba(255,255,255,0.9)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          Workflow
+        </span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "rgba(255,255,255,0.45)", fontWeight: 400 }}>
+          {WORKFLOW_TABS.find(t => t.id === selectedTab)?.label}
+        </span>
+      </div>
+
+      {/* Tab pills */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(4, 1fr)",
+        gap: 0,
+        background: "var(--bg3)",
+        borderTop: "1px solid var(--border)",
+      }}>
+        {WORKFLOW_TABS.map((tab, i) => {
+          const active = selectedTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setSelectedTab(tab.id)}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                gap: 5, padding: "12px 4px",
+                background: active ? "white" : "transparent",
+                border: "none",
+                borderRight: i < 3 ? "1px solid var(--border)" : "none",
+                borderBottom: active ? `2.5px solid ${tab.color}` : "2.5px solid transparent",
+                cursor: "pointer",
+                transition: "all 0.15s",
+                position: "relative",
+              }}
+              onMouseEnter={e => { if (!active) e.currentTarget.style.background = "var(--bg2)"; }}
+              onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}
+            >
+              <div style={{
+                width: 30, height: 30, borderRadius: "var(--radius-sm)",
+                background: active ? `${tab.color}18` : "var(--bg3)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                border: active ? `1px solid ${tab.color}30` : "1px solid transparent",
+                transition: "all 0.15s",
+              }}>
+                <Icon name={tab.icon} size={14} color={active ? tab.color : "var(--text4)"}/>
+              </div>
+              <span style={{
+                fontSize: 10.5, fontWeight: active ? 700 : 500,
+                color: active ? tab.color : "var(--text4)",
+                lineHeight: 1.2, textAlign: "center", letterSpacing: "0.01em",
+                whiteSpace: "nowrap",
+              }}>{tab.label}</span>
+              {active && (
+                <div style={{
+                  position: "absolute", top: 0, left: 0, right: 0, height: 2,
+                  background: tab.color, borderRadius: "0 0 2px 2px",
+                }}/>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── ADMIN WORKFLOW SECTION ───────────────────────────────────────────────────
+// Standalone panel added to the bottom of AdminDashboard.
+// Has its own tab state, no dependency on parent.
+
+function AdminWorkflowSection({ addToast, currentUser, worksites = [] }) {
+  const [tab, setTab] = useState("fuel");
+  const adminTabs = [
+    { id: "fuel",      label: "Fuel Entry",  icon: "fuel",     color: "var(--amber)"  },
+    { id: "equipment", label: "Equipment",   icon: "hard_hat", color: "var(--green)"  },
+  ];
+
+  return (
+    <div style={{
+      background: "var(--card)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius-lg)",
+      overflow: "hidden",
+      boxShadow: "var(--shadow-sm)",
+      marginTop: 4,
+    }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "12px 16px",
+        background: "linear-gradient(135deg, #1e3a5f 0%, #0f2d47 100%)",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+      }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: "var(--radius-sm)",
+          background: "rgba(255,255,255,0.12)",
+          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+          border: "1px solid rgba(255,255,255,0.15)",
+        }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
+          </svg>
+        </div>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "white", letterSpacing: "-0.01em" }}>Workflow Hub</div>
+          <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.5)", marginTop: 1 }}>Manage fuel tracking &amp; equipment fleet</div>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: "flex", background: "var(--bg3)", borderBottom: "1px solid var(--border)" }}>
+        {adminTabs.map((t, i) => {
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              style={{
+                flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+                padding: "11px 12px",
+                background: active ? "white" : "transparent",
+                border: "none",
+                borderRight: i < adminTabs.length - 1 ? "1px solid var(--border)" : "none",
+                borderBottom: active ? `2.5px solid ${t.color}` : "2.5px solid transparent",
+                cursor: "pointer",
+                fontSize: 13.5, fontWeight: active ? 700 : 500,
+                color: active ? t.color : "var(--text3)",
+                transition: "all 0.15s",
+              }}
+            >
+              <Icon name={t.icon} size={15} color={active ? t.color : "var(--text4)"}/>
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: 16 }}>
+        {tab === "fuel" && <FuelEntryPage currentUser={currentUser} t={{}} addToast={addToast} worksites={worksites}/>}
+        {tab === "equipment" && <WorkflowEquipmentTab isAdmin={true} addToast={addToast}/>}
+      </div>
+    </div>
+  );
+}
+
+// ─── WORKFLOW EQUIPMENT TAB ───────────────────────────────────────────────────
+// Displays the full fleet with custom thumbnail upload (admin) or read-only (employee).
+// Images are persisted in localStorage per-device and shared across sessions on same browser.
+
+function WorkflowEquipmentTab({ isAdmin, addToast }) {
+  const { images, setImage, removeImage } = useEquipmentImages();
+  const [editingId, setEditingId] = useState(null);
+  const [search, setSearch] = useState("");
+  const uploadRefs = useRef({});
+
+  const filtered = EQUIPMENT_LIST.filter(eq =>
+    !search ||
+    eq.brand.toLowerCase().includes(search.toLowerCase()) ||
+    eq.model.toLowerCase().includes(search.toLowerCase()) ||
+    eq.type.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const handleImageFile = (eqId, file) => {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { addToast("Image must be under 8MB.", "error"); return; }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX = 400; let w = img.width, h = img.height;
+        if (w > h) { if (w > MAX) { h = h * MAX / w; w = MAX; } }
+        else { if (h > MAX) { w = w * MAX / h; h = MAX; } }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        setImage(eqId, canvas.toDataURL("image/jpeg", 0.82));
+        addToast("Equipment image updated.", "success");
+        setEditingId(null);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const typeLabel = t => t.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+
+  return (
+    <div>
+      {/* Header bar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Equipment Fleet</div>
+          <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 2 }}>
+            {EQUIPMENT_LIST.length} units · {Object.keys(images).length} with custom photos
+          </div>
+        </div>
+        {isAdmin && (
+          <div style={{ fontSize: 12, color: "var(--blue)", background: "var(--blue-light)", padding: "5px 10px", borderRadius: 999, border: "1px solid var(--blue-mid)", fontWeight: 600 }}>
+            ✏ Tap any card to upload a photo
+          </div>
+        )}
+      </div>
+
+      {/* Search */}
+      <div style={{ position: "relative", marginBottom: 14 }}>
+        <Icon name="search" size={14} color="var(--text4)" style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)" }}/>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search equipment…"
+          style={{ paddingLeft: 34, fontSize: 14 }}
+        />
+      </div>
+
+      {/* Equipment grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 240px), 1fr))", gap: 12 }}>
+        {filtered.map(eq => {
+          const customImg = images[eq.id];
+          const isEditing = editingId === eq.id;
+
+          return (
+            <div
+              key={eq.id}
+              className="fade-up"
+              style={{
+                background: "var(--card)",
+                border: `1.5px solid ${isEditing ? "var(--blue)" : "var(--border)"}`,
+                borderRadius: "var(--radius-lg)",
+                overflow: "hidden",
+                boxShadow: isEditing ? "0 0 0 3px var(--blue-dim)" : "var(--shadow-sm)",
+                transition: "all 0.15s",
+              }}
+            >
+              {/* Thumbnail area */}
+              <div
+                style={{
+                  height: 110, background: customImg ? "transparent" : `${eq.color}0d`,
+                  borderBottom: "1px solid var(--border)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  position: "relative", cursor: isAdmin ? "pointer" : "default",
+                  overflow: "hidden",
+                }}
+                onClick={() => isAdmin && setEditingId(isEditing ? null : eq.id)}
+              >
+                {customImg ? (
+                  <img
+                    src={customImg} alt={eq.brand}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <EquipmentThumb type={eq.type} color={eq.color} size={72}/>
+                )}
+
+                {/* Admin overlay on hover/edit */}
+                {isAdmin && (
+                  <div style={{
+                    position: "absolute", inset: 0,
+                    background: isEditing ? "rgba(37,99,235,0.18)" : "rgba(0,0,0,0)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    gap: 8, transition: "all 0.2s",
+                    opacity: isEditing ? 1 : 0,
+                  }}
+                  onMouseEnter={e => { if (!isEditing) e.currentTarget.style.background = "rgba(0,0,0,0.25)"; e.currentTarget.style.opacity = "1"; }}
+                  onMouseLeave={e => { if (!isEditing) { e.currentTarget.style.background = "rgba(0,0,0,0)"; e.currentTarget.style.opacity = "0"; } }}
+                  >
+                    {/* Upload button */}
+                    <label style={{
+                      width: 36, height: 36, borderRadius: "50%",
+                      background: "white", display: "flex", alignItems: "center", justifyContent: "center",
+                      cursor: "pointer", boxShadow: "var(--shadow-md)", flexShrink: 0,
+                    }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <Icon name="camera" size={16} color="var(--blue)"/>
+                      <input
+                        ref={r => uploadRefs.current[eq.id] = r}
+                        type="file" accept="image/*"
+                        style={{ display: "none" }}
+                        onChange={e => { handleImageFile(eq.id, e.target.files?.[0]); e.target.value = ""; }}
+                      />
+                    </label>
+                    {/* Remove button */}
+                    {customImg && (
+                      <button
+                        onClick={e => { e.stopPropagation(); removeImage(eq.id); setEditingId(null); addToast("Image removed.", "info"); }}
+                        style={{
+                          width: 36, height: 36, borderRadius: "50%",
+                          background: "white", border: "none", cursor: "pointer",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          boxShadow: "var(--shadow-md)", flexShrink: 0,
+                        }}
+                      >
+                        <Icon name="x" size={14} color="var(--red)"/>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* "Custom photo" badge */}
+                {customImg && (
+                  <div style={{
+                    position: "absolute", top: 6, left: 6,
+                    background: "rgba(5,150,105,0.85)", color: "white",
+                    fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 999,
+                    letterSpacing: "0.03em",
+                  }}>📷 Custom</div>
+                )}
+
+                {/* Type badge */}
+                <div style={{
+                  position: "absolute", bottom: 6, right: 6,
+                  background: `${eq.color}cc`, color: "white",
+                  fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 999,
+                }}>
+                  {typeLabel(eq.type)}
+                </div>
+              </div>
+
+              {/* Card body */}
+              <div style={{ padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", lineHeight: 1.3 }}>{eq.brand}</div>
+                    {eq.model && (
+                      <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 1, display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ background: `${eq.color}18`, color: eq.color, padding: "1px 6px", borderRadius: 4, fontWeight: 600, fontSize: 11 }}>
+                          {eq.model}
+                        </span>
+                        {eq.year && <span style={{ color: "var(--text4)", fontSize: 11 }}>{eq.year}</span>}
+                      </div>
+                    )}
+                  </div>
+                  {/* Equipment ID chip */}
+                  <div style={{
+                    background: "var(--bg3)", border: "1px solid var(--border)",
+                    borderRadius: 5, padding: "2px 7px", fontSize: 10.5,
+                    fontWeight: 700, color: "var(--text3)", flexShrink: 0, fontFamily: "monospace",
+                  }}>
+                    {eq.id.toUpperCase()}
+                  </div>
+                </div>
+
+                {/* Admin upload hint */}
+                {isAdmin && !customImg && (
+                  <button
+                    onClick={() => setEditingId(isEditing ? null : eq.id)}
+                    style={{
+                      marginTop: 10, width: "100%", padding: "7px 10px",
+                      border: "1.5px dashed var(--border2)", borderRadius: "var(--radius-sm)",
+                      background: isEditing ? "var(--blue-light)" : "var(--bg3)",
+                      color: isEditing ? "var(--blue)" : "var(--text4)",
+                      fontSize: 12, fontWeight: 500, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <Icon name="camera" size={13} color={isEditing ? "var(--blue)" : "var(--text4)"}/>
+                    {isEditing ? "Hover thumbnail to upload" : "Upload equipment photo"}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Admin tip */}
+      {isAdmin && (
+        <div style={{
+          marginTop: 16, padding: "10px 14px",
+          background: "var(--blue-light)", border: "1px solid var(--blue-mid)",
+          borderRadius: "var(--radius)", fontSize: 12.5, color: "var(--blue)",
+          display: "flex", alignItems: "center", gap: 8, lineHeight: 1.5,
+        }}>
+          <Icon name="shield" size={14} color="var(--blue)" style={{ flexShrink: 0 }}/>
+          Equipment photos are saved to this device's browser storage and instantly reflected in the Fuel Entry module. For company-wide sharing, ask your developer to add an image upload API.
         </div>
       )}
     </div>
