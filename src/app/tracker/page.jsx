@@ -415,6 +415,7 @@ export default function App(){
   },[]);
   const t=T[lang]||T.en;
   const[page,setPage]=useState("dashboard");
+  const[appTitle,setAppTitle]=useState("BSC Tracker");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[toasts,setToasts]=useState([]);
   const[settings,setSettings]=useState(DEFAULT_SETTINGS);
@@ -662,9 +663,11 @@ useEffect(() => {
   <button onClick={()=>setSidebarOpen(true)} style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",padding:7,borderRadius:"var(--radius-sm)",display:"flex",cursor:"pointer",minWidth:36,minHeight:36,alignItems:"center",justifyContent:"center"}}><Icon name="menu" size={18}/></button>
 
   <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
-    <div style={{width:28,height:28,borderRadius:"var(--radius-sm)",background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon name="hard_hat" size={14} color="white"/></div>
+    <div style={{width:28,height:28,borderRadius:"var(--radius-sm)",background:appTitle==="BSC Fuel Entry"?"#1e3a5f":"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background 0.25s"}}>
+      <Icon name={appTitle==="BSC Fuel Entry"?"fuel":"hard_hat"} size={14} color="white"/>
+    </div>
     <div>
-      <span style={{fontWeight:700,fontSize:13.5,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:130,letterSpacing:"-0.01em"}}>BSC Tracker</span>
+      <span style={{fontWeight:700,fontSize:13.5,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:160,letterSpacing:"-0.01em",transition:"all 0.2s"}}>{appTitle}</span>
       <div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>{now.toLocaleDateString()} · {now.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}</div>
     </div>
   </div>
@@ -673,8 +676,8 @@ useEffect(() => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")}/>)}
-            {page==="fuel"&&<FuelEntryPage currentUser={currentUser} t={t} addToast={addToast} worksites={worksites}/>}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")} setAppTitle={setAppTitle} worksites={worksites}/>)}
+            {page==="fuel"&&<FuelEntryPage currentUser={currentUser} t={t} addToast={addToast} worksites={worksites} onMount={()=>setAppTitle("BSC Fuel Entry")} onUnmount={()=>setAppTitle("BSC Tracker")}/>}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
             {page === "task_history" && <TaskHistoryPage user={currentUser} t={t} />}
@@ -1164,7 +1167,8 @@ function EmployeeDashboard({
   punchLoading, gpsLoading, userLat, userLon,
   isOvertime, overtimeMins, employeeWorksite,
   handleClockOut, handleBreakStart, handleBreakEnd,
-  t, addToast, refreshTodayData, onNavigateToRoute
+  t, addToast, refreshTodayData, onNavigateToRoute,
+  setAppTitle, worksites = [],
 }) {
   // --- existing state declarations (unchanged) ---
   const [now, setNow] = useState(new Date());
@@ -1192,6 +1196,14 @@ function EmployeeDashboard({
   const [selectedTab, setSelectedTab] = useState("timecard");
   const [workflowCollapsed, setWorkflowCollapsed] = useState(false);
   const [worksiteExpanded, setWorksiteExpanded] = useState(false);
+
+  // Sync app header title when tab changes
+  useEffect(() => {
+    if (setAppTitle) {
+      setAppTitle(selectedTab === "fuel" ? "BSC Fuel Entry" : "BSC Time Tracker");
+    }
+    return () => { if (setAppTitle) setAppTitle("BSC Tracker"); };
+  }, [selectedTab]);
 
   // --- NEW: Project Outing state ---
   const [activeOuting, setActiveOuting] = useState(null);
@@ -2115,8 +2127,8 @@ function EmployeeDashboard({
         <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0, letterSpacing: "-0.01em" }}>Hello, {user?.name?.split(" ")[0] || user?.name || "Employee"}!</h2>
       </div>
 
-      {/* Expandable Assigned Worksite (if any) */}
-      {employeeWorksite && (
+      {/* Expandable Assigned Worksite — hidden when Fuel Entry is active (has its own Job Site selector) */}
+      {selectedTab !== "fuel" && employeeWorksite && (
         <Card style={{ border: "1.5px solid var(--blue-mid)", background: "var(--blue-light)", padding: 16 }}>
           <div
             style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
@@ -5889,6 +5901,108 @@ function FuelBarChart({ data, height = 140, color = "var(--blue)" }) {
   );
 }
 
+// ─── JOB SITE SELECTOR + GPS GEOFENCE CHECK ───────────────────────────────────
+function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, isOnSite, setIsOnSite }) {
+  const [checking, setChecking] = useState(false);
+  const [gpsError, setGpsError] = useState(null);
+  const [gps, setGps] = useState(null);
+
+  const selectedSite = jobSites.find(s => s.id === selectedJobSite);
+
+  // Haversine distance in feet
+  const distanceFeet = (lat1, lon1, lat2, lon2) => {
+    const R = 3958.8 * 5280; // Earth radius in feet
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  };
+
+  const checkGps = () => {
+    setGpsError(null);
+    setChecking(true);
+    if (!navigator.geolocation) { setGpsError("GPS not supported on this device."); setChecking(false); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude, longitude } = pos.coords;
+        setGps({ lat: latitude, lon: longitude });
+        if (selectedSite && selectedSite.latitude && selectedSite.longitude) {
+          const radius = selectedSite.geofence_radius_ft || 1000;
+          const dist = distanceFeet(latitude, longitude, parseFloat(selectedSite.latitude), parseFloat(selectedSite.longitude));
+          setIsOnSite(dist <= radius);
+        } else {
+          setIsOnSite(null); // site has no coordinates — can't validate
+        }
+        setChecking(false);
+      },
+      err => { setGpsError("Could not get location. " + err.message); setChecking(false); },
+      { timeout: 10000, maximumAge: 60000 }
+    );
+  };
+
+  const handleSiteChange = (siteId) => {
+    setSelectedJobSite(siteId);
+    setIsOnSite(null);
+    setGps(null);
+    setGpsError(null);
+  };
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <Card style={{ border: "1.5px solid var(--border2)", padding: 16 }}>
+        <div style={{ fontSize: 12.5, color: "var(--text2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon name="pin" size={13} color="var(--blue)"/> Job Site
+        </div>
+
+        {/* Site dropdown */}
+        <select
+          value={selectedJobSite || ""}
+          onChange={e => handleSiteChange(e.target.value)}
+          style={{ fontSize: 15, marginBottom: 10, fontWeight: selectedJobSite ? 600 : 400 }}
+        >
+          <option value="">— Select job site —</option>
+          {jobSites.map(s => <option key={s.id} value={s.id}>{s.name}{s.address ? ` · ${s.address}` : ""}</option>)}
+          <option value="__other__">Other / Not Listed</option>
+        </select>
+
+        {/* GPS check row */}
+        {selectedJobSite && selectedJobSite !== "__other__" && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={checkGps}
+              disabled={checking}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "var(--blue)", color: "white", border: "none", borderRadius: "var(--radius-sm)", fontSize: 13, fontWeight: 600, cursor: checking ? "default" : "pointer", opacity: checking ? 0.7 : 1 }}
+            >
+              {checking
+                ? <span className="spin" style={{ width: 12, height: 12, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block" }}/>
+                : <Icon name="pin" size={13} color="white"/>}
+              {checking ? "Checking…" : "Check GPS Location"}
+            </button>
+
+            {isOnSite === true && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(5,150,105,0.1)", border: "1.5px solid rgba(5,150,105,0.35)", borderRadius: "var(--radius-sm)", fontSize: 12.5, color: "var(--green)", fontWeight: 700 }}>
+                <Icon name="check" size={13} color="var(--green)"/> On-Site Confirmed
+              </div>
+            )}
+            {isOnSite === false && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(217,119,6,0.1)", border: "1.5px solid rgba(217,119,6,0.35)", borderRadius: "var(--radius-sm)", fontSize: 12.5, color: "var(--amber)", fontWeight: 700 }}>
+                <Icon name="alert" size={13} color="var(--amber)"/> Off-Site Detected
+              </div>
+            )}
+            {isOnSite === null && gps && (
+              <div style={{ fontSize: 12, color: "var(--text3)" }}>No geofence set for this site — location logged.</div>
+            )}
+            {gpsError && <div style={{ fontSize: 12, color: "var(--red)" }}>{gpsError}</div>}
+          </div>
+        )}
+        {selectedJobSite === "__other__" && (
+          <div style={{ fontSize: 13, color: "var(--text3)", padding: "6px 0" }}>Entry will be logged without a specific site. Contact your manager to add a new site.</div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 // ─── MAIN FUEL ENTRY PAGE ──────────────────────────────────────────────────────
 function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
   const isAdmin = ["admin", "manager", "owner"].includes(currentUser?.role);
@@ -5897,6 +6011,8 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
   const [entryType, setEntryType] = useState("eod"); // "fill" | "eod"
   const [logs, setLogs] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [selectedJobSite, setSelectedJobSite] = useState(null); // selected at top level, shared by all forms
+  const [isOnSite, setIsOnSite] = useState(null); // true | false | null
   const [dashData, setDashData] = useState(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [eodStatus, setEodStatus] = useState({}); // { eq_id: true/false } today's EOD submitted
@@ -6004,13 +6120,25 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
       )}
 
       {/* Views */}
-      {view === "equipment" && <FuelEquipmentGrid eodStatus={eodStatus} openEntry={openEntry} isAdmin={isAdmin} logs={logs} loadingLogs={loadingLogs}/>}
+      {view === "equipment" && (<>
+        {/* Job Site Selector — always shown at top of equipment view */}
+        <FuelJobSiteSelector
+          jobSites={jobSites.length > 0 ? jobSites : worksites.map(w => ({ id: w.id, name: w.name || w.project_name }))}
+          selectedJobSite={selectedJobSite}
+          setSelectedJobSite={setSelectedJobSite}
+          isOnSite={isOnSite}
+          setIsOnSite={setIsOnSite}
+        />
+        <FuelEquipmentGrid eodStatus={eodStatus} openEntry={openEntry} isAdmin={isAdmin} logs={logs} loadingLogs={loadingLogs} jobSiteSelected={!!selectedJobSite}/>
+      </>)}
       {view === "form" && selectedEquipment && (
         <FuelEntryForm
           equipment={selectedEquipment}
           entryType={entryType}
           currentUser={currentUser}
-          jobSites={jobSites.length > 0 ? jobSites : worksites.map(w => ({ id: w.id, name: w.name }))}
+          selectedJobSite={selectedJobSite}
+          jobSiteName={(jobSites.find(s => s.id === selectedJobSite) || worksites.find(w => w.id === selectedJobSite))?.name || ""}
+          isOnSite={isOnSite}
           addToast={addToast}
           onBack={() => { setView("equipment"); setSelectedEquipment(null); }}
           onSuccess={() => { loadLogs(); loadAlerts(); if (isAdmin) loadDashboard(); setView("equipment"); }}
@@ -6025,7 +6153,7 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
 }
 
 // ─── EQUIPMENT GRID ───────────────────────────────────────────────────────────
-function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs }) {
+function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs, jobSiteSelected }) {
   const today = new Date().toISOString().slice(0, 10);
   // Pull custom images from the shared localStorage hook
   const { images: customImages } = useEquipmentImages();
@@ -6041,7 +6169,9 @@ function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs })
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Equipment Fleet</div>
-          <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 2 }}>Tap an equipment card to log fuel</div>
+          <div style={{ fontSize: 12.5, color: jobSiteSelected ? "var(--text3)" : "var(--amber)", marginTop: 2 }}>
+            {jobSiteSelected ? "Tap an equipment card to log fuel" : "Select a job site above before logging"}
+          </div>
         </div>
         <div style={{ fontSize: 11.5, color: "var(--text3)", background: "var(--bg3)", padding: "4px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}>
           {EQUIPMENT_LIST.length} units
@@ -6098,8 +6228,8 @@ function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs })
                 </div>
               )}
 
-              {/* Action buttons */}
-              <div style={{ display: "flex", gap: 8 }}>
+              {/* Action buttons — disabled until a job site is selected */}
+              <div style={{ display: "flex", gap: 8, opacity: jobSiteSelected ? 1 : 0.4, pointerEvents: jobSiteSelected ? "auto" : "none" }}>
                 {!hasTrailer && (
                   <button onClick={() => openEntry(eq, "fill")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "9px 6px", borderRadius: "var(--radius-sm)", background: "var(--blue-light)", color: "var(--blue)", border: "1.5px solid var(--blue-mid)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 38 }}>
                     <Icon name="droplet" size={13} color="var(--blue)"/> Fuel Fill
@@ -6118,7 +6248,7 @@ function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs })
 }
 
 // ─── FUEL ENTRY FORM ──────────────────────────────────────────────────────────
-function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, onBack, onSuccess }) {
+function FuelEntryForm({ equipment, entryType, currentUser, selectedJobSite, jobSiteName, isOnSite, addToast, onBack, onSuccess }) {
   const [type, setType] = useState(entryType);
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -6128,8 +6258,7 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, 
   const fileRef1 = useRef(null);
   const fileRef2 = useRef(null);
 
-  // Form fields
-  const [jobSite, setJobSite] = useState("");
+  // Form fields (job site is set at page level — not in this form)
   const [fuelBefore, setFuelBefore] = useState("");
   const [fuelAfter, setFuelAfter] = useState("");
   const [fuelRemaining, setFuelRemaining] = useState("");
@@ -6170,7 +6299,6 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, 
   };
 
   const validate = () => {
-    if (!jobSite) { addToast("Please select a job site.", "error"); return false; }
     if (type === "fill") {
       if (fuelBefore === "") { addToast("Please enter before-fill fuel level.", "error"); return false; }
       if (!gallonsAdded) { addToast("Please enter gallons added.", "error"); return false; }
@@ -6189,7 +6317,9 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, 
         equipment_brand: equipment.brand,
         equipment_model: equipment.model,
         entry_type: type,
-        job_site_id: jobSite,
+        job_site_id: selectedJobSite && selectedJobSite !== "__other__" ? selectedJobSite : null,
+        job_site_name: jobSiteName || null,
+        is_on_site: isOnSite,
         fuel_level_before: type === "fill" ? Number(fuelBefore) : null,
         fuel_level_after: type === "fill" ? Number(fuelAfter) : null,
         fuel_level_remaining: type === "eod" ? Number(fuelRemaining) : null,
@@ -6262,18 +6392,18 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, 
         {gps && <span style={{ marginLeft: "auto" }}>📍 {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</span>}
       </div>
 
+      {/* Job site badge (read-only — selected at page level) */}
+      {(jobSiteName || selectedJobSite) && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, padding: "8px 12px", background: "var(--bg3)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}>
+          <Icon name="pin" size={13} color="var(--blue)"/>
+          <span style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>{jobSiteName || "Selected site"}</span>
+          {isOnSite === true && <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--green)", fontWeight: 700, background: "rgba(5,150,105,0.1)", padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(5,150,105,0.25)" }}>On-Site ✓</span>}
+          {isOnSite === false && <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--amber)", fontWeight: 700, background: "rgba(217,119,6,0.1)", padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(217,119,6,0.25)" }}>Off-Site ⚠</span>}
+        </div>
+      )}
+
       {/* Form fields */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Job site */}
-        <div>
-          <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Job Site <span style={{ color: "var(--red)" }}>*</span></label>
-          <select value={jobSite} onChange={e => setJobSite(e.target.value)} style={{ fontSize: 15 }}>
-            <option value="">Select job site…</option>
-            {jobSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            <option value="__other__">Other / Not Listed</option>
-          </select>
-        </div>
-
         {/* Hours reading */}
         <div>
           <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Machine Hours / Meter Reading</label>
