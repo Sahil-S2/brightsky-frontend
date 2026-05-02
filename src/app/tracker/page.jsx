@@ -5901,22 +5901,48 @@ function FuelBarChart({ data, height = 140, color = "var(--blue)" }) {
   );
 }
 
-// ─── JOB SITE SELECTOR + GPS GEOFENCE CHECK ───────────────────────────────────
-function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, isOnSite, setIsOnSite }) {
+
+// =============================================================================
+// fuel_v2_appendix.jsx
+// New / replaced components for the Fuel Entry module v2
+//
+// Components:
+//   1. FuelJobSiteSelector  (full replacement — adds live distance display)
+//   2. FuelJobSitesAdmin    (new — Leaflet map, address search, CRUD)
+//   3. FuelHistoryView      (new — rich history with on/off-site badges + details)
+// =============================================================================
+
+// ─── 1. UPDATED JOB SITE SELECTOR ─────────────────────────────────────────────
+// Adds live distance display (ft / mi) in top-right of the card.
+function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, isOnSite, setIsOnSite, gpsForDistance, setGpsForDistance }) {
   const [checking, setChecking] = useState(false);
   const [gpsError, setGpsError] = useState(null);
-  const [gps, setGps] = useState(null);
+  const [distanceDisplay, setDistanceDisplay] = useState(null); // e.g. "328 ft" or "1.2 mi"
 
   const selectedSite = jobSites.find(s => s.id === selectedJobSite);
 
   // Haversine distance in feet
   const distanceFeet = (lat1, lon1, lat2, lon2) => {
-    const R = 3958.8 * 5280; // Earth radius in feet
+    const R = 3958.8 * 5280;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   };
+
+  const formatDist = (ft) => ft < 1000 ? `${Math.round(ft)} ft` : `${(ft/5280).toFixed(1)} mi`;
+
+  // Recompute distance when site or GPS changes
+  useEffect(() => {
+    if (gpsForDistance && selectedSite && selectedSite.latitude && selectedSite.longitude) {
+      const d = distanceFeet(gpsForDistance.lat, gpsForDistance.lon, parseFloat(selectedSite.latitude), parseFloat(selectedSite.longitude));
+      setDistanceDisplay(formatDist(d));
+      const radius = selectedSite.geofence_radius_ft || 1000;
+      setIsOnSite(d <= radius);
+    } else {
+      setDistanceDisplay(null);
+    }
+  }, [gpsForDistance, selectedJobSite]);
 
   const checkGps = () => {
     setGpsError(null);
@@ -5925,13 +5951,15 @@ function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, is
     navigator.geolocation.getCurrentPosition(
       pos => {
         const { latitude, longitude } = pos.coords;
-        setGps({ lat: latitude, lon: longitude });
+        const gps = { lat: latitude, lon: longitude };
+        if (setGpsForDistance) setGpsForDistance(gps);
         if (selectedSite && selectedSite.latitude && selectedSite.longitude) {
           const radius = selectedSite.geofence_radius_ft || 1000;
           const dist = distanceFeet(latitude, longitude, parseFloat(selectedSite.latitude), parseFloat(selectedSite.longitude));
+          setDistanceDisplay(formatDist(dist));
           setIsOnSite(dist <= radius);
         } else {
-          setIsOnSite(null); // site has no coordinates — can't validate
+          setIsOnSite(null);
         }
         setChecking(false);
       },
@@ -5943,15 +5971,34 @@ function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, is
   const handleSiteChange = (siteId) => {
     setSelectedJobSite(siteId);
     setIsOnSite(null);
-    setGps(null);
+    setDistanceDisplay(null);
     setGpsError(null);
+    // Re-check distance with existing GPS if we have it
+    if (gpsForDistance && siteId) {
+      const site = jobSites.find(s => s.id === siteId);
+      if (site && site.latitude && site.longitude) {
+        const d = distanceFeet(gpsForDistance.lat, gpsForDistance.lon, parseFloat(site.latitude), parseFloat(site.longitude));
+        setDistanceDisplay(formatDist(d));
+        setIsOnSite(d <= (site.geofence_radius_ft || 1000));
+      }
+    }
   };
 
   return (
     <div style={{ marginBottom: 18 }}>
       <Card style={{ border: "1.5px solid var(--border2)", padding: 16 }}>
-        <div style={{ fontSize: 12.5, color: "var(--text2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-          <Icon name="pin" size={13} color="var(--blue)"/> Job Site
+        {/* Header row with distance badge */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div style={{ fontSize: 12.5, color: "var(--text2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
+            <Icon name="pin" size={13} color="var(--blue)"/> Job Site
+          </div>
+          {/* Distance display — top right, like time tracker */}
+          {distanceDisplay && selectedSite && (
+            <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: isOnSite ? "rgba(5,150,105,0.08)" : "rgba(217,119,6,0.08)", border: `1px solid ${isOnSite ? "rgba(5,150,105,0.25)" : "rgba(217,119,6,0.3)"}`, fontSize: 12, fontWeight: 700, color: isOnSite ? "var(--green)" : "var(--amber)" }}>
+              <Icon name="pin" size={11} color={isOnSite ? "var(--green)" : "var(--amber)"}/>
+              {distanceDisplay} away
+            </div>
+          )}
         </div>
 
         {/* Site dropdown */}
@@ -5971,25 +6018,25 @@ function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, is
             <button
               onClick={checkGps}
               disabled={checking}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "var(--blue)", color: "white", border: "none", borderRadius: "var(--radius-sm)", fontSize: 13, fontWeight: 600, cursor: checking ? "default" : "pointer", opacity: checking ? 0.7 : 1 }}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "#1e3a5f", color: "white", border: "none", borderRadius: "var(--radius-sm)", fontSize: 13, fontWeight: 600, cursor: checking ? "default" : "pointer", opacity: checking ? 0.7 : 1 }}
             >
               {checking
                 ? <span className="spin" style={{ width: 12, height: 12, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block" }}/>
                 : <Icon name="pin" size={13} color="white"/>}
-              {checking ? "Checking…" : "Check GPS Location"}
+              {checking ? "Checking…" : "Verify Location"}
             </button>
 
             {isOnSite === true && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(5,150,105,0.1)", border: "1.5px solid rgba(5,150,105,0.35)", borderRadius: "var(--radius-sm)", fontSize: 12.5, color: "var(--green)", fontWeight: 700 }}>
-                <Icon name="check" size={13} color="var(--green)"/> On-Site Confirmed
+                <Icon name="check" size={13} color="var(--green)"/> On-Site Confirmed {distanceDisplay && `· ${distanceDisplay}`}
               </div>
             )}
             {isOnSite === false && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(217,119,6,0.1)", border: "1.5px solid rgba(217,119,6,0.35)", borderRadius: "var(--radius-sm)", fontSize: 12.5, color: "var(--amber)", fontWeight: 700 }}>
-                <Icon name="alert" size={13} color="var(--amber)"/> Off-Site Detected
+                <Icon name="alert" size={13} color="var(--amber)"/> Off-Site {distanceDisplay && `· ${distanceDisplay} from site`}
               </div>
             )}
-            {isOnSite === null && gps && (
+            {isOnSite === null && gpsForDistance && (
               <div style={{ fontSize: 12, color: "var(--text3)" }}>No geofence set for this site — location logged.</div>
             )}
             {gpsError && <div style={{ fontSize: 12, color: "var(--red)" }}>{gpsError}</div>}
@@ -5998,7 +6045,620 @@ function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, is
         {selectedJobSite === "__other__" && (
           <div style={{ fontSize: 13, color: "var(--text3)", padding: "6px 0" }}>Entry will be logged without a specific site. Contact your manager to add a new site.</div>
         )}
+        {!selectedJobSite && jobSites.length === 0 && (
+          <div style={{ fontSize: 12.5, color: "var(--amber)", marginTop: 4 }}>No job sites configured yet. Ask your manager to set one up.</div>
+        )}
       </Card>
+    </div>
+  );
+}
+
+// ─── 2. ADMIN JOB SITE MANAGEMENT ─────────────────────────────────────────────
+// Full CRUD for job sites with Leaflet map, Nominatim address search, geofence.
+function FuelJobSitesAdmin({ jobSites, setJobSites, addToast }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editSite, setEditSite] = useState(null);
+
+  // Form fields
+  const [name, setName] = useState("");
+  const [address, setAddress] = useState("");
+  const [lat, setLat] = useState("");
+  const [lon, setLon] = useState("");
+  const [radius, setRadius] = useState(500);
+  const [projectName, setProjectName] = useState("");
+  const [siteManager, setSiteManager] = useState("");
+
+  // Map / search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [leafletReady, setLeafletReady] = useState(false);
+
+  const mapContainerRef = useRef(null);
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const circleRef = useRef(null);
+
+  // ── Load Leaflet from CDN ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (window.L) { setLeafletReady(true); return; }
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+    document.head.appendChild(link);
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+    script.onload = () => setLeafletReady(true);
+    document.head.appendChild(script);
+  }, []);
+
+  // ── Initialize map when form opens ────────────────────────────────────────
+  useEffect(() => {
+    if (!showForm || !leafletReady || !mapContainerRef.current) return;
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+
+    const L = window.L;
+    const initLat = lat ? parseFloat(lat) : 39.8283;
+    const initLon = lon ? parseFloat(lon) : -98.5795;
+    const initZoom = lat ? 15 : 4;
+
+    const map = L.map(mapContainerRef.current, { zoomControl: true }).setView([initLat, initLon], initZoom);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+      maxZoom: 19,
+    }).addTo(map);
+    mapRef.current = map;
+
+    map.on("click", e => {
+      const { lat: la, lng: lo } = e.latlng;
+      setLat(la.toFixed(7));
+      setLon(lo.toFixed(7));
+      placePin(la, lo);
+    });
+
+    if (lat && lon) placePin(parseFloat(lat), parseFloat(lon));
+
+    return () => { if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; } };
+  }, [showForm, leafletReady]);
+
+  // ── Update circle when radius changes ─────────────────────────────────────
+  useEffect(() => {
+    if (lat && lon && mapRef.current) placePin(parseFloat(lat), parseFloat(lon));
+  }, [radius]);
+
+  const placePin = (la, lo) => {
+    if (!mapRef.current || !window.L) return;
+    const L = window.L;
+    if (markerRef.current) { markerRef.current.remove(); markerRef.current = null; }
+    if (circleRef.current) { circleRef.current.remove(); circleRef.current = null; }
+    const r = parseInt(radius) || 500;
+    markerRef.current = L.marker([la, lo], {
+      icon: L.divIcon({
+        html: `<div style="width:18px;height:18px;background:#1e3a5f;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.45)"></div>`,
+        iconSize: [18, 18], iconAnchor: [9, 9], className: "",
+      })
+    }).addTo(mapRef.current);
+    circleRef.current = L.circle([la, lo], {
+      radius: r * 0.3048,
+      color: "#2563eb", fillColor: "#3b82f6", fillOpacity: 0.12, weight: 2, dashArray: "5,5",
+    }).addTo(mapRef.current);
+    mapRef.current.setView([la, lo], Math.max(mapRef.current.getZoom(), 15));
+  };
+
+  // ── Address search via Nominatim ───────────────────────────────────────────
+  const searchAddress = async () => {
+    if (!searchQuery.trim()) return;
+    setSearching(true);
+    setSearchResults([]);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=6&addressdetails=1`,
+        { headers: { "Accept-Language": "en-US,en" } }
+      );
+      const data = await res.json();
+      setSearchResults(data);
+      if (data.length === 0) addToast("No results found. Try a different address.", "info");
+    } catch { addToast("Address search failed. Check your connection.", "error"); }
+    setSearching(false);
+  };
+
+  const pickResult = (r) => {
+    const la = parseFloat(r.lat), lo = parseFloat(r.lon);
+    setLat(la.toFixed(7));
+    setLon(lo.toFixed(7));
+    const parts = r.display_name.split(",");
+    setAddress(r.display_name);
+    setSearchQuery(parts.slice(0, 2).join(",").trim());
+    setSearchResults([]);
+    placePin(la, lo);
+  };
+
+  // ── Form helpers ───────────────────────────────────────────────────────────
+  const resetForm = () => {
+    setName(""); setAddress(""); setLat(""); setLon(""); setRadius(500);
+    setProjectName(""); setSiteManager("");
+    setSearchQuery(""); setSearchResults([]);
+    setEditSite(null);
+  };
+
+  const openCreate = () => { resetForm(); setShowForm(true); };
+  const openEdit = (site) => {
+    setEditSite(site);
+    setName(site.name || ""); setAddress(site.address || "");
+    setLat(site.latitude ? String(site.latitude) : "");
+    setLon(site.longitude ? String(site.longitude) : "");
+    setRadius(site.geofence_radius_ft || 500);
+    setProjectName(site.project_name || ""); setSiteManager(site.site_manager || "");
+    setSearchQuery(site.name || "");
+    setShowForm(true);
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) { addToast("Site name is required.", "error"); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        name: name.trim(), address: address.trim() || null,
+        latitude: lat ? parseFloat(lat) : null,
+        longitude: lon ? parseFloat(lon) : null,
+        geofence_radius_ft: parseInt(radius) || 500,
+        project_name: projectName.trim() || null,
+        site_manager: siteManager.trim() || null, active: true,
+      };
+      const url = editSite ? `/api/fuel/job-sites/${editSite.id}` : "/api/fuel/job-sites";
+      const method = editSite ? "PUT" : "POST";
+      const res = await authFetch(url, { method, body: JSON.stringify(payload) });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || "Save failed."); }
+      const data = await res.json();
+      if (editSite) {
+        setJobSites(prev => prev.map(s => s.id === editSite.id ? data.site : s));
+        addToast("Job site updated.", "success");
+      } else {
+        setJobSites(prev => [...prev, data.site]);
+        addToast("Job site created! It will appear in employee dropdowns immediately.", "success");
+      }
+      setShowForm(false); resetForm();
+    } catch (e) { addToast(e.message || "Error saving site.", "error"); }
+    setSaving(false);
+  };
+
+  const handleDelete = async (site) => {
+    if (!window.confirm(`Deactivate "${site.name}"? Employees will no longer see this site in the dropdown.`)) return;
+    try {
+      const res = await authFetch(`/api/fuel/job-sites/${site.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setJobSites(prev => prev.filter(s => s.id !== site.id));
+      addToast("Job site removed.", "success");
+    } catch { addToast("Failed to remove site.", "error"); }
+  };
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Job Sites</div>
+          <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 2 }}>
+            {jobSites.length} site{jobSites.length !== 1 ? "s" : ""} · Sites appear instantly in employee dropdowns
+          </div>
+        </div>
+        {!showForm && (
+          <button onClick={openCreate} style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 16px", background: "#1e3a5f", color: "white", border: "none", borderRadius: "var(--radius-sm)", fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 8px rgba(30,58,95,0.3)", flexShrink: 0 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Job Site
+          </button>
+        )}
+      </div>
+
+      {/* ── Create / Edit Form ───────────────────────────────────────────────── */}
+      {showForm && (
+        <Card style={{ border: "2px solid #1e3a5f", padding: 20, marginBottom: 20, borderRadius: "var(--radius-lg)" }}>
+          {/* Form header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 36, height: 36, background: "#1e3a5f", borderRadius: "var(--radius-sm)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon name="pin" size={16} color="white"/>
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#1e3a5f" }}>{editSite ? "Edit Job Site" : "New Job Site"}</div>
+                <div style={{ fontSize: 12, color: "var(--text3)" }}>Search an address or click the map to place the pin</div>
+              </div>
+            </div>
+            <button onClick={() => { setShowForm(false); resetForm(); }} style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text2)", width: 32, height: 32, borderRadius: "var(--radius-sm)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+              <Icon name="x" size={14} color="var(--text2)"/>
+            </button>
+          </div>
+
+          {/* Address search */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text2)", display: "block", marginBottom: 6 }}>
+              Address Search
+            </label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && searchAddress()}
+                placeholder="Search address, city, or place name…"
+                style={{ flex: 1, fontSize: 14 }}
+              />
+              <button onClick={searchAddress} disabled={searching} style={{ padding: "0 18px", background: "#1e3a5f", color: "white", border: "none", borderRadius: "var(--radius-sm)", fontWeight: 600, fontSize: 13, cursor: searching ? "default" : "pointer", opacity: searching ? 0.7 : 1, flexShrink: 0, height: 42 }}>
+                {searching ? "…" : "Search"}
+              </button>
+            </div>
+            {/* Results dropdown */}
+            {searchResults.length > 0 && (
+              <div style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", marginTop: 4, background: "white", boxShadow: "0 8px 24px rgba(0,0,0,0.12)", maxHeight: 200, overflowY: "auto", position: "relative", zIndex: 200 }}>
+                {searchResults.map((r, i) => (
+                  <div key={i} onClick={() => pickResult(r)}
+                    style={{ padding: "10px 14px", cursor: "pointer", borderBottom: i < searchResults.length-1 ? "1px solid var(--border)" : "none", fontSize: 13, color: "var(--text2)", display: "flex", gap: 10, alignItems: "flex-start" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--bg3)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                  >
+                    <Icon name="pin" size={13} color="var(--blue)" style={{ marginTop: 2, flexShrink: 0 }}/>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{r.display_name.split(",")[0]}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--text3)", marginTop: 1 }}>{r.display_name.split(",").slice(1, 4).join(",").trim()}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Leaflet map */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text2)", display: "block", marginBottom: 6 }}>
+              Map <span style={{ fontWeight: 400, color: "var(--text4)", fontSize: 12 }}>— click anywhere to drop pin · blue ring = geofence</span>
+            </label>
+            <div style={{ position: "relative", borderRadius: "var(--radius)", overflow: "hidden", border: "1.5px solid var(--border2)", boxShadow: "var(--shadow-sm)" }}>
+              <div ref={mapContainerRef} style={{ width: "100%", height: 280, background: "#e8eaed" }}/>
+              {!leafletReady && (
+                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(248,250,252,0.9)", fontSize: 13, color: "var(--text3)", gap: 8 }}>
+                  <span className="spin" style={{ width: 16, height: 16, border: "2px solid var(--border2)", borderTopColor: "var(--blue)", borderRadius: "50%", display: "inline-block" }}/>
+                  Loading map…
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Coordinates + geofence row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", display: "block", marginBottom: 5 }}>Latitude</label>
+              <input type="number" step="0.0000001" value={lat}
+                onChange={e => { setLat(e.target.value); if (e.target.value && lon) placePin(parseFloat(e.target.value), parseFloat(lon)); }}
+                placeholder="e.g. 39.8283" style={{ fontSize: 13 }}/>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", display: "block", marginBottom: 5 }}>Longitude</label>
+              <input type="number" step="0.0000001" value={lon}
+                onChange={e => { setLon(e.target.value); if (lat && e.target.value) placePin(parseFloat(lat), parseFloat(e.target.value)); }}
+                placeholder="e.g. -98.5795" style={{ fontSize: 13 }}/>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", display: "block", marginBottom: 5 }}>Geofence Radius (ft)</label>
+              <input type="number" min="50" max="10000" step="50" value={radius}
+                onChange={e => setRadius(e.target.value)} placeholder="500" style={{ fontSize: 13 }}/>
+            </div>
+          </div>
+
+          {/* Site name, address, project, manager */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", display: "block", marginBottom: 5 }}>Site Name <span style={{ color: "var(--red)" }}>*</span></label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. North Valley Site" style={{ fontSize: 13 }}/>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", display: "block", marginBottom: 5 }}>Full Address</label>
+              <input value={address} onChange={e => setAddress(e.target.value)} placeholder="Street address (auto-filled by search)" style={{ fontSize: 13 }}/>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", display: "block", marginBottom: 5 }}>Project Name</label>
+              <input value={projectName} onChange={e => setProjectName(e.target.value)} placeholder="Optional" style={{ fontSize: 13 }}/>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text2)", display: "block", marginBottom: 5 }}>Site Manager</label>
+              <input value={siteManager} onChange={e => setSiteManager(e.target.value)} placeholder="Optional" style={{ fontSize: 13 }}/>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "12px", background: "#1e3a5f", color: "white", border: "none", borderRadius: "var(--radius-sm)", fontSize: 14, fontWeight: 700, cursor: saving ? "default" : "pointer", opacity: saving ? 0.7 : 1 }}>
+              {saving ? "Saving…" : editSite ? "Save Changes" : "Create Job Site"}
+            </button>
+            <button onClick={() => { setShowForm(false); resetForm(); }} style={{ padding: "12px 22px", background: "var(--bg3)", color: "var(--text2)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", fontSize: 14, cursor: "pointer" }}>
+              Cancel
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* ── Site list ─────────────────────────────────────────────────────────── */}
+      {jobSites.length === 0 && !showForm ? (
+        <Card style={{ textAlign: "center", padding: 36 }}>
+          <div style={{ width: 52, height: 52, background: "var(--bg3)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px" }}>
+            <Icon name="pin" size={22} color="var(--text4)"/>
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text2)" }}>No job sites yet</div>
+          <div style={{ fontSize: 13, color: "var(--text3)", marginTop: 6 }}>Add a site above — employees will see it in their dropdown immediately.</div>
+        </Card>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {jobSites.map(site => (
+            <Card key={site.id} style={{ padding: "14px 16px", border: "1.5px solid var(--border2)" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                <div style={{ width: 42, height: 42, borderRadius: "var(--radius-sm)", background: "linear-gradient(135deg, #1e3a5f, #2563eb)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 6px rgba(30,58,95,0.25)" }}>
+                  <Icon name="pin" size={18} color="white"/>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 3 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{site.name}</span>
+                    {site.project_name && <span style={{ fontSize: 11, color: "var(--text3)", background: "var(--bg3)", padding: "2px 8px", borderRadius: 999, border: "1px solid var(--border)" }}>{site.project_name}</span>}
+                  </div>
+                  {site.address && <div style={{ fontSize: 12.5, color: "var(--text3)", marginBottom: 4 }}>{site.address}</div>}
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    {site.latitude && site.longitude ? (
+                      <span style={{ fontSize: 11.5, color: "var(--text4)", display: "flex", alignItems: "center", gap: 4 }}>
+                        <Icon name="pin" size={11} color="var(--text4)"/>
+                        {parseFloat(site.latitude).toFixed(5)}, {parseFloat(site.longitude).toFixed(5)}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 11.5, color: "var(--amber)", fontWeight: 600 }}>⚠ No coordinates set</span>
+                    )}
+                    <span style={{ fontSize: 11.5, color: "var(--blue)", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                      ⭕ {site.geofence_radius_ft || 500} ft radius
+                    </span>
+                    {site.site_manager && <span style={{ fontSize: 11.5, color: "var(--text4)" }}>👤 {site.site_manager}</span>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => openEdit(site)} style={{ padding: "6px 12px", background: "var(--blue-light)", color: "var(--blue)", border: "1px solid var(--blue-mid)", borderRadius: "var(--radius-sm)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    Edit
+                  </button>
+                  <button onClick={() => handleDelete(site)} style={{ padding: "6px 12px", background: "rgba(220,38,38,0.07)", color: "var(--red)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── 3. FUEL HISTORY VIEW ─────────────────────────────────────────────────────
+// Replaces FuelMyLogs. Works for both admin (all logs) and employee (own logs).
+// Features: on/off-site badge, More Details expandable card, filter by type.
+function FuelHistoryView({ logs, loadingLogs, currentUser, isAdmin }) {
+  const [filter, setFilter] = useState("all"); // "all" | "fill" | "eod"
+  const [expandedId, setExpandedId] = useState(null);
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 20;
+
+  const myLogs = isAdmin ? logs : logs.filter(l => l.operator_id === currentUser?.id);
+  const filtered = filter === "all" ? myLogs : myLogs.filter(l => l.entry_type === filter);
+  const paged = filtered.slice(0, page * PER_PAGE);
+  const hasMore = filtered.length > paged.length;
+
+  const formatDist = (ft) => {
+    if (ft == null) return null;
+    return ft < 1000 ? `${Math.round(ft)} ft` : `${(ft/5280).toFixed(1)} mi`;
+  };
+
+  return (
+    <div>
+      {/* Header + filter */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
+            {isAdmin ? "All Fuel Entries" : "My Fuel Log"}
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 2 }}>
+            {filtered.length} record{filtered.length !== 1 ? "s" : ""}
+          </div>
+        </div>
+        {/* Filter chips */}
+        <div style={{ display: "flex", gap: 6 }}>
+          {[["all","All"],["fill","Fills"],["eod","EOD"]].map(([v, l]) => (
+            <button key={v} onClick={() => { setFilter(v); setPage(1); }} style={{ padding: "6px 14px", background: filter === v ? "#1e3a5f" : "var(--bg3)", color: filter === v ? "white" : "var(--text3)", border: `1px solid ${filter === v ? "#1e3a5f" : "var(--border)"}`, borderRadius: 999, fontSize: 12.5, fontWeight: filter === v ? 700 : 450, cursor: "pointer" }}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loadingLogs && (
+        <div style={{ textAlign: "center", padding: 32, color: "var(--text3)", fontSize: 13 }}>
+          <span className="spin" style={{ width: 18, height: 18, border: "2px solid var(--border2)", borderTopColor: "var(--blue)", borderRadius: "50%", display: "inline-block", marginBottom: 8 }}/>
+          <div>Loading fuel history…</div>
+        </div>
+      )}
+
+      {!loadingLogs && filtered.length === 0 && (
+        <Card style={{ textAlign: "center", padding: 32 }}>
+          <Icon name="droplet" size={32} color="var(--text4)" style={{ marginBottom: 12 }}/>
+          <div style={{ fontSize: 14, color: "var(--text3)" }}>No fuel entries found.</div>
+        </Card>
+      )}
+
+      {!loadingLogs && paged.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {paged.map((l, i) => {
+            const isExpanded = expandedId === (l.id || i);
+            const isFill = l.entry_type === "fill";
+            const onSite = l.is_on_site;
+
+            return (
+              <Card key={l.id || i} style={{ padding: 0, overflow: "hidden", border: "1.5px solid var(--border2)" }}>
+                {/* Main row */}
+                <div style={{ padding: "12px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    {/* Type + on-site badges */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
+                      <span style={{ background: isFill ? "var(--blue-light)" : "var(--green-light)", color: isFill ? "var(--blue)" : "var(--green)", padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, textAlign: "center" }}>
+                        {isFill ? "⛽ Fill" : "🏁 EOD"}
+                      </span>
+                      {onSite === true && (
+                        <span style={{ background: "rgba(5,150,105,0.1)", color: "var(--green)", border: "1px solid rgba(5,150,105,0.25)", padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 700, textAlign: "center" }}>
+                          ✓ On-Site
+                        </span>
+                      )}
+                      {onSite === false && (
+                        <span style={{ background: "rgba(217,119,6,0.1)", color: "var(--amber)", border: "1px solid rgba(217,119,6,0.3)", padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 700, textAlign: "center" }}>
+                          ⚠ Off-Site
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Main info */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", marginBottom: 3 }}>
+                        {l.equipment_brand} {l.equipment_model}
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "var(--text3)", marginBottom: isAdmin ? 3 : 0 }}>
+                        {isFill
+                          ? <>Level: {l.fuel_level_before ?? "—"}% → {l.fuel_level_after ?? "—"}% {l.gallons_added ? `· ${l.gallons_added} gal added` : ""}</>
+                          : <>Remaining: {l.fuel_level_remaining ?? "—"}%</>
+                        }
+                        {l.job_site_name && <> · <Icon name="pin" size={11} color="var(--text4)"/>{l.job_site_name}</>}
+                      </div>
+                      {isAdmin && l.operator_name && (
+                        <div style={{ fontSize: 11.5, color: "var(--text4)" }}>
+                          <Icon name="user" size={11} color="var(--text4)"/> {l.operator_name}
+                        </div>
+                      )}
+                      {l.remarks && <div style={{ fontSize: 12, color: "var(--text4)", fontStyle: "italic", marginTop: 3 }}>{l.remarks}</div>}
+                    </div>
+
+                    {/* Date + time + expand */}
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 12, color: "var(--text3)", fontWeight: 600 }}>{l.log_date}</div>
+                      {l.logged_at && <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 1 }}>{new Date(l.logged_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>}
+                      <button onClick={() => setExpandedId(isExpanded ? null : (l.id || i))} style={{ marginTop: 6, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "3px 9px", fontSize: 11, color: "var(--text3)", cursor: "pointer", fontWeight: 600 }}>
+                        {isExpanded ? "Less ▲" : "Details ▼"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded details */}
+                {isExpanded && (
+                  <div style={{ borderTop: "1px solid var(--border)", background: "var(--bg3)", padding: "12px 14px" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
+                      {/* Timestamp */}
+                      <div>
+                        <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Submitted At</div>
+                        <div style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>
+                          {l.logged_at ? new Date(l.logged_at).toLocaleString() : l.log_date}
+                        </div>
+                      </div>
+
+                      {/* Location status */}
+                      <div>
+                        <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Location Status</div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: onSite === true ? "var(--green)" : onSite === false ? "var(--amber)" : "var(--text3)" }}>
+                          {onSite === true ? "✓ On-Site" : onSite === false ? "⚠ Off-Site" : "Not checked"}
+                        </div>
+                      </div>
+
+                      {/* GPS coordinates */}
+                      {l.gps_lat && l.gps_lon && (
+                        <div>
+                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>GPS Coordinates</div>
+                          <div style={{ fontSize: 12, color: "var(--text2)", fontFamily: "monospace" }}>
+                            {parseFloat(l.gps_lat).toFixed(5)},<br/>{parseFloat(l.gps_lon).toFixed(5)}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Job site */}
+                      {l.job_site_name && (
+                        <div>
+                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Job Site</div>
+                          <div style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>{l.job_site_name}</div>
+                        </div>
+                      )}
+
+                      {/* Operator */}
+                      {l.operator_name && (
+                        <div>
+                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Operator</div>
+                          <div style={{ fontSize: 13, color: "var(--text2)" }}>{l.operator_name}</div>
+                        </div>
+                      )}
+
+                      {/* Hours reading */}
+                      {l.hours_reading && (
+                        <div>
+                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Machine Hours</div>
+                          <div style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>{l.hours_reading} hrs</div>
+                        </div>
+                      )}
+
+                      {/* Gallons (fill only) */}
+                      {isFill && l.gallons_added && (
+                        <div>
+                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Gallons Added</div>
+                          <div style={{ fontSize: 13, color: "var(--blue)", fontWeight: 700 }}>{l.gallons_added} gal</div>
+                        </div>
+                      )}
+
+                      {/* Remarks */}
+                      {l.remarks && (
+                        <div style={{ gridColumn: "1/-1" }}>
+                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Remarks</div>
+                          <div style={{ fontSize: 13, color: "var(--text2)", fontStyle: "italic" }}>{l.remarks}</div>
+                        </div>
+                      )}
+
+                      {/* Photos */}
+                      {(l.photo_before || l.photo_after) && (
+                        <div style={{ gridColumn: "1/-1" }}>
+                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Photos</div>
+                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            {l.photo_before && (
+                              <div>
+                                <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Before Fill</div>
+                                <img src={l.photo_before} alt="before" style={{ width: 120, height: 90, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}/>
+                              </div>
+                            )}
+                            {l.photo_after && (
+                              <div>
+                                <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>After Fill</div>
+                                <img src={l.photo_after} alt="after" style={{ width: 120, height: 90, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}/>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Device info */}
+                      {l.device_info && (
+                        <div style={{ gridColumn: "1/-1" }}>
+                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Device</div>
+                          <div style={{ fontSize: 11, color: "var(--text4)", fontFamily: "monospace", overflowWrap: "break-word" }}>{l.device_info.slice(0, 100)}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Load more */}
+      {hasMore && (
+        <button onClick={() => setPage(p => p + 1)} style={{ width: "100%", marginTop: 12, padding: "11px", background: "var(--bg3)", border: "1.5px solid var(--border2)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--text2)", fontWeight: 600, cursor: "pointer" }}>
+          Load more ({filtered.length - paged.length} remaining)
+        </button>
+      )}
     </div>
   );
 }
@@ -6013,6 +6673,7 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
   const [alerts, setAlerts] = useState([]);
   const [selectedJobSite, setSelectedJobSite] = useState(null); // selected at top level, shared by all forms
   const [isOnSite, setIsOnSite] = useState(null); // true | false | null
+  const [gpsForDistance, setGpsForDistance] = useState(null); // GPS captured in selector, shared to form
   const [dashData, setDashData] = useState(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [eodStatus, setEodStatus] = useState({}); // { eq_id: true/false } today's EOD submitted
@@ -6029,7 +6690,7 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
   const loadLogs = async () => {
     setLoadingLogs(true);
     try {
-      const res = await authFetch("/api/fuel/logs?limit=50");
+      const res = await authFetch(isAdmin ? "/api/fuel/logs?limit=200" : "/api/fuel/logs?limit=100");
       if (res.ok) {
         const data = await res.json();
         setLogs(data.logs || []);
@@ -6078,11 +6739,13 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
   const tabs = [
     { id: "equipment", label: "Equipment", icon: "hard_hat" },
     ...(isAdmin ? [
+      { id: "job_sites", label: "Job Sites", icon: "pin" },
+      { id: "history", label: "History", icon: "log" },
       { id: "dashboard", label: "Dashboard", icon: "gauge" },
       { id: "alerts", label: `Alerts${unresolvedAlerts ? ` (${unresolvedAlerts})` : ""}`, icon: "alert" },
       { id: "reports", label: "Reports", icon: "bar" },
     ] : [
-      { id: "my_logs", label: "My Logs", icon: "log" },
+      { id: "history", label: "My Logs", icon: "log" },
     ]),
   ];
 
@@ -6128,6 +6791,8 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
           setSelectedJobSite={setSelectedJobSite}
           isOnSite={isOnSite}
           setIsOnSite={setIsOnSite}
+          gpsForDistance={gpsForDistance}
+          setGpsForDistance={setGpsForDistance}
         />
         <FuelEquipmentGrid eodStatus={eodStatus} openEntry={openEntry} isAdmin={isAdmin} logs={logs} loadingLogs={loadingLogs} jobSiteSelected={!!selectedJobSite}/>
       </>)}
@@ -6144,10 +6809,15 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
           onSuccess={() => { loadLogs(); loadAlerts(); if (isAdmin) loadDashboard(); setView("equipment"); }}
         />
       )}
+      {view === "job_sites" && isAdmin && (
+        <FuelJobSitesAdmin jobSites={jobSites} setJobSites={setJobSites} addToast={addToast}/>
+      )}
+      {view === "history" && (
+        <FuelHistoryView logs={logs} loadingLogs={loadingLogs} currentUser={currentUser} isAdmin={isAdmin}/>
+      )}
       {view === "dashboard" && isAdmin && <FuelDashboard dashData={dashData} logs={logs} alerts={alerts} onViewAlerts={() => setView("alerts")}/>}
       {view === "alerts" && isAdmin && <FuelAlertsView alerts={alerts} onRefresh={loadAlerts} addToast={addToast}/>}
       {view === "reports" && isAdmin && <FuelReportsPage logs={logs} addToast={addToast}/>}
-      {view === "my_logs" && !isAdmin && <FuelMyLogs logs={logs} loadingLogs={loadingLogs} currentUser={currentUser}/>}
     </div>
   );
 }
