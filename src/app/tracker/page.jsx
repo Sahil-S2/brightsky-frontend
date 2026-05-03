@@ -22,7 +22,7 @@ const T = {
   en: {
     signIn:"Sign In",userId:"User ID",password:"Password",clockIn:"Clock In",clockOut:"Clock Out",
     startBreak:"Start Break",endBreak:"End Break",onSite:"On Site",offSite:"Off Site",locating:"Locating…",
-    dashboard:"Dashboard",employees:"Employees",worksites:"Worksites",attendance:"Attendance",
+    dashboard:"Dashboard",employees:"Employees",worksites:"Job Sites",attendance:"Attendance",
     reports:"Reports",settings:"Settings",export:"Export",auditLogs:"Audit Logs",
     myAttendance:"My Attendance",myProfile:"My Profile",signOut:"Sign Out",
     today:"Today",status:"Status",breaks:"Breaks",punches:"Punches",
@@ -30,7 +30,7 @@ const T = {
     clockedIn:"Clocked In",clockedOut:"Clocked Out",autoClockIn:"Auto Clock-In",
     noActivity:"No activity yet today.",morning:"Good Morning",afternoon:"Good Afternoon",evening:"Good Evening",
     welcomeBack:"Welcome back",missedClockOutMsg:"You have an active session from yesterday. Please clock out.",
-    assignedWorksite:"Assigned Worksite",mySchedule:"My Schedule",workHours:"Work Hours",
+    assignedWorksite:"Assigned Job Site",mySchedule:"My Schedule",workHours:"Work Hours",
     workingDays:"Working Days",grace:"Grace Period",language:"Language",
     updateLocation:"Update My Location",locationUpdated:"Location updated.",
     adminLogin:"Admin login with email",useUserId:"Use Employee ID instead",
@@ -49,7 +49,7 @@ const T = {
     signIn:"Iniciar Sesión",userId:"ID de Usuario",password:"Contraseña",clockIn:"Registrar Entrada",
     clockOut:"Registrar Salida",startBreak:"Iniciar Descanso",endBreak:"Terminar Descanso",
     onSite:"En Sitio",offSite:"Fuera del Sitio",locating:"Localizando…",
-    dashboard:"Panel",employees:"Empleados",worksites:"Sitios",attendance:"Asistencia",
+    dashboard:"Panel",employees:"Empleados",worksites:"Sitios de Trabajo",attendance:"Asistencia",
     reports:"Reportes",settings:"Configuración",export:"Exportar",auditLogs:"Auditoría",
     myAttendance:"Mi Asistencia",myProfile:"Mi Perfil",signOut:"Cerrar Sesión",
     today:"Hoy",status:"Estado",breaks:"Descansos",punches:"Registros",
@@ -57,7 +57,7 @@ const T = {
     clockedIn:"Entrada Registrada",clockedOut:"Salida Registrada",autoClockIn:"Entrada Automática",
     noActivity:"Sin actividad hoy.",morning:"Buenos Días",afternoon:"Buenas Tardes",evening:"Buenas Noches",
     welcomeBack:"Bienvenido",missedClockOutMsg:"Tienes una sesión activa de ayer. Registra tu salida.",
-    assignedWorksite:"Sitio Asignado",mySchedule:"Mi Horario",workHours:"Horario",
+    assignedWorksite:"Sitio de Trabajo Asignado",mySchedule:"Mi Horario",workHours:"Horario",
     workingDays:"Días de Trabajo",grace:"Período de Gracia",language:"Idioma",
     updateLocation:"Actualizar Ubicación",locationUpdated:"Ubicación actualizada.",
     adminLogin:"Acceso con correo",useUserId:"Usar ID de empleado",
@@ -178,7 +178,7 @@ const StatusBadge=({status})=>{
 
 // ── Warning Clock-In badge — shown wherever is_outside_geofence=true ────────
 const WarnBadge = () => (
-  <span title="Clocked in outside assigned worksite" style={{
+  <span title="Clocked in outside assigned job site" style={{
     display:"inline-flex",alignItems:"center",gap:3,
     background:"var(--amber-light)",color:"var(--amber)",
     border:"1px solid rgba(217,119,6,0.3)",borderRadius:5,
@@ -422,7 +422,8 @@ export default function App(){
   const[todayData,setTodayData]=useState(null);
   const[adminData,setAdminData]=useState({employees:[],attendance:[],allAttendance:[]});
   const[worksites,setWorksites]=useState([]);
-  const[employeeWorksite,setEmployeeWorksite]=useState(null);
+  const[employeeWorksite,setEmployeeWorksite]=useState(null); // legacy single-site (used for geofence in Time Tracker)
+  const[employeeJobSites,setEmployeeJobSites]=useState([]); // all assigned job sites (array) — unified
   const[gpsLoading,setGpsLoading]=useState(true);
   const[punchLoading,setPunchLoading]=useState(false);
   const[isOvertime,setIsOvertime]=useState(false);
@@ -505,7 +506,24 @@ useEffect(() => {
     }catch{}
   },[currentUser]);
   const refreshWorksites=useCallback(async()=>{if(!currentUser)return;try{const r=await authFetch("/api/worksites");if(r.ok){const d=await r.json();setWorksites(Array.isArray(d)?d:[]);}}catch{}},[currentUser]);
-  const refreshEmployeeWorksite=useCallback(async()=>{if(!currentUser||currentUser.role==="admin"||currentUser.role==="manager")return;try{const r=await authFetch("/api/worksites/my-assignment");if(r.ok){const d=await r.json();setEmployeeWorksite(d);}}catch{}},[currentUser]);
+  // Fetch ALL assigned job sites for the employee (multi-assignment support)
+  const refreshEmployeeWorksite=useCallback(async()=>{
+    if(!currentUser||currentUser.role==="admin"||currentUser.role==="manager")return;
+    try{
+      // Try multi-assignment endpoint first; fall back to legacy single-assignment
+      const r=await authFetch("/api/worksites/my-assignments");
+      if(r.ok){
+        const d=await r.json();
+        const sites=Array.isArray(d)?d:(d?[d]:[]);
+        setEmployeeJobSites(sites);
+        setEmployeeWorksite(sites[0]||null); // keep legacy for geofence check
+      } else {
+        // Fallback: try old endpoint
+        const r2=await authFetch("/api/worksites/my-assignment");
+        if(r2.ok){const d2=await r2.json();if(d2){setEmployeeWorksite(d2);setEmployeeJobSites([d2]);}}
+      }
+    }catch{}
+  },[currentUser]);
   const checkOvertime=useCallback(async()=>{if(!currentUser)return;try{const r=await authFetch(`/api/employees/${currentUser.id}/overtime`);if(r.ok){const d=await r.json();setIsOvertime(d.isOvertime||false);setOvertimeMins(d.overtimeMins||0);}}catch{}},[currentUser]);
 
   useEffect(()=>{
@@ -591,7 +609,7 @@ useEffect(() => {
 
   const handleClockInWithPhoto = () => {
     if (!onSite) {
-      addToast("You must be at your assigned worksite to clock in.", "error");
+      addToast("You must be at your assigned job site to clock in.", "error");
       return;
     }
     setShowCamera(true);
@@ -676,10 +694,10 @@ useEffect(() => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite}  handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")} setAppTitle={setAppTitle} worksites={worksites}/>)}
-            {page==="fuel"&&<FuelEntryPage currentUser={currentUser} t={t} addToast={addToast} worksites={worksites} onMount={()=>setAppTitle("BSC Fuel Entry")} onUnmount={()=>setAppTitle("BSC Tracker")}/>}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")} setAppTitle={setAppTitle} worksites={worksites}/>)}
+            {page==="fuel"&&<FuelEntryPage currentUser={currentUser} t={t} addToast={addToast} assignedJobSites={employeeJobSites} allJobSites={worksites} onMount={()=>setAppTitle("BSC Fuel Entry")} onUnmount={()=>setAppTitle("BSC Tracker")}/>}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
-            {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
+            {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
             {page === "task_history" && <TaskHistoryPage user={currentUser} t={t} />}
             {page === "route" && (isAdmin ? <RouteHistoryPage adminData={adminData} t={t} /> : <RoutePage user={currentUser} t={t} />)}
             {page==="employees"&&isAdmin&&<EmployeeList adminData={adminData} refreshAdminData={refreshAdminData} addToast={addToast} worksites={worksites} t={t}/>}
@@ -1166,6 +1184,7 @@ function EmployeeDashboard({
   user, todayData, empStatus, onSite, settings,
   punchLoading, gpsLoading, userLat, userLon,
   isOvertime, overtimeMins, employeeWorksite,
+  employeeJobSites = [],
   handleClockOut, handleBreakStart, handleBreakEnd,
   t, addToast, refreshTodayData, onNavigateToRoute,
   setAppTitle, worksites = [],
@@ -1196,6 +1215,10 @@ function EmployeeDashboard({
   const [selectedTab, setSelectedTab] = useState("timecard");
   const [workflowCollapsed, setWorkflowCollapsed] = useState(false);
   const [worksiteExpanded, setWorksiteExpanded] = useState(false);
+  // Job Site selector state for Time Tracker (mirrors Fuel Entry's selector)
+  const [selectedTimeJobSiteId, setSelectedTimeJobSiteId] = useState(null);
+  const [isOnSiteTime, setIsOnSiteTime] = useState(null);
+  const [gpsForDistanceTime, setGpsForDistanceTime] = useState(null);
 
   // Sync app header title when tab changes
   useEffect(() => {
@@ -1653,7 +1676,7 @@ function EmployeeDashboard({
               </Btn>
               {!onSite && displayWS?.latitude != null && userLat != null && (
                 <div style={{ fontSize:12, color:"var(--amber)", textAlign:"center", fontWeight:500, marginTop:-4 }}>
-                  You are outside your assigned worksite — tap to proceed with a warning
+                  You are outside your assigned job site — tap to proceed with a warning
                 </div>
               )}
             </>
@@ -1694,7 +1717,7 @@ function EmployeeDashboard({
         {!gpsLoading && !onSite && displayWS?.latitude != null && userLat != null && !todayData?.is_outside_geofence && (
           <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: "var(--radius)", background: "var(--red-light)", border: "1.5px solid rgba(220,38,38,0.2)", display: "flex", gap: 8, alignItems: "center" }}>
             <Icon name="alert" size={14} color="var(--red)" />
-            <span style={{ fontSize: 12.5, color: "var(--red)", fontWeight: 450 }}>Must be within {displayWS.radius_feet} ft of your assigned worksite.</span>
+            <span style={{ fontSize: 12.5, color: "var(--red)", fontWeight: 450 }}>Must be within {displayWS.radius_feet} ft of your assigned job site.</span>
           </div>
         )}
       </Card>
@@ -1976,17 +1999,17 @@ function EmployeeDashboard({
 
       {/* ── Warning Clock-In Confirmation Modal ─────────────────────────── */}
       {showWarnModal && (
-        <Modal title="⚠ Warning: Outside Worksite" onClose={() => setShowWarnModal(false)}>
+        <Modal title="⚠ Warning: Outside Job Site" onClose={() => setShowWarnModal(false)}>
           <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
 
             {/* Alert banner */}
             <div style={{ background:"var(--amber-light)", border:"1.5px solid rgba(217,119,6,0.35)", borderRadius:"var(--radius)", padding:"12px 14px", display:"flex", gap:10, alignItems:"flex-start" }}>
               <span style={{ fontSize:20, flexShrink:0 }}>⚠️</span>
               <div>
-                <div style={{ fontWeight:700, color:"var(--amber)", fontSize:14 }}>You are outside your assigned worksite</div>
+                <div style={{ fontWeight:700, color:"var(--amber)", fontSize:14 }}>You are outside your assigned job site</div>
                 {distanceFt != null && displayWS?.radius_feet != null && (
                   <div style={{ fontSize:12.5, color:"var(--text2)", marginTop:4 }}>
-                    You are <strong>{Math.round(distanceFt)} ft</strong> from <strong>{displayWS?.name || "your worksite"}</strong> (allowed radius: {displayWS.radius_feet} ft).
+                    You are <strong>{Math.round(distanceFt)} ft</strong> from <strong>{displayWS?.name || "your job site"}</strong> (allowed radius: {displayWS.radius_feet} ft).
                   </div>
                 )}
                 <div style={{ fontSize:12.5, color:"var(--text3)", marginTop:4 }}>
@@ -2127,39 +2150,26 @@ function EmployeeDashboard({
         <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0, letterSpacing: "-0.01em" }}>Hello, {user?.name?.split(" ")[0] || user?.name || "Employee"}!</h2>
       </div>
 
-      {/* Expandable Assigned Worksite — hidden when Fuel Entry is active (has its own Job Site selector) */}
-      {selectedTab !== "fuel" && employeeWorksite && (
-        <Card style={{ border: "1.5px solid var(--blue-mid)", background: "var(--blue-light)", padding: 16 }}>
-          <div
-            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}
-            onClick={() => setWorksiteExpanded(!worksiteExpanded)}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: "var(--radius)", background: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, boxShadow: "0 2px 8px rgba(37,99,235,0.25)" }}>
-                <Icon name="pin" size={18} color="white" />
-              </div>
-              <div>
-                <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginBottom: 4 }}>{t.assignedWorksite}</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.01em" }}>{employeeWorksite.project_name || employeeWorksite.name}</div>
-              </div>
-            </div>
-            <Icon name={worksiteExpanded ? "chevronUp" : "chevronDown"} size={20} color="var(--blue)" />
-          </div>
-          {worksiteExpanded && (
-            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-              {employeeWorksite.address && <div style={{ fontSize: 12.5, color: "var(--text3)", marginBottom: 4 }}>{employeeWorksite.address}</div>}
-              <div style={{ fontSize: 11.5, color: "var(--text3)" }}>
-                {parseFloat(employeeWorksite.latitude).toFixed(4)}°, {parseFloat(employeeWorksite.longitude).toFixed(4)}° · {employeeWorksite.radius_feet}ft radius
-              </div>
-            </div>
-          )}
-        </Card>
+      {/* Job Site Selector — hidden when Fuel Entry is active (has its own selector) */}
+      {selectedTab !== "fuel" && (employeeJobSites.length > 0 || employeeWorksite) && (
+        <FuelJobSiteSelector
+          jobSites={(employeeJobSites.length > 0 ? employeeJobSites : [employeeWorksite].filter(Boolean)).map(s => ({
+            ...s,
+            geofence_radius_ft: s.geofence_radius_ft || s.radius_feet || 1000,
+          }))}
+          selectedJobSite={selectedTimeJobSiteId}
+          setSelectedJobSite={setSelectedTimeJobSiteId}
+          isOnSite={isOnSiteTime}
+          setIsOnSite={setIsOnSiteTime}
+          gpsForDistance={gpsForDistanceTime}
+          setGpsForDistance={setGpsForDistanceTime}
+        />
       )}
 
       {/* Content based on selected tab */}
       {selectedTab === "timecard" && renderTimeCard()}
       {selectedTab === "fuel" && (
-        <FuelEntryPage currentUser={user} t={t} addToast={addToast} worksites={[employeeWorksite].filter(Boolean)}/>
+        <FuelEntryPage currentUser={user} t={t} addToast={addToast} assignedJobSites={employeeJobSites.length>0?employeeJobSites:[employeeWorksite].filter(Boolean)} allJobSites={worksites}/>
       )}
       {selectedTab === "equipment" && (
         <WorkflowEquipmentTab isAdmin={false} addToast={addToast}/>
@@ -2680,14 +2690,67 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
     const[radius,setRadius]=useState(initial?.radius_feet!=null?String(initial.radius_feet):"200");
     const[notes,setNotes]=useState(initial?.notes||"");
     const[saving,setSaving]=useState(false);
-    // Map search state — separate from form state
-    const[searchQuery,setSearchQuery]=useState("");
+    // Map search state
+    const[searchQuery,setSearchQuery]=useState(initial?.name||"");
     const[searching,setSearching]=useState(false);
     const[searchResults,setSearchResults]=useState([]);
-    const[showMap,setShowMap]=useState(false);
-    const[pickedLat,setPickedLat]=useState(null);
-    const[pickedLon,setPickedLon]=useState(null);
+    const[leafletReady,setLeafletReady]=useState(false);
     const searchTimerRef=useRef(null);
+    const mapContainerRef=useRef(null);
+    const mapRef=useRef(null);
+    const markerRef=useRef(null);
+    const circleRef=useRef(null);
+
+    // Load Leaflet from CDN once
+    useEffect(()=>{
+      if(window.L){setLeafletReady(true);return;}
+      const link=document.createElement("link");link.rel="stylesheet";
+      link.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css";
+      document.head.appendChild(link);
+      const script=document.createElement("script");
+      script.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js";
+      script.onload=()=>setLeafletReady(true);
+      document.head.appendChild(script);
+    },[]);
+
+    // Initialize map when Leaflet is ready
+    useEffect(()=>{
+      if(!leafletReady||!mapContainerRef.current)return;
+      if(mapRef.current){mapRef.current.remove();mapRef.current=null;}
+      const L=window.L;
+      const initLat=lat?parseFloat(lat):39.8283;
+      const initLon=lon?parseFloat(lon):-98.5795;
+      const initZoom=lat?15:4;
+      const map=L.map(mapContainerRef.current,{zoomControl:true}).setView([initLat,initLon],initZoom);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+        attribution:'&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+        maxZoom:19,
+      }).addTo(map);
+      mapRef.current=map;
+      map.on("click",e=>{
+        const{lat:la,lng:lo}=e.latlng;
+        setLat(la.toFixed(7));setLon(lo.toFixed(7));
+        placePinWF(la,lo);
+      });
+      if(lat&&lon)placePinWF(parseFloat(lat),parseFloat(lon));
+      return()=>{if(mapRef.current){mapRef.current.remove();mapRef.current=null;}};
+    },[leafletReady]);
+
+    // Update circle when radius changes
+    useEffect(()=>{
+      if(lat&&lon&&mapRef.current)placePinWF(parseFloat(lat),parseFloat(lon));
+    },[radius]);
+
+    const placePinWF=(la,lo)=>{
+      if(!mapRef.current||!window.L)return;
+      const L=window.L;
+      if(markerRef.current){markerRef.current.remove();markerRef.current=null;}
+      if(circleRef.current){circleRef.current.remove();circleRef.current=null;}
+      const r=parseInt(radius)||200;
+      markerRef.current=L.marker([la,lo],{icon:L.divIcon({html:`<div style="width:18px;height:18px;background:#1e3a5f;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.45)"></div>`,iconSize:[18,18],iconAnchor:[9,9],className:""})}).addTo(mapRef.current);
+      circleRef.current=L.circle([la,lo],{radius:r*0.3048,color:"#2563eb",fillColor:"#3b82f6",fillOpacity:0.12,weight:2,dashArray:"5,5"}).addTo(mapRef.current);
+      mapRef.current.setView([la,lo],Math.max(mapRef.current.getZoom(),15));
+    };
 
     const doSearch=async(q)=>{
       if(!q||q.trim().length<3){setSearchResults([]);return;}
@@ -2709,21 +2772,18 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
 
     const pickResult=(r)=>{
       const plat=parseFloat(r.lat),plon=parseFloat(r.lon);
-      // Build a clean address from components
       const a=r.address||{};
       const parts=[a.road,a.house_number,a.city||a.town||a.village,a.state,a.country].filter(Boolean);
       const cleanAddr=parts.length>0?parts.join(", "):r.display_name;
-      // Only update coords and address — preserve name, project, radius, notes
-      setLat(plat.toFixed(7));
-      setLon(plon.toFixed(7));
+      setLat(plat.toFixed(7));setLon(plon.toFixed(7));
       setAddress(cleanAddr);
-      setPickedLat(plat);setPickedLon(plon);
       setSearchQuery(cleanAddr);
       setSearchResults([]);
+      placePinWF(plat,plon);
     };
 
     const handleSave=async()=>{
-      if(!name){addToast("Worksite name is required.","error");return;}
+      if(!name){addToast("Job site name is required.","error");return;}
       if(!lat||!lon){addToast("Coordinates are required. Use the map search to find a location.","error");return;}
       const parsedLat=parseFloat(lat),parsedLon=parseFloat(lon);
       if(isNaN(parsedLat)||isNaN(parsedLon)){addToast("Invalid coordinates.","error");return;}
@@ -2731,8 +2791,8 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
       const body={name,projectName:projectName||name,address,latitude:parsedLat,longitude:parsedLon,radiusFeet:parseFloat(radius)||200,notes};
       const url=initial?`/api/worksites/${initial.id}`:"/api/worksites";
       const res=await authFetch(url,{method:initial?"PUT":"POST",body:JSON.stringify(body)});
-      if(!res.ok){addToast("Failed to save worksite.","error");setSaving(false);return;}
-      addToast(initial?"Worksite updated.":"Worksite created.","success");
+      if(!res.ok){addToast("Failed to save job site.","error");setSaving(false);return;}
+      addToast(initial?"Job site updated.":"Job site created.","success");
       setSaving(false);onSave();
     };
 
@@ -2765,21 +2825,25 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
               </div>
             )}
           </div>
-          {/* Map preview */}
-          {(pickedLat!=null||(lat&&lon&&!isNaN(parseFloat(lat))))&&(
-            <div style={{marginTop:8,borderRadius:"var(--radius)",overflow:"hidden",border:"1px solid var(--border)"}}>
-              <iframe title="map" width="100%" height="180" style={{border:"none",display:"block"}}
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${(pickedLon||parseFloat(lon))-0.005}%2C${(pickedLat||parseFloat(lat))-0.005}%2C${(pickedLon||parseFloat(lon))+0.005}%2C${(pickedLat||parseFloat(lat))+0.005}&layer=mapnik&marker=${pickedLat||parseFloat(lat)}%2C${pickedLon||parseFloat(lon)}`}/>
-              <div style={{padding:"8px 12px",background:"var(--bg3)",borderTop:"1px solid var(--border)",fontSize:12,color:"var(--text3)"}}>
-                Selected: <strong style={{color:"var(--blue)"}}>{(pickedLat||parseFloat(lat))?.toFixed(5)}°, {(pickedLon||parseFloat(lon))?.toFixed(5)}°</strong>
+          {/* Interactive Leaflet map — always visible, click to reposition pin */}
+          <div style={{marginTop:8,borderRadius:"var(--radius)",overflow:"hidden",border:"1px solid var(--border)",position:"relative"}}>
+            <div ref={mapContainerRef} style={{width:"100%",height:200}}/>
+            {!leafletReady&&(
+              <div style={{position:"absolute",inset:0,background:"var(--bg3)",display:"flex",alignItems:"center",justifyContent:"center",gap:8,fontSize:13,color:"var(--text3)"}}>
+                <span className="spin" style={{width:14,height:14,border:"2px solid var(--blue)",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block"}}/>
+                Loading map…
               </div>
+            )}
+            <div style={{padding:"7px 12px",background:"var(--bg3)",borderTop:"1px solid var(--border)",fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span>Click map to place / reposition pin</span>
+              {lat&&lon&&!isNaN(parseFloat(lat))&&<strong style={{color:"var(--blue)"}}>{parseFloat(lat).toFixed(5)}°, {parseFloat(lon).toFixed(5)}°</strong>}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Divider */}
         <div style={{borderTop:"1px dashed var(--border)",paddingTop:14}}>
-          <div style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Worksite Details</div>
+          <div style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:12}}>Job Site Details</div>
 
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div>
@@ -2822,7 +2886,7 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
         </div>
 
         <Btn onClick={handleSave} loading={saving} style={{width:"100%",marginTop:4}} size="lg">
-          <Icon name="check" size={15} color="white"/>{initial?"Update Worksite":"Create Worksite"}
+          <Icon name="check" size={15} color="white"/>{initial?"Update Job Site":"Create Job Site"}
         </Btn>
       </div>
     );
@@ -2846,7 +2910,7 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
   const employees=adminData.employees.filter(e=>e.role==="employee");
 
   const handleDelete=async(id)=>{
-    if(!confirm("Delete this worksite?"))return;
+    if(!confirm("Delete this job site?"))return;
     await authFetch(`/api/worksites/${id}`,{method:"DELETE"});
     addToast("Deleted.","info");setExpandedId(null);await refreshWorksites();await loadAssignments();
   };
@@ -2869,9 +2933,9 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
       {worksites.length===0?(
         <Card style={{textAlign:"center",padding:48}}>
           <Icon name="map" size={40} color="var(--text4)" style={{marginBottom:14}}/>
-          <p style={{color:"var(--text3)",fontSize:15,fontWeight:500}}>No worksites configured yet.</p>
-          <p style={{color:"var(--text4)",fontSize:13,marginTop:6,marginBottom:20}}>Add your first worksite to start tracking attendance by location.</p>
-          <Btn onClick={()=>{setShowAddModal(true);setEditingWS(null);}} size="md"><Icon name="plus" size={14} color="white"/>Add First Worksite</Btn>
+          <p style={{color:"var(--text3)",fontSize:15,fontWeight:500}}>No job sites configured yet.</p>
+          <p style={{color:"var(--text4)",fontSize:13,marginTop:6,marginBottom:20}}>Add your first job site to start tracking attendance by location.</p>
+          <Btn onClick={()=>{setShowAddModal(true);setEditingWS(null);}} size="md"><Icon name="plus" size={14} color="white"/>Add First Job Site</Btn>
         </Card>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -2920,7 +2984,7 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
                     <div style={{paddingTop:12}}>
                       <div style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Assigned Employees ({assigned.length})</div>
                       {assigned.length===0?(
-                        <div style={{fontSize:13,color:"var(--text4)",marginBottom:12}}>No employees assigned to this site yet.</div>
+                        <div style={{fontSize:13,color:"var(--text4)",marginBottom:12}}>No employees assigned to this job site yet.</div>
                       ):(
                         <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:12}}>
                           {assigned.map(a=>(
@@ -2944,10 +3008,10 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
                     {/* Action buttons */}
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:4}}>
                       <Btn onClick={()=>setAssigningTo(w)} variant="blue" size="sm"><Icon name="plus" size={13}/>Assign Employee</Btn>
-                      <Btn onClick={()=>{setEditingWS(w);setShowAddModal(true);}} variant="secondary" size="sm"><Icon name="edit" size={13}/>Edit Worksite</Btn>
+                      <Btn onClick={()=>{setEditingWS(w);setShowAddModal(true);}} variant="secondary" size="sm"><Icon name="edit" size={13}/>Edit Job Site</Btn>
                     </div>
                     <Btn onClick={()=>handleDelete(w.id)} variant="danger" size="sm" style={{width:"100%",marginTop:8}}>
-                      <Icon name="x" size={13} color="var(--red)"/>Delete Worksite
+                      <Icon name="x" size={13} color="var(--red)"/>Delete Job Site
                     </Btn>
                   </div>
                 )}
@@ -2959,7 +3023,7 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
 
       {/* Add/Edit Modal */}
       {(showAddModal || editingWS) && (
-  <Modal title={editingWS ? "Edit Worksite" : "Add New Worksite"} onClose={() => { setShowAddModal(false); setEditingWS(null); }}>
+  <Modal title={editingWS ? "Edit Job Site" : "Add New Job Site"} onClose={() => { setShowAddModal(false); setEditingWS(null); }}>
     <WorksiteForm
       initial={editingWS}
       addToast={addToast}
@@ -2974,7 +3038,7 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
         <Modal title={`Assign to: ${assigningTo.project_name||assigningTo.name}`} onClose={()=>setAssigningTo(null)}>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {assigningTo.address&&<div style={{fontSize:13,color:"var(--text3)",padding:"10px 12px",background:"var(--bg3)",borderRadius:"var(--radius)",border:"1px solid var(--border)",marginBottom:4}}>{assigningTo.address}</div>}
-            <p style={{fontSize:13,color:"var(--text3)",fontWeight:400}}>Select an employee to assign to this worksite:</p>
+            <p style={{fontSize:13,color:"var(--text3)",fontWeight:400}}>Select an employee to assign to this job site:</p>
             {employees.map(emp=>{
               const current=getEmpWS(emp.id);
               const isHere=assignments.some(a=>a.worksite_id===assigningTo.id&&a.employee_id===emp.id&&a.is_default);
@@ -4372,7 +4436,7 @@ function MyAttendance({ t }) {
 }
 
 // ─── MY PROFILE ───────────────────────────────────────────────────────────────
-function MyProfile({user,addToast,employeeWorksite,t,onViewTaskHistory}){
+function MyProfile({user,addToast,employeeWorksite,employeeJobSites=[],t,onViewTaskHistory}){
   const[summary,setSummary]=useState(null);
   const[schedule,setSchedule]=useState(null);
   const[loadingSchedule,setLoadingSchedule]=useState(true);
@@ -4420,11 +4484,22 @@ function MyProfile({user,addToast,employeeWorksite,t,onViewTaskHistory}){
           </div>
         ))}
       </Card>
-      {employeeWorksite&&<Card style={{border:"1.5px solid var(--blue-mid)",background:"var(--blue-light)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><Icon name="pin" size={15} color="var(--blue)"/><h3 style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{t.assignedWorksite}</h3><span style={{background:"var(--green-light)",color:"var(--green)",padding:"2px 8px",borderRadius:999,fontSize:11,fontWeight:600,border:"1px solid rgba(5,150,105,0.2)"}}>Active</span></div>
-        <div style={{fontSize:15,fontWeight:700,color:"var(--text)",marginBottom:3,letterSpacing:"-0.01em"}}>{employeeWorksite.project_name||employeeWorksite.name}</div>
-        {employeeWorksite.address&&<div style={{fontSize:13,color:"var(--text3)",marginBottom:4}}>{employeeWorksite.address}</div>}
-        <div style={{fontSize:12,color:"var(--text3)"}}>{parseFloat(employeeWorksite.latitude).toFixed(4)}°, {parseFloat(employeeWorksite.longitude).toFixed(4)}° · {employeeWorksite.radius_feet}ft</div>
+      {(employeeJobSites.length>0||employeeWorksite)&&<Card style={{border:"1.5px solid var(--blue-mid)",background:"var(--blue-light)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <Icon name="pin" size={15} color="var(--blue)"/>
+          <h3 style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>Assigned Job Sites</h3>
+          <span style={{background:"var(--green-light)",color:"var(--green)",padding:"2px 8px",borderRadius:999,fontSize:11,fontWeight:600,border:"1px solid rgba(5,150,105,0.2)"}}>{(employeeJobSites.length||1)} Active</span>
+        </div>
+        {(employeeJobSites.length>0?employeeJobSites:[employeeWorksite]).map((site,i)=>(
+          <div key={i} style={{padding:i>0?"10px 0 0":"0",borderTop:i>0?"1px solid rgba(37,99,235,0.15)":"none",marginTop:i>0?10:0}}>
+            <div style={{fontSize:14,fontWeight:700,color:"var(--text)",letterSpacing:"-0.01em"}}>{site.project_name||site.name}</div>
+            {site.address&&<div style={{fontSize:12.5,color:"var(--text3)",marginTop:2}}>{site.address}</div>}
+            <div style={{fontSize:12,color:"var(--text4)",marginTop:2}}>
+              {site.latitude&&site.longitude?`${parseFloat(site.latitude).toFixed(4)}°, ${parseFloat(site.longitude).toFixed(4)}° · `:""}
+              {site.radius_feet||site.geofence_radius_ft?"⭕ "+(site.radius_feet||site.geofence_radius_ft)+"ft radius":"No geofence set"}
+            </div>
+          </div>
+        ))}
       </Card>}
       <Card>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><Icon name="clock" size={15} color="var(--blue)"/><h3 style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{t.mySchedule}</h3></div>
@@ -5084,7 +5159,7 @@ function CameraModal({ onClose, onCapture }) {
   };
 
   return (
-    <Modal title="Take a photo at your worksite" onClose={onClose}>
+    <Modal title="Take a photo at your job site" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {!photo ? (
           <>
@@ -5635,7 +5710,7 @@ function SettingsPage({ settings, addToast, refreshSettings, t }) {
       <div style={{ padding: "12px 16px", borderRadius: "var(--radius-lg)", background: "var(--blue-light)", border: "1.5px solid var(--blue-mid)", display: "flex", gap: 10, alignItems: "flex-start" }}>
         <Icon name="pin" size={15} color="var(--blue)" style={{ marginTop: 1, flexShrink: 0 }} />
         <div style={{ fontSize: 13, color: "var(--blue)", lineHeight: 1.5, fontWeight: 450 }}>
-          Worksite locations are managed in the <strong>Worksites</strong> section. Each employee can be assigned their own worksite with individual geofence settings.
+          Job site locations are managed in the <strong>Job Sites</strong> section. Each employee can be assigned to one or more job sites with individual geofence settings.
         </div>
       </div>
 
@@ -5681,7 +5756,7 @@ function SettingsPage({ settings, addToast, refreshSettings, t }) {
   label="Clock In with Camera"
   value={cameraEnabled}
   onChange={setCameraEnabled}
-  desc="Require employees to take a selfie when clocking in at the worksite."
+  desc="Require employees to take a selfie when clocking in at the job site."
 />
       </Card>
 
@@ -6664,7 +6739,7 @@ function FuelHistoryView({ logs, loadingLogs, currentUser, isAdmin }) {
 }
 
 // ─── MAIN FUEL ENTRY PAGE ──────────────────────────────────────────────────────
-function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
+function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJobSites = [] }) {
   const isAdmin = ["admin", "manager", "owner"].includes(currentUser?.role);
   const [view, setView] = useState("equipment"); // "equipment" | "form" | "dashboard" | "alerts" | "reports"
   const [selectedEquipment, setSelectedEquipment] = useState(null);
@@ -6677,14 +6752,17 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
   const [dashData, setDashData] = useState(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [eodStatus, setEodStatus] = useState({}); // { eq_id: true/false } today's EOD submitted
-  const [jobSites, setJobSites] = useState([]);
+
+  // Unified job site list: admins see all sites, employees see their assigned sites
+  const jobSites = isAdmin
+    ? allJobSites
+    : (assignedJobSites.length > 0 ? assignedJobSites : allJobSites);
 
   // Load today's EOD status + logs on mount
   useEffect(() => {
     loadLogs();
     loadAlerts();
     if (isAdmin) loadDashboard();
-    loadJobSites();
   }, []);
 
   const loadLogs = async () => {
@@ -6720,13 +6798,6 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
     } catch {}
   };
 
-  const loadJobSites = async () => {
-    try {
-      const res = await authFetch("/api/fuel/job-sites");
-      if (res.ok) { const d = await res.json(); setJobSites(d.sites || []); }
-    } catch {}
-  };
-
   const openEntry = (eq, type) => {
     setSelectedEquipment(eq);
     setEntryType(type);
@@ -6739,7 +6810,6 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
   const tabs = [
     { id: "equipment", label: "Equipment", icon: "hard_hat" },
     ...(isAdmin ? [
-      { id: "job_sites", label: "Job Sites", icon: "pin" },
       { id: "history", label: "History", icon: "log" },
       { id: "dashboard", label: "Dashboard", icon: "gauge" },
       { id: "alerts", label: `Alerts${unresolvedAlerts ? ` (${unresolvedAlerts})` : ""}`, icon: "alert" },
@@ -6786,7 +6856,10 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
       {view === "equipment" && (<>
         {/* Job Site Selector — always shown at top of equipment view */}
         <FuelJobSiteSelector
-          jobSites={jobSites.length > 0 ? jobSites : worksites.map(w => ({ id: w.id, name: w.name || w.project_name }))}
+          jobSites={jobSites.map(s => ({
+            ...s,
+            geofence_radius_ft: s.geofence_radius_ft || s.radius_feet || 1000,
+          }))}
           selectedJobSite={selectedJobSite}
           setSelectedJobSite={setSelectedJobSite}
           isOnSite={isOnSite}
@@ -6802,15 +6875,12 @@ function FuelEntryPage({ currentUser, t, addToast, worksites = [] }) {
           entryType={entryType}
           currentUser={currentUser}
           selectedJobSite={selectedJobSite}
-          jobSiteName={(jobSites.find(s => s.id === selectedJobSite) || worksites.find(w => w.id === selectedJobSite))?.name || ""}
+          jobSiteName={jobSites.find(s => s.id === selectedJobSite)?.name || ""}
           isOnSite={isOnSite}
           addToast={addToast}
           onBack={() => { setView("equipment"); setSelectedEquipment(null); }}
           onSuccess={() => { loadLogs(); loadAlerts(); if (isAdmin) loadDashboard(); setView("equipment"); }}
         />
-      )}
-      {view === "job_sites" && isAdmin && (
-        <FuelJobSitesAdmin jobSites={jobSites} setJobSites={setJobSites} addToast={addToast}/>
       )}
       {view === "history" && (
         <FuelHistoryView logs={logs} loadingLogs={loadingLogs} currentUser={currentUser} isAdmin={isAdmin}/>
@@ -7815,7 +7885,7 @@ function AdminWorkflowSection({ addToast, currentUser, worksites = [] }) {
 
       {/* Content */}
       <div style={{ padding: 16 }}>
-        {tab === "fuel" && <FuelEntryPage currentUser={currentUser} t={{}} addToast={addToast} worksites={worksites}/>}
+        {tab === "fuel" && <FuelEntryPage currentUser={currentUser} t={{}} addToast={addToast} allJobSites={worksites} assignedJobSites={worksites}/>}
         {tab === "equipment" && <WorkflowEquipmentTab isAdmin={true} addToast={addToast}/>}
       </div>
     </div>
@@ -7988,8 +8058,6 @@ function WorkflowEquipmentTab({ isAdmin, addToast }) {
 
                 {/* Type badge */}
                 <div style={{
-                  position: "absolute", bottom: 6, right: 6,
-                  background: `${eq.color}cc`, color: "white",
                   fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 999,
                 }}>
                   {typeLabel(eq.type)}
