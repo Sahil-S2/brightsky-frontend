@@ -2147,13 +2147,13 @@ function EmployeeDashboard({
 
   // --- Return JSX (workflow row + greeting + expandable worksite + tab content) ---
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* ── WORKFLOW SECTION ─────────────────────────────────────────────── */}
-      <WorkflowSection selectedTab={selectedTab} setSelectedTab={setSelectedTab} isAdmin={false}/>
-
-      {/* Greeting */}
-      <div style={{ padding: "0 4px", marginTop: 4 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0, letterSpacing: "-0.01em" }}>Hello, {user?.name?.split(" ")[0] || user?.name || "Employee"}!</h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* ── Greeting + Workflow in one compact block ───────────────────── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ padding: "0 2px" }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--text)", margin: 0, letterSpacing: "-0.01em" }}>Hello, {user?.name?.split(" ")[0] || user?.name || "Employee"}!</h2>
+        </div>
+        <WorkflowSection selectedTab={selectedTab} setSelectedTab={setSelectedTab} isAdmin={false}/>
       </div>
 
       {/* Job Site Selector — hidden when Fuel Entry is active (has its own selector) */}
@@ -6176,58 +6176,31 @@ function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, is
   return (
     <div style={{ marginBottom: 18 }}>
       <Card style={{ border: "1.5px solid var(--border2)", padding: 16 }}>
-        {/* Header row with distance badge */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div style={{ fontSize: 12.5, color: "var(--text2)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 6 }}>
-            <Icon name="pin" size={13} color="var(--blue)"/> Job Site
-          </div>
-          {/* Distance display — top right, like time tracker */}
-          {distanceDisplay && selectedSite && (
-            <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, background: isOnSite ? "rgba(5,150,105,0.08)" : "rgba(217,119,6,0.08)", border: `1px solid ${isOnSite ? "rgba(5,150,105,0.25)" : "rgba(217,119,6,0.3)"}`, fontSize: 12, fontWeight: 700, color: isOnSite ? "var(--green)" : "var(--amber)" }}>
-              <Icon name="pin" size={11} color={isOnSite ? "var(--green)" : "var(--amber)"}/>
-              {distanceDisplay} away
-            </div>
-          )}
+        {/* Header label */}
+        <div style={{ fontSize: 12, color: "var(--text3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon name="pin" size={12} color="var(--blue)"/> Job Site
         </div>
 
         {/* Site dropdown */}
         <select
           value={selectedJobSite || ""}
           onChange={e => handleSiteChange(e.target.value)}
-          style={{ fontSize: 15, marginBottom: 10, fontWeight: selectedJobSite ? 600 : 400 }}
+          style={{ fontSize: 15, fontWeight: selectedJobSite ? 600 : 400 }}
         >
           <option value="">— Select job site —</option>
           {jobSites.map(s => <option key={s.id} value={s.id}>{s.name}{s.address ? ` · ${s.address}` : ""}</option>)}
           <option value="__other__">Other / Not Listed</option>
         </select>
 
-        {/* GPS status row — auto-checked on site selection */}
-        {selectedJobSite && selectedJobSite !== "__other__" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minHeight: 30 }}>
-            {checking && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text3)" }}>
-                <span className="spin" style={{ width: 12, height: 12, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block" }}/>
-                Checking location…
-              </div>
-            )}
-            {!checking && isOnSite === true && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(5,150,105,0.1)", border: "1.5px solid rgba(5,150,105,0.35)", borderRadius: "var(--radius-sm)", fontSize: 12.5, color: "var(--green)", fontWeight: 700 }}>
-                <Icon name="check" size={13} color="var(--green)"/> On-Site {distanceDisplay && `· ${distanceDisplay}`}
-              </div>
-            )}
-            {!checking && isOnSite === false && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(217,119,6,0.1)", border: "1.5px solid rgba(217,119,6,0.35)", borderRadius: "var(--radius-sm)", fontSize: 12.5, color: "var(--amber)", fontWeight: 700 }}>
-                <Icon name="alert" size={13} color="var(--amber)"/> Off-Site {distanceDisplay && `· ${distanceDisplay} from site`}
-              </div>
-            )}
-            {!checking && isOnSite === null && distanceDisplay === null && (
-              <div style={{ fontSize: 12, color: "var(--text3)" }}>Detecting location…</div>
-            )}
-            {gpsError && <div style={{ fontSize: 12, color: "var(--red)" }}>{gpsError}</div>}
+        {/* Subtle GPS status — only show spinner while checking; hide distance/on-site badge per UX requirement */}
+        {selectedJobSite && selectedJobSite !== "__other__" && checking && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text3)", marginTop: 8 }}>
+            <span className="spin" style={{ width: 11, height: 11, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block" }}/>
+            Checking location…
           </div>
         )}
         {selectedJobSite === "__other__" && (
-          <div style={{ fontSize: 13, color: "var(--text3)", padding: "6px 0" }}>Entry will be logged without a specific site. Contact your manager to add a new site.</div>
+          <div style={{ fontSize: 13, color: "var(--text3)", padding: "6px 0", marginTop: 8 }}>Entry will be logged without a specific site. Contact your manager to add a new site.</div>
         )}
         {!selectedJobSite && jobSites.length === 0 && (
           <div style={{ fontSize: 12.5, color: "var(--amber)", marginTop: 4 }}>No job sites configured yet. Ask your manager to set one up.</div>
@@ -6862,10 +6835,15 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [eodStatus, setEodStatus] = useState({}); // { eq_id: true/false } today's EOD submitted
 
-  // Unified job site list: admins see all sites, employees see their assigned sites
+  // Job site list: admins see all sites, employees see assigned sites (fall back to all if backend
+  // doesn't yet support my-assignments endpoint, ensuring dropdown always shows full assignment list)
   const jobSites = isAdmin
     ? allJobSites
-    : (assignedJobSites.length > 0 ? assignedJobSites : allJobSites);
+    : assignedJobSites.length > 1
+      ? assignedJobSites
+      : allJobSites.length > 0
+        ? allJobSites
+        : assignedJobSites;
 
   // Load today's EOD status + logs on mount
   useEffect(() => {
@@ -6930,34 +6908,25 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, minHeight: 0 }}>
-      {/* Header banner */}
-      <div style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #1a4971 50%, #0f2d47 100%)", borderRadius: "var(--radius-lg)", padding: "18px 20px", marginBottom: 16, display: "flex", alignItems: "center", gap: 14, position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", right: -20, top: -20, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }}/>
-        <div style={{ position: "absolute", right: 60, bottom: -30, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.03)" }}/>
-        <div style={{ width: 48, height: 48, borderRadius: "var(--radius-lg)", background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid rgba(255,255,255,0.15)" }}>
-          <Icon name="fuel" size={22} color="white"/>
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "white", letterSpacing: "-0.02em" }}>Fuel Entry</div>
-          <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.65)", marginTop: 2, fontWeight: 400 }}>Bright Sky Construction · Equipment Fuel Tracking</div>
-        </div>
-        {unresolvedAlerts > 0 && (
-          <div onClick={() => setView("alerts")} style={{ background: "rgba(220,38,38,0.85)", color: "white", padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, border: "1px solid rgba(255,255,255,0.2)", flexShrink: 0 }}>
-            <Icon name="alert" size={12} color="white"/>
-            {unresolvedAlerts} Alert{unresolvedAlerts !== 1 ? "s" : ""}
-          </div>
-        )}
-      </div>
-
-      {/* Sub-navigation tabs */}
-      {view !== "form" && (
-        <div style={{ display: "flex", gap: 4, background: "var(--bg3)", borderRadius: "var(--radius)", padding: 4, marginBottom: 16, overflowX: "auto" }}>
-          {tabs.map(tab => (
-            <button key={tab.id} onClick={() => setView(tab.id)} style={{ flex: 1, minWidth: "fit-content", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 12px", borderRadius: "var(--radius-sm)", background: view === tab.id ? "white" : "transparent", color: view === tab.id ? "var(--blue)" : "var(--text3)", fontWeight: view === tab.id ? 600 : 450, fontSize: 13, border: view === tab.id ? "1px solid var(--blue-mid)" : "1px solid transparent", cursor: "pointer", boxShadow: view === tab.id ? "var(--shadow-sm)" : "none", whiteSpace: "nowrap", transition: "all 0.15s" }}>
-              <Icon name={tab.icon} size={13} color={view === tab.id ? "var(--blue)" : "var(--text3)"}/>
-              {tab.label}
-            </button>
-          ))}
+      {/* Compact header row — only shown when there are alerts or multiple tabs */}
+      {(unresolvedAlerts > 0 || tabs.length > 1) && view !== "form" && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 8 }}>
+          {tabs.length > 1 && (
+            <div style={{ display: "flex", gap: 4, background: "var(--bg3)", borderRadius: "var(--radius)", padding: 4, flex: 1, overflowX: "auto" }}>
+              {tabs.map(tab => (
+                <button key={tab.id} onClick={() => setView(tab.id)} style={{ flex: 1, minWidth: "fit-content", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "7px 11px", borderRadius: "var(--radius-sm)", background: view === tab.id ? "white" : "transparent", color: view === tab.id ? "var(--blue)" : "var(--text3)", fontWeight: view === tab.id ? 600 : 450, fontSize: 13, border: view === tab.id ? "1px solid var(--blue-mid)" : "1px solid transparent", cursor: "pointer", boxShadow: view === tab.id ? "var(--shadow-sm)" : "none", whiteSpace: "nowrap", transition: "all 0.15s" }}>
+                  <Icon name={tab.icon} size={13} color={view === tab.id ? "var(--blue)" : "var(--text3)"}/>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {unresolvedAlerts > 0 && (
+            <div onClick={() => setView("alerts")} style={{ background: "var(--red)", color: "white", padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+              <Icon name="alert" size={12} color="white"/>
+              {unresolvedAlerts} Alert{unresolvedAlerts !== 1 ? "s" : ""}
+            </div>
+          )}
         </div>
       )}
 
@@ -7833,89 +7802,50 @@ const WORKFLOW_TABS = [
 function WorkflowSection({ selectedTab, setSelectedTab }) {
   return (
     <div style={{
-      background: "var(--card)",
-      border: "1px solid var(--border)",
+      display: "grid",
+      gridTemplateColumns: "repeat(4, 1fr)",
+      gap: 6,
+      background: "var(--bg3)",
       borderRadius: "var(--radius-lg)",
-      overflow: "hidden",
-      boxShadow: "var(--shadow-sm)",
+      padding: 6,
+      border: "1px solid var(--border)",
     }}>
-      {/* Header strip */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8,
-        padding: "9px 14px",
-        background: "linear-gradient(90deg, #1e3a5f 0%, #1a4971 100%)",
-      }}>
-        <div style={{
-          width: 22, height: 22, borderRadius: 6,
-          background: "rgba(255,255,255,0.15)",
-          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-        }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-            <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-          </svg>
-        </div>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: "rgba(255,255,255,0.9)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-          Workflow
-        </span>
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "rgba(255,255,255,0.45)", fontWeight: 400 }}>
-          {WORKFLOW_TABS.find(t => t.id === selectedTab)?.label}
-        </span>
-      </div>
-
-      {/* Tab pills */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: 0,
-        background: "var(--bg3)",
-        borderTop: "1px solid var(--border)",
-      }}>
-        {WORKFLOW_TABS.map((tab, i) => {
-          const active = selectedTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setSelectedTab(tab.id)}
-              style={{
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                gap: 5, padding: "12px 4px",
-                background: active ? "white" : "transparent",
-                border: "none",
-                borderRight: i < 3 ? "1px solid var(--border)" : "none",
-                borderBottom: active ? `2.5px solid ${tab.color}` : "2.5px solid transparent",
-                cursor: "pointer",
-                transition: "all 0.15s",
-                position: "relative",
-              }}
-              onMouseEnter={e => { if (!active) e.currentTarget.style.background = "var(--bg2)"; }}
-              onMouseLeave={e => { if (!active) e.currentTarget.style.background = "transparent"; }}
-            >
-              <div style={{
-                width: 30, height: 30, borderRadius: "var(--radius-sm)",
-                background: active ? `${tab.color}18` : "var(--bg3)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                border: active ? `1px solid ${tab.color}30` : "1px solid transparent",
-                transition: "all 0.15s",
-              }}>
-                <Icon name={tab.icon} size={14} color={active ? tab.color : "var(--text4)"}/>
-              </div>
-              <span style={{
-                fontSize: 10.5, fontWeight: active ? 700 : 500,
-                color: active ? tab.color : "var(--text4)",
-                lineHeight: 1.2, textAlign: "center", letterSpacing: "0.01em",
-                whiteSpace: "nowrap",
-              }}>{tab.label}</span>
-              {active && (
-                <div style={{
-                  position: "absolute", top: 0, left: 0, right: 0, height: 2,
-                  background: tab.color, borderRadius: "0 0 2px 2px",
-                }}/>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {WORKFLOW_TABS.map(tab => {
+        const active = selectedTab === tab.id;
+        return (
+          <button
+            key={tab.id}
+            onClick={() => setSelectedTab(tab.id)}
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: 4, padding: "10px 4px",
+              background: active ? "var(--card)" : "transparent",
+              border: active ? `1.5px solid ${tab.color}30` : "1.5px solid transparent",
+              borderRadius: "var(--radius)",
+              cursor: "pointer",
+              transition: "all 0.15s",
+              boxShadow: active ? "var(--shadow-sm)" : "none",
+              position: "relative",
+            }}
+          >
+            {active && <div style={{ position: "absolute", top: 0, left: "20%", right: "20%", height: 2, background: tab.color, borderRadius: "0 0 2px 2px" }}/>}
+            <div style={{
+              width: 28, height: 28, borderRadius: "var(--radius-sm)",
+              background: active ? `${tab.color}15` : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              transition: "all 0.15s",
+            }}>
+              <Icon name={tab.icon} size={15} color={active ? tab.color : "var(--text4)"}/>
+            </div>
+            <span style={{
+              fontSize: 10.5, fontWeight: active ? 700 : 500,
+              color: active ? tab.color : "var(--text3)",
+              lineHeight: 1.2, textAlign: "center",
+              whiteSpace: "nowrap",
+            }}>{tab.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
