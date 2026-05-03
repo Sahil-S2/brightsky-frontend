@@ -6192,11 +6192,24 @@ function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, is
           <option value="__other__">Other / Not Listed</option>
         </select>
 
-        {/* Subtle GPS status — only show spinner while checking; hide distance/on-site badge per UX requirement */}
-        {selectedJobSite && selectedJobSite !== "__other__" && checking && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text3)", marginTop: 8 }}>
-            <span className="spin" style={{ width: 11, height: 11, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block" }}/>
-            Checking location…
+        {/* GPS status — spinner while checking, On-Site/Off-Site badge after */}
+        {selectedJobSite && selectedJobSite !== "__other__" && (
+          <div style={{ marginTop: 8 }}>
+            {checking ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text3)" }}>
+                <span className="spin" style={{ width: 11, height: 11, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block" }}/>
+                Checking location…
+              </div>
+            ) : isOnSite !== null && (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, background: isOnSite ? "var(--green-light)" : "var(--red-light)", color: isOnSite ? "var(--green)" : "var(--red)", border: `1px solid ${isOnSite ? "var(--green-mid, #86efac)" : "var(--red-mid, #fca5a5)"}` }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: isOnSite ? "var(--green)" : "var(--red)", flexShrink: 0 }}/>
+                {isOnSite ? "On Site" : "Off Site"}
+                {distanceDisplay && <span style={{ opacity: 0.75, fontWeight: 500 }}>· {distanceDisplay}</span>}
+              </div>
+            )}
+            {gpsError && (
+              <div style={{ fontSize: 12, color: "var(--amber)", marginTop: 2 }}>{gpsError}</div>
+            )}
           </div>
         )}
         {selectedJobSite === "__other__" && (
@@ -6835,15 +6848,8 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [eodStatus, setEodStatus] = useState({}); // { eq_id: true/false } today's EOD submitted
 
-  // Job site list: admins see all sites, employees see assigned sites (fall back to all if backend
-  // doesn't yet support my-assignments endpoint, ensuring dropdown always shows full assignment list)
-  const jobSites = isAdmin
-    ? allJobSites
-    : assignedJobSites.length > 1
-      ? assignedJobSites
-      : allJobSites.length > 0
-        ? allJobSites
-        : assignedJobSites;
+  // Job site list: admins see all sites, employees see only their assigned sites
+  const jobSites = isAdmin ? allJobSites : assignedJobSites;
 
   // Load today's EOD status + logs on mount
   useEffect(() => {
