@@ -2157,7 +2157,7 @@ function EmployeeDashboard({
       </div>
 
       {/* Job Site Selector — hidden when Fuel Entry is active (has its own selector) */}
-      {selectedTab !== "fuel" && (employeeJobSites.length > 0 || employeeWorksite) && (
+      {selectedTab !== "fuel" && (
         <FuelJobSiteSelector
           jobSites={(employeeJobSites.length > 0 ? employeeJobSites : [employeeWorksite].filter(Boolean)).map(s => ({
             ...s,
@@ -2797,7 +2797,11 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
       const body={name,projectName:projectName||name,address,latitude:parsedLat,longitude:parsedLon,radiusFeet:parseFloat(radius)||200,notes};
       const url=initial?`/api/worksites/${initial.id}`:"/api/worksites";
       const res=await authFetch(url,{method:initial?"PUT":"POST",body:JSON.stringify(body)});
-      if(!res.ok){addToast("Failed to save job site.","error");setSaving(false);return;}
+      if(!res.ok){
+        let errMsg="Failed to save job site.";
+        try{const e=await res.json();if(e?.error)errMsg=e.error;}catch{}
+        addToast(errMsg,"error");setSaving(false);return;
+      }
       addToast(initial?"Job site updated.":"Job site created.","success");
       setSaving(false);onSave();
     };
