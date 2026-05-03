@@ -246,9 +246,12 @@ const Toast=({toasts,removeToast})=>(
   </div>
 );
 
-const LocationIndicator=({onSite,distance,loading})=>{
+const LocationIndicator=({onSite,distance,loading,siteSelected})=>{
   if(loading)return(<div style={{display:"flex",alignItems:"center",gap:6,background:"var(--bg3)",border:"1.5px solid var(--border)",borderRadius:"var(--radius)",padding:"6px 12px",fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>
     <span className="spin" style={{width:10,height:10,border:"2px solid var(--text4)",borderTopColor:"transparent",borderRadius:"50%",display:"inline-block",flexShrink:0}}/><span style={{fontWeight:500}}>Locating…</span>
+  </div>);
+  if(!siteSelected)return(<div style={{display:"flex",alignItems:"center",gap:6,background:"var(--bg3)",border:"1.5px solid var(--border)",borderRadius:"var(--radius)",padding:"6px 12px",fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>
+    <span style={{width:7,height:7,borderRadius:"50%",background:"var(--text4)",flexShrink:0}}/><span style={{fontWeight:600}}>Site Not Selected</span>
   </div>);
   return(<div style={{display:"flex",alignItems:"center",gap:6,background:onSite?"var(--green-light)":"var(--red-light)",border:`1.5px solid ${onSite?"rgba(5,150,105,0.25)":"rgba(220,38,38,0.25)"}`,borderRadius:"var(--radius)",padding:"6px 12px",fontSize:12,color:onSite?"var(--green)":"var(--red)",whiteSpace:"nowrap"}}>
     <span style={{width:7,height:7,borderRadius:"50%",background:onSite?"var(--green)":"var(--red)",flexShrink:0}}/><span style={{fontWeight:600}}>{onSite?"On Site":"Off Site"}</span>
@@ -448,7 +451,10 @@ useEffect(() => {
 
   const[userLat,setUserLat]=useState(null);
   const[userLon,setUserLon]=useState(null);
-  const geoTarget=employeeWorksite||(settings.latitude!=null?{latitude:settings.latitude,longitude:settings.longitude,radius_feet:settings.radiusFeet}:null);
+  // Explicit site selection from employee's FuelJobSiteSelector (drives top-right badge)
+  const[appSelectedSiteId,setAppSelectedSiteId]=useState(null);
+  const appSelectedSite=worksites.find(s=>s.id===appSelectedSiteId)||null;
+  const geoTarget=appSelectedSite||(settings.latitude!=null?{latitude:settings.latitude,longitude:settings.longitude,radius_feet:settings.radiusFeet}:null);
   let onSite=false,distanceFt=null;
   if(userLat!=null&&geoTarget?.latitude!=null){
     distanceFt=distanceFeet(userLat,userLon,geoTarget.latitude,geoTarget.longitude);
@@ -690,11 +696,11 @@ useEffect(() => {
     </div>
   </div>
 
-  <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading&&userLat==null&&geoTarget?.latitude!=null}/>
+  <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading&&userLat==null&&geoTarget?.latitude!=null} siteSelected={!!appSelectedSiteId}/>
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")} setAppTitle={setAppTitle} worksites={worksites}/>)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")} setAppTitle={setAppTitle} worksites={worksites} onJobSiteSelect={setAppSelectedSiteId}/>)}
             {page==="fuel"&&<FuelEntryPage currentUser={currentUser} t={t} addToast={addToast} assignedJobSites={employeeJobSites} allJobSites={worksites} onMount={()=>setAppTitle("BSC Fuel Entry")} onUnmount={()=>setAppTitle("BSC Tracker")}/>}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
@@ -1187,7 +1193,7 @@ function EmployeeDashboard({
   employeeJobSites = [],
   handleClockOut, handleBreakStart, handleBreakEnd,
   t, addToast, refreshTodayData, onNavigateToRoute,
-  setAppTitle, worksites = [],
+  setAppTitle, worksites = [], onJobSiteSelect,
 }) {
   // --- existing state declarations (unchanged) ---
   const [now, setNow] = useState(new Date());
@@ -2158,7 +2164,7 @@ function EmployeeDashboard({
             geofence_radius_ft: s.geofence_radius_ft || s.radius_feet || 1000,
           }))}
           selectedJobSite={selectedTimeJobSiteId}
-          setSelectedJobSite={setSelectedTimeJobSiteId}
+          setSelectedJobSite={(id) => { setSelectedTimeJobSiteId(id); if(onJobSiteSelect) onJobSiteSelect(id); }}
           isOnSite={isOnSiteTime}
           setIsOnSite={setIsOnSiteTime}
           gpsForDistance={gpsForDistanceTime}
@@ -2898,6 +2904,7 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
   const[editingWS,setEditingWS]=useState(null);
   const[assigningTo,setAssigningTo]=useState(null);
   const[assignments,setAssignments]=useState([]);
+  const[searchEmp,setSearchEmp]=useState("");
 
   const loadAssignments=useCallback(async()=>{
     try{const r=await authFetch("/api/worksites/assignments");if(r.ok){const d=await r.json();setAssignments(Array.isArray(d)?d:[]);}}catch{}
@@ -2906,7 +2913,7 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
   useEffect(()=>{loadAssignments();},[loadAssignments,worksites.length]);
 
   const getAssigned=(wsId)=>assignments.filter(a=>a.worksite_id===wsId);
-  const getEmpWS=(empId)=>assignments.find(a=>a.employee_id===empId&&a.is_default);
+  const getAllSitesForEmp=(empId)=>assignments.filter(a=>a.employee_id===empId);
   const employees=adminData.employees.filter(e=>e.role==="employee");
 
   const handleDelete=async(id)=>{
@@ -2915,21 +2922,58 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
     addToast("Deleted.","info");setExpandedId(null);await refreshWorksites();await loadAssignments();
   };
   const handleAssign=async(wsId,empId)=>{
-    const res=await authFetch(`/api/worksites/${wsId}/assign`,{method:"POST",body:JSON.stringify({employeeId:empId,isDefault:true})});
-    if(!res.ok){addToast("Failed to assign.","error");return;}
-    addToast("Assigned.","success");await refreshWorksites();await loadAssignments();
+    const alreadyAssigned=assignments.some(a=>a.worksite_id===wsId&&a.employee_id===empId);
+    if(alreadyAssigned){
+      // Remove if already assigned (toggle)
+      await authFetch(`/api/worksites/${wsId}/remove/${empId}`,{method:"DELETE"});
+      addToast("Removed from site.","info");
+    } else {
+      const res=await authFetch(`/api/worksites/${wsId}/assign`,{method:"POST",body:JSON.stringify({employeeId:empId,isDefault:true})});
+      if(!res.ok){addToast("Failed to assign.","error");return;}
+      addToast("Assigned to site.","success");
+    }
+    await refreshWorksites();await loadAssignments();
   };
   const handleRemove=async(wsId,empId)=>{
     await authFetch(`/api/worksites/${wsId}/remove/${empId}`,{method:"DELETE"});
     addToast("Removed.","info");await refreshWorksites();await loadAssignments();
   };
 
+  const filteredEmps=employees.filter(e=>{
+    if(!searchEmp)return true;
+    const q=searchEmp.toLowerCase();
+    return(e.name||e.full_name||"").toLowerCase().includes(q)||(e.user_id||"").toLowerCase().includes(q);
+  });
+
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <SectionHeader title={t.worksites} subtitle={`${worksites.length} configured`}
-        action={<Btn onClick={()=>{setShowAddModal(true);setEditingWS(null);}} size="sm"><Icon name="plus" size={13} color="white"/>New Site</Btn>}/>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+        <div>
+          <h2 style={{fontSize:18,fontWeight:800,color:"var(--text)",letterSpacing:"-0.02em",margin:0}}>Job Sites</h2>
+          <p style={{fontSize:13,color:"var(--text3)",marginTop:3}}>{worksites.length} site{worksites.length!==1?"s":""} configured · {employees.length} employee{employees.length!==1?"s":""}</p>
+        </div>
+        <Btn onClick={()=>{setShowAddModal(true);setEditingWS(null);}} size="sm">
+          <Icon name="plus" size={13} color="white"/>New Site
+        </Btn>
+      </div>
 
-      {/* Flash Cards */}
+      {/* Summary chips */}
+      {worksites.length>0&&(
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <div style={{padding:"6px 12px",background:"var(--blue-light)",border:"1px solid var(--blue-mid)",borderRadius:999,fontSize:12,color:"var(--blue)",fontWeight:600}}>
+            🏗️ {worksites.length} Active Sites
+          </div>
+          <div style={{padding:"6px 12px",background:"var(--green-light)",border:"1px solid rgba(5,150,105,0.2)",borderRadius:999,fontSize:12,color:"var(--green)",fontWeight:600}}>
+            👥 {assignments.length} Total Assignments
+          </div>
+          <div style={{padding:"6px 12px",background:"var(--bg3)",border:"1px solid var(--border)",borderRadius:999,fontSize:12,color:"var(--text3)",fontWeight:500}}>
+            {employees.filter(e=>getAllSitesForEmp(e.id).length===0).length} unassigned
+          </div>
+        </div>
+      )}
+
+      {/* Site cards */}
       {worksites.length===0?(
         <Card style={{textAlign:"center",padding:48}}>
           <Icon name="map" size={40} color="var(--text4)" style={{marginBottom:14}}/>
@@ -2938,81 +2982,88 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
           <Btn onClick={()=>{setShowAddModal(true);setEditingWS(null);}} size="md"><Icon name="plus" size={14} color="white"/>Add First Job Site</Btn>
         </Card>
       ):(
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {worksites.map(w=>{
             const assigned=getAssigned(w.id);
             const isExpanded=expandedId===w.id;
             return(
-              <div key={w.id}>
-                {/* Flash Card */}
-                <button onClick={()=>setExpandedId(isExpanded?null:w.id)} style={{width:"100%",textAlign:"left",background:"none",border:"none",padding:0,cursor:"pointer"}}>
-                  <Card style={{
-                    padding:0,overflow:"hidden",
-                    border:isExpanded?"1.5px solid var(--blue)":"1px solid var(--border)",
-                    boxShadow:isExpanded?"var(--shadow-md)":"var(--shadow-sm)",
-                    transition:"all 0.2s",
-                  }}>
-                    {/* Card header */}
-                    <div style={{padding:"16px 18px",display:"flex",alignItems:"center",gap:14}}>
-                      {/* Status dot + icon */}
-                      <div style={{width:44,height:44,borderRadius:"var(--radius-lg)",background:isExpanded?"var(--blue)":"var(--blue-light)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.2s",boxShadow:isExpanded?"0 3px 10px rgba(37,99,235,0.3)":"none"}}>
-                        <Icon name="pin" size={20} color={isExpanded?"white":"var(--blue)"}/>
-                      </div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:15,fontWeight:700,color:"var(--text)",letterSpacing:"-0.01em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.project_name||w.name}</div>
-                        {w.address&&<div style={{fontSize:12,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.address}</div>}
-                        <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
-                          <span style={{background:"var(--bg3)",border:"1px solid var(--border)",padding:"2px 8px",borderRadius:999,fontSize:11,color:"var(--text3)"}}>🎯 {w.radius_feet}ft</span>
-                          <span style={{background:parseInt(w.assigned_count)>0?"var(--blue-light)":"var(--bg3)",border:`1px solid ${parseInt(w.assigned_count)>0?"var(--blue-mid)":"var(--border)"}`,padding:"2px 8px",borderRadius:999,fontSize:11,color:parseInt(w.assigned_count)>0?"var(--blue)":"var(--text3)",fontWeight:parseInt(w.assigned_count)>0?600:400}}>👥 {w.assigned_count||0} assigned</span>
-                        </div>
-                      </div>
-                      <Icon name={isExpanded?"chevronUp":"chevronDown"} size={18} color="var(--text3)"/>
+              <div key={w.id} style={{borderRadius:"var(--radius-lg)",overflow:"hidden",boxShadow:isExpanded?"var(--shadow-md)":"var(--shadow-sm)",border:isExpanded?"1.5px solid var(--blue)":"1px solid var(--border)",transition:"all 0.2s",background:"var(--card)"}}>
+                {/* Card header — clickable */}
+                <button onClick={()=>setExpandedId(isExpanded?null:w.id)}
+                  style={{width:"100%",textAlign:"left",background:"none",border:"none",padding:"14px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:14}}>
+                  <div style={{width:42,height:42,borderRadius:"var(--radius-lg)",background:isExpanded?"var(--blue)":"var(--blue-light)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.2s",boxShadow:isExpanded?"0 3px 10px rgba(37,99,235,0.3)":"none"}}>
+                    <Icon name="pin" size={19} color={isExpanded?"white":"var(--blue)"}/>
+                  </div>
+                  <div style={{flex:1,minWidth:0,textAlign:"left"}}>
+                    <div style={{fontSize:14.5,fontWeight:700,color:"var(--text)",letterSpacing:"-0.01em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.project_name||w.name}</div>
+                    {w.address&&<div style={{fontSize:12,color:"var(--text3)",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.address}</div>}
+                    <div style={{display:"flex",gap:6,marginTop:5,flexWrap:"wrap"}}>
+                      <span style={{background:"var(--bg3)",border:"1px solid var(--border)",padding:"2px 7px",borderRadius:999,fontSize:11,color:"var(--text3)",fontWeight:500}}>🎯 {w.radius_feet}ft</span>
+                      <span style={{background:parseInt(w.assigned_count)>0?"var(--blue-light)":"var(--bg3)",border:`1px solid ${parseInt(w.assigned_count)>0?"var(--blue-mid)":"var(--border)"}`,padding:"2px 7px",borderRadius:999,fontSize:11,color:parseInt(w.assigned_count)>0?"var(--blue)":"var(--text3)",fontWeight:parseInt(w.assigned_count)>0?600:400}}>
+                        👥 {w.assigned_count||0} assigned
+                      </span>
                     </div>
-                  </Card>
+                  </div>
+                  <Icon name={isExpanded?"chevronUp":"chevronDown"} size={17} color="var(--text3)"/>
                 </button>
 
-                {/* Expanded detail panel */}
+                {/* Expanded panel */}
                 {isExpanded&&(
-                  <div className="slide-down" style={{background:"var(--bg2)",border:"1.5px solid var(--blue)",borderTop:"none",borderRadius:"0 0 var(--radius-lg) var(--radius-lg)",padding:"0 18px 18px",boxShadow:"var(--shadow-md)"}}>
-                    {/* Coordinates */}
-                    <div style={{display:"flex",gap:8,padding:"12px 0",borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
-                      <span style={{fontSize:12,color:"var(--text3)"}}>📍 {parseFloat(w.latitude).toFixed(5)}°, {parseFloat(w.longitude).toFixed(5)}°</span>
+                  <div style={{borderTop:"1px solid var(--border)",background:"var(--bg2)"}}>
+                    {/* Coordinates row */}
+                    <div style={{padding:"10px 16px",borderBottom:"1px solid var(--border)",display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+                      <span style={{fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",gap:5}}>
+                        <Icon name="pin" size={11} color="var(--text4)"/>
+                        {w.latitude&&w.longitude?`${parseFloat(w.latitude).toFixed(5)}°, ${parseFloat(w.longitude).toFixed(5)}°`:"No coordinates"}
+                      </span>
                       {w.notes&&<span style={{fontSize:12,color:"var(--text3)"}}>· {w.notes}</span>}
                     </div>
 
-                    {/* Assigned employees */}
-                    <div style={{paddingTop:12}}>
-                      <div style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:10}}>Assigned Employees ({assigned.length})</div>
+                    {/* Assigned employees section */}
+                    <div style={{padding:"14px 16px"}}>
+                      <div style={{fontSize:11,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span>Assigned Employees ({assigned.length})</span>
+                        <Btn onClick={()=>{setSearchEmp("");setAssigningTo(w);}} size="sm" variant="blue">
+                          <Icon name="plus" size={12}/>Assign
+                        </Btn>
+                      </div>
+
                       {assigned.length===0?(
-                        <div style={{fontSize:13,color:"var(--text4)",marginBottom:12}}>No employees assigned to this job site yet.</div>
+                        <div style={{padding:"16px 0 8px",textAlign:"center"}}>
+                          <Icon name="users" size={24} color="var(--text4)" style={{marginBottom:8}}/>
+                          <p style={{fontSize:13,color:"var(--text4)"}}>No employees assigned yet.</p>
+                        </div>
                       ):(
-                        <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:12}}>
-                          {assigned.map(a=>(
-                            <div key={a.employee_id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",background:"var(--bg3)",borderRadius:"var(--radius)",border:"1px solid var(--border)"}}>
-                              <div style={{width:28,height:28,borderRadius:"50%",background:"var(--green-light)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:"1px solid rgba(5,150,105,0.2)"}}><Icon name="user" size={13} color="var(--green)"/></div>
-                              <div style={{flex:1,minWidth:0}}>
-                                <div style={{fontSize:13.5,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.employee_name||a.full_name}</div>
-                                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
-                                  {a.user_id&&<span style={{fontSize:11,fontWeight:700,color:"var(--blue)",background:"var(--blue-light)",padding:"0 6px",borderRadius:4,border:"1px solid var(--blue-mid)"}}>{a.user_id}</span>}
-                                  <span style={{fontSize:11.5,color:"var(--text3)"}}>{a.designation||a.department||""}</span>
-                                  {a.is_default&&<span style={{fontSize:10.5,color:"var(--green)",background:"var(--green-light)",padding:"1px 6px",borderRadius:999,fontWeight:600,border:"1px solid rgba(5,150,105,0.2)"}}>✓ Default</span>}
+                        <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+                          {assigned.map(a=>{
+                            const empSites=getAllSitesForEmp(a.employee_id);
+                            return(
+                              <div key={a.employee_id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"var(--card)",borderRadius:"var(--radius)",border:"1px solid var(--border)",boxShadow:"var(--shadow-sm)"}}>
+                                <div style={{width:32,height:32,borderRadius:"50%",background:"var(--green-light)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:"1.5px solid rgba(5,150,105,0.25)"}}>
+                                  <Icon name="user" size={14} color="var(--green)"/>
                                 </div>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontSize:13.5,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.employee_name||a.full_name}</div>
+                                  <div style={{display:"flex",alignItems:"center",gap:5,marginTop:2,flexWrap:"wrap"}}>
+                                    {a.user_id&&<span style={{fontSize:11,fontWeight:700,color:"var(--blue)",background:"var(--blue-light)",padding:"0 5px",borderRadius:4,border:"1px solid var(--blue-mid)"}}>{a.user_id}</span>}
+                                    <span style={{fontSize:11,color:"var(--text4)"}}>{empSites.length} site{empSites.length!==1?"s":""} total</span>
+                                  </div>
+                                </div>
+                                <button onClick={()=>handleRemove(w.id,a.employee_id)} style={{width:28,height:28,borderRadius:"var(--radius-sm)",background:"var(--red-light)",border:"1px solid rgba(220,38,38,0.15)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.15s"}} title="Remove from this site">
+                                  <Icon name="x" size={12} color="var(--red)"/>
+                                </button>
                               </div>
-                              <button onClick={()=>handleRemove(w.id,a.employee_id)} style={{width:28,height:28,borderRadius:"var(--radius-sm)",background:"var(--red-light)",border:"1px solid rgba(220,38,38,0.15)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}><Icon name="x" size={12} color="var(--red)"/></button>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
-                    </div>
 
-                    {/* Action buttons */}
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:4}}>
-                      <Btn onClick={()=>setAssigningTo(w)} variant="blue" size="sm"><Icon name="plus" size={13}/>Assign Employee</Btn>
-                      <Btn onClick={()=>{setEditingWS(w);setShowAddModal(true);}} variant="secondary" size="sm"><Icon name="edit" size={13}/>Edit Job Site</Btn>
+                      {/* Action buttons */}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,paddingTop:4}}>
+                        <Btn onClick={()=>{setEditingWS(w);setShowAddModal(true);}} variant="secondary" size="sm"><Icon name="edit" size={13}/>Edit Site</Btn>
+                        <Btn onClick={()=>handleDelete(w.id)} variant="danger" size="sm"><Icon name="x" size={13} color="var(--red)"/>Delete</Btn>
+                      </div>
                     </div>
-                    <Btn onClick={()=>handleDelete(w.id)} variant="danger" size="sm" style={{width:"100%",marginTop:8}}>
-                      <Icon name="x" size={13} color="var(--red)"/>Delete Job Site
-                    </Btn>
                   </div>
                 )}
               </div>
@@ -3022,39 +3073,64 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
       )}
 
       {/* Add/Edit Modal */}
-      {(showAddModal || editingWS) && (
-  <Modal title={editingWS ? "Edit Job Site" : "Add New Job Site"} onClose={() => { setShowAddModal(false); setEditingWS(null); }}>
-    <WorksiteForm
-      initial={editingWS}
-      addToast={addToast}
-      onSave={async () => { setShowAddModal(false); setEditingWS(null); await refreshWorksites(); await loadAssignments(); }}
-      onClose={() => { setShowAddModal(false); setEditingWS(null); }}
-    />
-  </Modal>
-)}
+      {(showAddModal||editingWS)&&(
+        <Modal title={editingWS?"Edit Job Site":"Add New Job Site"} onClose={()=>{setShowAddModal(false);setEditingWS(null);}}>
+          <WorksiteForm initial={editingWS} addToast={addToast}
+            onSave={async()=>{setShowAddModal(false);setEditingWS(null);await refreshWorksites();await loadAssignments();}}
+            onClose={()=>{setShowAddModal(false);setEditingWS(null);}}/>
+        </Modal>
+      )}
 
-      {/* Assign Modal */}
+      {/* Multi-Assign Modal */}
       {assigningTo&&(
-        <Modal title={`Assign to: ${assigningTo.project_name||assigningTo.name}`} onClose={()=>setAssigningTo(null)}>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {assigningTo.address&&<div style={{fontSize:13,color:"var(--text3)",padding:"10px 12px",background:"var(--bg3)",borderRadius:"var(--radius)",border:"1px solid var(--border)",marginBottom:4}}>{assigningTo.address}</div>}
-            <p style={{fontSize:13,color:"var(--text3)",fontWeight:400}}>Select an employee to assign to this job site:</p>
-            {employees.map(emp=>{
-              const current=getEmpWS(emp.id);
-              const isHere=assignments.some(a=>a.worksite_id===assigningTo.id&&a.employee_id===emp.id&&a.is_default);
-              return(
-                <button key={emp.id} onClick={()=>{handleAssign(assigningTo.id,emp.id);setAssigningTo(null);}} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 16px",borderRadius:"var(--radius-lg)",border:`1.5px solid ${isHere?"rgba(5,150,105,0.3)":"var(--border)"}`,background:isHere?"var(--green-light)":"var(--bg3)",cursor:"pointer",textAlign:"left",width:"100%",minHeight:56,transition:"all 0.12s"}}>
-                  <div style={{width:38,height:38,borderRadius:"50%",background:isHere?"var(--green-light)":"var(--blue-light)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${isHere?"rgba(5,150,105,0.2)":"var(--blue-mid)"}`}}><Icon name="user" size={17} color={isHere?"var(--green)":"var(--blue)"}/></div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:14,fontWeight:600,color:isHere?"var(--green)":"var(--text)"}}>{emp.name||emp.full_name}{isHere&&" ✓"}</div>
-                    <div style={{fontSize:12,color:"var(--text3)",marginTop:2}}>
-                      {emp.user_id&&<span style={{color:"var(--blue)",fontWeight:700,marginRight:6}}>{emp.user_id}</span>}
-                      {current?<span>Currently: <strong style={{color:"var(--text)"}}>{current.worksite_name}</strong></span>:<span style={{color:"var(--red)"}}>Not assigned</span>}
+        <Modal title={`Assign Employees — ${assigningTo.project_name||assigningTo.name}`} onClose={()=>setAssigningTo(null)}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {/* Site info */}
+            <div style={{padding:"10px 14px",background:"var(--blue-light)",borderRadius:"var(--radius)",border:"1px solid var(--blue-mid)",display:"flex",alignItems:"center",gap:10}}>
+              <Icon name="pin" size={15} color="var(--blue)" style={{flexShrink:0}}/>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--blue)"}}>{assigningTo.project_name||assigningTo.name}</div>
+                {assigningTo.address&&<div style={{fontSize:12,color:"var(--text3)",marginTop:1}}>{assigningTo.address}</div>}
+              </div>
+            </div>
+            <p style={{fontSize:13,color:"var(--text3)"}}>Tap an employee to toggle assignment. Assigned employees are highlighted in green.</p>
+            {/* Search */}
+            <div style={{position:"relative"}}>
+              <Icon name="search" size={13} color="var(--text4)" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)"}}/>
+              <input type="text" value={searchEmp} onChange={e=>setSearchEmp(e.target.value)} placeholder="Search employees…" style={{paddingLeft:30,fontSize:14}}/>
+            </div>
+            {/* Employee list */}
+            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:320,overflowY:"auto"}}>
+              {filteredEmps.map(emp=>{
+                const isAssigned=assignments.some(a=>a.worksite_id===assigningTo.id&&a.employee_id===emp.id);
+                const empSites=getAllSitesForEmp(emp.id);
+                return(
+                  <button key={emp.id} onClick={()=>handleAssign(assigningTo.id,emp.id)}
+                    style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",borderRadius:"var(--radius-lg)",border:`1.5px solid ${isAssigned?"rgba(5,150,105,0.35)":"var(--border)"}`,background:isAssigned?"var(--green-light)":"var(--bg3)",cursor:"pointer",textAlign:"left",width:"100%",minHeight:56,transition:"all 0.12s"}}>
+                    <div style={{width:38,height:38,borderRadius:"50%",background:isAssigned?"rgba(5,150,105,0.15)":"var(--blue-light)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${isAssigned?"rgba(5,150,105,0.3)":"var(--blue-mid)"}`}}>
+                      <Icon name="user" size={17} color={isAssigned?"var(--green)":"var(--blue)"}/>
                     </div>
-                  </div>
-                </button>
-              );
-            })}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:14,fontWeight:600,color:isAssigned?"var(--green)":"var(--text)",display:"flex",alignItems:"center",gap:6}}>
+                        {emp.name||emp.full_name}
+                        {isAssigned&&<span style={{fontSize:11,fontWeight:700,background:"rgba(5,150,105,0.15)",color:"var(--green)",padding:"1px 7px",borderRadius:999,border:"1px solid rgba(5,150,105,0.25)"}}>✓ Assigned</span>}
+                      </div>
+                      <div style={{fontSize:12,color:"var(--text3)",marginTop:2,display:"flex",alignItems:"center",gap:6}}>
+                        {emp.user_id&&<span style={{color:"var(--blue)",fontWeight:700}}>{emp.user_id}</span>}
+                        <span>{empSites.length>0?`${empSites.length} site${empSites.length!==1?"s":""} assigned`:"No sites yet"}</span>
+                      </div>
+                    </div>
+                    <div style={{width:28,height:28,borderRadius:"50%",background:isAssigned?"var(--green)":"var(--border)",border:`2px solid ${isAssigned?"rgba(5,150,105,0.3)":"var(--border)"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+                      {isAssigned?<Icon name="check" size={13} color="white"/>:<Icon name="plus" size={13} color="var(--text3)"/>}
+                    </div>
+                  </button>
+                );
+              })}
+              {filteredEmps.length===0&&<div style={{textAlign:"center",padding:"24px 0",color:"var(--text4)",fontSize:13}}>No employees match your search.</div>}
+            </div>
+            <div style={{fontSize:12,color:"var(--text3)",paddingTop:4,borderTop:"1px solid var(--border)",textAlign:"center"}}>
+              {assignments.filter(a=>a.worksite_id===assigningTo.id).length} of {employees.length} employees assigned to this site
+            </div>
           </div>
         </Modal>
       )}
@@ -4484,23 +4560,43 @@ function MyProfile({user,addToast,employeeWorksite,employeeJobSites=[],t,onViewT
           </div>
         ))}
       </Card>
-      {(employeeJobSites.length>0||employeeWorksite)&&<Card style={{border:"1.5px solid var(--blue-mid)",background:"var(--blue-light)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-          <Icon name="pin" size={15} color="var(--blue)"/>
-          <h3 style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>Assigned Job Sites</h3>
-          <span style={{background:"var(--green-light)",color:"var(--green)",padding:"2px 8px",borderRadius:999,fontSize:11,fontWeight:600,border:"1px solid rgba(5,150,105,0.2)"}}>{(employeeJobSites.length||1)} Active</span>
-        </div>
-        {(employeeJobSites.length>0?employeeJobSites:[employeeWorksite]).map((site,i)=>(
-          <div key={i} style={{padding:i>0?"10px 0 0":"0",borderTop:i>0?"1px solid rgba(37,99,235,0.15)":"none",marginTop:i>0?10:0}}>
-            <div style={{fontSize:14,fontWeight:700,color:"var(--text)",letterSpacing:"-0.01em"}}>{site.project_name||site.name}</div>
-            {site.address&&<div style={{fontSize:12.5,color:"var(--text3)",marginTop:2}}>{site.address}</div>}
-            <div style={{fontSize:12,color:"var(--text4)",marginTop:2}}>
-              {site.latitude&&site.longitude?`${parseFloat(site.latitude).toFixed(4)}°, ${parseFloat(site.longitude).toFixed(4)}° · `:""}
-              {site.radius_feet||site.geofence_radius_ft?"⭕ "+(site.radius_feet||site.geofence_radius_ft)+"ft radius":"No geofence set"}
-            </div>
+      {/* Assigned Job Sites — all sites shown as individual cards */}
+      {(employeeJobSites.length>0||employeeWorksite)&&(
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+            <Icon name="pin" size={15} color="var(--blue)"/>
+            <h3 style={{fontSize:14,fontWeight:700,color:"var(--text)",margin:0}}>Assigned Job Sites</h3>
+            <span style={{background:"var(--green-light)",color:"var(--green)",padding:"2px 8px",borderRadius:999,fontSize:11,fontWeight:700,border:"1px solid rgba(5,150,105,0.2)",marginLeft:"auto"}}>{(employeeJobSites.length||1)} Active</span>
           </div>
-        ))}
-      </Card>}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {(employeeJobSites.length>0?employeeJobSites:[employeeWorksite]).map((site,i)=>(
+              <Card key={i} style={{border:"1.5px solid var(--blue-mid)",background:"var(--blue-light)",padding:"12px 14px"}}>
+                <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                  <div style={{width:34,height:34,borderRadius:"var(--radius)",background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 6px rgba(37,99,235,0.25)"}}>
+                    <Icon name="pin" size={15} color="white"/>
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:700,color:"var(--text)",letterSpacing:"-0.01em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{site.project_name||site.name}</div>
+                    {site.address&&<div style={{fontSize:12.5,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{site.address}</div>}
+                    <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap"}}>
+                      {site.latitude&&site.longitude&&(
+                        <span style={{fontSize:11,color:"var(--text4)",background:"rgba(255,255,255,0.6)",padding:"1px 6px",borderRadius:4,border:"1px solid var(--border)"}}>
+                          📍 {parseFloat(site.latitude).toFixed(4)}°, {parseFloat(site.longitude).toFixed(4)}°
+                        </span>
+                      )}
+                      {(site.radius_feet||site.geofence_radius_ft)&&(
+                        <span style={{fontSize:11,color:"var(--blue)",background:"rgba(37,99,235,0.08)",padding:"1px 6px",borderRadius:4,border:"1px solid var(--blue-mid)",fontWeight:600}}>
+                          🎯 {site.radius_feet||site.geofence_radius_ft}ft radius
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
       <Card>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><Icon name="clock" size={15} color="var(--blue)"/><h3 style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{t.mySchedule}</h3></div>
         {loadingSchedule?<div style={{color:"var(--text3)",fontSize:13}}>Loading schedule…</div>
@@ -6048,15 +6144,33 @@ function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, is
     setIsOnSite(null);
     setDistanceDisplay(null);
     setGpsError(null);
-    // Re-check distance with existing GPS if we have it
-    if (gpsForDistance && siteId) {
-      const site = jobSites.find(s => s.id === siteId);
-      if (site && site.latitude && site.longitude) {
-        const d = distanceFeet(gpsForDistance.lat, gpsForDistance.lon, parseFloat(site.latitude), parseFloat(site.longitude));
-        setDistanceDisplay(formatDist(d));
-        setIsOnSite(d <= (site.geofence_radius_ft || 1000));
-      }
+    if (!siteId || siteId === "__other__") return;
+    const site = jobSites.find(s => s.id === siteId);
+    if (!site) return;
+    // If we already have GPS, compute immediately
+    if (gpsForDistance && site.latitude && site.longitude) {
+      const d = distanceFeet(gpsForDistance.lat, gpsForDistance.lon, parseFloat(site.latitude), parseFloat(site.longitude));
+      setDistanceDisplay(formatDist(d));
+      setIsOnSite(d <= (site.geofence_radius_ft || 1000));
+      return;
     }
+    // Auto-request GPS silently (no button needed)
+    if (!navigator.geolocation) return;
+    setChecking(true);
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const gps = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        if (setGpsForDistance) setGpsForDistance(gps);
+        if (site.latitude && site.longitude) {
+          const d = distanceFeet(gps.lat, gps.lon, parseFloat(site.latitude), parseFloat(site.longitude));
+          setDistanceDisplay(formatDist(d));
+          setIsOnSite(d <= (site.geofence_radius_ft || 1000));
+        }
+        setChecking(false);
+      },
+      () => setChecking(false),
+      { timeout: 10000, maximumAge: 60000 }
+    );
   };
 
   return (
@@ -6087,32 +6201,27 @@ function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, is
           <option value="__other__">Other / Not Listed</option>
         </select>
 
-        {/* GPS check row */}
+        {/* GPS status row — auto-checked on site selection */}
         {selectedJobSite && selectedJobSite !== "__other__" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <button
-              onClick={checkGps}
-              disabled={checking}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", background: "#1e3a5f", color: "white", border: "none", borderRadius: "var(--radius-sm)", fontSize: 13, fontWeight: 600, cursor: checking ? "default" : "pointer", opacity: checking ? 0.7 : 1 }}
-            >
-              {checking
-                ? <span className="spin" style={{ width: 12, height: 12, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "white", borderRadius: "50%", display: "inline-block" }}/>
-                : <Icon name="pin" size={13} color="white"/>}
-              {checking ? "Checking…" : "Verify Location"}
-            </button>
-
-            {isOnSite === true && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(5,150,105,0.1)", border: "1.5px solid rgba(5,150,105,0.35)", borderRadius: "var(--radius-sm)", fontSize: 12.5, color: "var(--green)", fontWeight: 700 }}>
-                <Icon name="check" size={13} color="var(--green)"/> On-Site Confirmed {distanceDisplay && `· ${distanceDisplay}`}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minHeight: 30 }}>
+            {checking && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text3)" }}>
+                <span className="spin" style={{ width: 12, height: 12, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block" }}/>
+                Checking location…
               </div>
             )}
-            {isOnSite === false && (
+            {!checking && isOnSite === true && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(5,150,105,0.1)", border: "1.5px solid rgba(5,150,105,0.35)", borderRadius: "var(--radius-sm)", fontSize: 12.5, color: "var(--green)", fontWeight: 700 }}>
+                <Icon name="check" size={13} color="var(--green)"/> On-Site {distanceDisplay && `· ${distanceDisplay}`}
+              </div>
+            )}
+            {!checking && isOnSite === false && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", background: "rgba(217,119,6,0.1)", border: "1.5px solid rgba(217,119,6,0.35)", borderRadius: "var(--radius-sm)", fontSize: 12.5, color: "var(--amber)", fontWeight: 700 }}>
                 <Icon name="alert" size={13} color="var(--amber)"/> Off-Site {distanceDisplay && `· ${distanceDisplay} from site`}
               </div>
             )}
-            {isOnSite === null && gpsForDistance && (
-              <div style={{ fontSize: 12, color: "var(--text3)" }}>No geofence set for this site — location logged.</div>
+            {!checking && isOnSite === null && distanceDisplay === null && (
+              <div style={{ fontSize: 12, color: "var(--text3)" }}>Detecting location…</div>
             )}
             {gpsError && <div style={{ fontSize: 12, color: "var(--red)" }}>{gpsError}</div>}
           </div>
