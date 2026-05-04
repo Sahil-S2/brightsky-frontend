@@ -453,7 +453,7 @@ useEffect(() => {
   const[userLon,setUserLon]=useState(null);
   // Explicit site selection from employee's FuelJobSiteSelector (drives top-right badge)
   const[appSelectedSiteId,setAppSelectedSiteId]=useState(null);
-  const appSelectedSite=worksites.find(s=>s.id===appSelectedSiteId)||null;
+  const appSelectedSite=worksites.find(s=>s.id===appSelectedSiteId)||employeeJobSites.find(s=>s.id===appSelectedSiteId)||null;
   const geoTarget=appSelectedSite||(settings.latitude!=null?{latitude:settings.latitude,longitude:settings.longitude,radius_feet:settings.radiusFeet}:null);
   let onSite=false,distanceFt=null;
   if(userLat!=null&&geoTarget?.latitude!=null){
@@ -696,7 +696,6 @@ useEffect(() => {
     </div>
   </div>
 
-  <LocationIndicator onSite={onSite} distance={distanceFt} loading={gpsLoading&&userLat==null&&geoTarget?.latitude!=null} siteSelected={!!appSelectedSiteId}/>
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
