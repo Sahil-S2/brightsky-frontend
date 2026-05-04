@@ -7744,3 +7744,534 @@ function WorkflowEquipmentTab({ isAdmin, addToast }) {
     </div>
   );
 }
+
+function AuditPage({t}){
+  const[logs,setLogs]=useState([]);
+  const[loading,setLoading]=useState(true);
+  useEffect(()=>{authFetch("/api/audit-logs").then(r=>r.json()).then(d=>{setLogs(Array.isArray(d?.logs)?d.logs:[]);setLoading(false);}).catch(()=>setLoading(false));},[]);
+  const dotColor={clock_in:"var(--green)",clock_out:"var(--red)",break_start:"var(--amber)",break_end:"var(--amber)",update_settings:"var(--blue)",auto_clock_in:"var(--purple)"};
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <SectionHeader title={t.auditLogs} subtitle="Complete trail of all system events"/>
+      <Card>
+        {loading?<div style={{textAlign:"center",padding:28,color:"var(--text3)"}}>Loading...</div>
+        :logs.length===0?<div style={{textAlign:"center",padding:28,color:"var(--text4)"}}>No audit logs yet.</div>
+        :<div style={{display:"flex",flexDirection:"column"}}>
+          {logs.map((log,i)=>(
+            <div key={log.id} style={{display:"flex",gap:12,padding:"12px 0",borderBottom:i<logs.length-1?"1px solid var(--border)":"none",alignItems:"flex-start"}}>
+              <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,marginTop:5,background:dotColor[log.action_type]||"var(--text4)"}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13.5,color:"var(--text)",fontWeight:500}}>{(log.action_type||"").replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase())}</div>
+                <div style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Entity: {log.entity_type} · IP: {log.ip_address}</div>
+              </div>
+              <div style={{fontSize:12,color:"var(--text3)",flexShrink:0,textAlign:"right"}}>
+                <div>{fmtDate(log.created_at)}</div><div>{fmtTime(log.created_at)}</div>
+              </div>
+            </div>
+          ))}
+        </div>}
+      </Card>
+    </div>
+  );
+}
+
+function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJobSites = [], onMount, onUnmount }) {
+  const isAdmin = ["admin", "manager", "owner"].includes(currentUser?.role);
+  const [view, setView] = useState("equipment"); // "equipment" | "form" | "dashboard" | "alerts" | "reports"
+  const [selectedEquipment, setSelectedEquipment] = useState(null);
+  const [entryType, setEntryType] = useState("eod"); // "fill" | "eod"
+  const [logs, setLogs] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [dashData, setDashData] = useState(null);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [eodStatus, setEodStatus] = useState({}); // { eq_id: true/false } today's EOD submitted
+  const [jobSites, setJobSites] = useState([]);
+
+
+  // Page title lifecycle
+  useEffect(()=>{
+    if(onMount) onMount();
+    return ()=>{ if(onUnmount) onUnmount(); };
+  },[]);
+
+  // Load today's EOD status + logs on mount
+  useEffect(() => {
+    loadLogs();
+    loadAlerts();
+    if (isAdmin) loadDashboard();
+    loadJobSites();
+  }, []);
+
+  const loadLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      const res = await authFetch("/api/fuel/logs?limit=50");
+      if (res.ok) {
+        const data = await res.json();
+        setLogs(data.logs || []);
+        // Build EOD status map for today
+        const today = new Date().toISOString().slice(0, 10);
+        const status = {};
+        (data.logs || []).forEach(l => {
+          if (l.entry_type === "eod" && l.log_date === today) status[l.equipment_id] = true;
+        });
+        setEodStatus(status);
+      }
+    } catch {}
+    setLoadingLogs(false);
+  };
+
+  const loadAlerts = async () => {
+    try {
+      const res = await authFetch("/api/fuel/alerts");
+      if (res.ok) { const d = await res.json(); setAlerts(d.alerts || []); }
+    } catch {}
+  };
+
+  const loadDashboard = async () => {
+    try {
+      const res = await authFetch("/api/fuel/dashboard");
+      if (res.ok) { const d = await res.json(); setDashData(d); }
+    } catch {}
+  };
+
+  const loadJobSites = async () => {
+    try {
+      const res = await authFetch("/api/fuel/job-sites");
+      if (res.ok) { const d = await res.json(); setJobSites(d.sites || []); }
+    } catch {}
+  };
+
+  const openEntry = (eq, type) => {
+    setSelectedEquipment(eq);
+    setEntryType(type);
+    setView("form");
+  };
+
+  const unresolvedAlerts = alerts.filter(a => !a.resolved).length;
+
+  // ── Tab bar (top navigation within fuel module) ────────────────────────────
+  const tabs = [
+    { id: "equipment", label: "Equipment", icon: "hard_hat" },
+    ...(isAdmin ? [
+      { id: "dashboard", label: "Dashboard", icon: "gauge" },
+      { id: "alerts", label: `Alerts${unresolvedAlerts ? ` (${unresolvedAlerts})` : ""}`, icon: "alert" },
+      { id: "reports", label: "Reports", icon: "bar" },
+    ] : [
+      { id: "my_logs", label: "My Logs", icon: "log" },
+    ]),
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 0, minHeight: 0 }}>
+      {/* Header banner */}
+      <div style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #1a4971 50%, #0f2d47 100%)", borderRadius: "var(--radius-lg)", padding: "18px 20px", marginBottom: 16, display: "flex", alignItems: "center", gap: 14, position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", right: -20, top: -20, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }}/>
+        <div style={{ position: "absolute", right: 60, bottom: -30, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.03)" }}/>
+        <div style={{ width: 48, height: 48, borderRadius: "var(--radius-lg)", background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid rgba(255,255,255,0.15)" }}>
+          <Icon name="fuel" size={22} color="white"/>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: "white", letterSpacing: "-0.02em" }}>Fuel Entry</div>
+          <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.65)", marginTop: 2, fontWeight: 400 }}>Bright Sky Construction · Equipment Fuel Tracking</div>
+        </div>
+        {unresolvedAlerts > 0 && (
+          <div onClick={() => setView("alerts")} style={{ background: "rgba(220,38,38,0.85)", color: "white", padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, border: "1px solid rgba(255,255,255,0.2)", flexShrink: 0 }}>
+            <Icon name="alert" size={12} color="white"/>
+            {unresolvedAlerts} Alert{unresolvedAlerts !== 1 ? "s" : ""}
+          </div>
+        )}
+      </div>
+
+      {/* Sub-navigation tabs */}
+      {view !== "form" && (
+        <div style={{ display: "flex", gap: 4, background: "var(--bg3)", borderRadius: "var(--radius)", padding: 4, marginBottom: 16, overflowX: "auto" }}>
+          {tabs.map(tab => (
+            <button key={tab.id} onClick={() => setView(tab.id)} style={{ flex: 1, minWidth: "fit-content", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 12px", borderRadius: "var(--radius-sm)", background: view === tab.id ? "white" : "transparent", color: view === tab.id ? "var(--blue)" : "var(--text3)", fontWeight: view === tab.id ? 600 : 450, fontSize: 13, border: view === tab.id ? "1px solid var(--blue-mid)" : "1px solid transparent", cursor: "pointer", boxShadow: view === tab.id ? "var(--shadow-sm)" : "none", whiteSpace: "nowrap", transition: "all 0.15s" }}>
+              <Icon name={tab.icon} size={13} color={view === tab.id ? "var(--blue)" : "var(--text3)"}/>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Views */}
+      {view === "equipment" && <FuelEquipmentGrid eodStatus={eodStatus} openEntry={openEntry} isAdmin={isAdmin} logs={logs} loadingLogs={loadingLogs}/>}
+      {view === "form" && selectedEquipment && (
+        <FuelEntryForm
+          equipment={selectedEquipment}
+          entryType={entryType}
+          currentUser={currentUser}
+          jobSites={jobSites.length > 0 ? jobSites : (isAdmin ? allJobSites : assignedJobSites).map(w => ({ id: w.id, name: w.name }))}
+          addToast={addToast}
+          onBack={() => { setView("equipment"); setSelectedEquipment(null); }}
+          onSuccess={() => { loadLogs(); loadAlerts(); if (isAdmin) loadDashboard(); setView("equipment"); }}
+        />
+      )}
+      {view === "dashboard" && isAdmin && <FuelDashboard dashData={dashData} logs={logs} alerts={alerts} onViewAlerts={() => setView("alerts")}/>}
+      {view === "alerts" && isAdmin && <FuelAlertsView alerts={alerts} onRefresh={loadAlerts} addToast={addToast}/>}
+      {view === "reports" && isAdmin && <FuelReportsPage logs={logs} addToast={addToast}/>}
+      {view === "my_logs" && !isAdmin && <FuelMyLogs logs={logs} loadingLogs={loadingLogs} currentUser={currentUser}/>}
+    </div>
+  );
+}
+
+function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs }) {
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Last known fuel level per equipment from logs
+  const lastLevel = {};
+  [...logs].reverse().forEach(l => {
+    if (!lastLevel[l.equipment_id]) lastLevel[l.equipment_id] = l.fuel_level_after ?? l.fuel_level_remaining;
+  });
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Equipment Fleet</div>
+          <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 2 }}>Tap an equipment card to log fuel</div>
+        </div>
+        <div style={{ fontSize: 11.5, color: "var(--text3)", background: "var(--bg3)", padding: "4px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}>
+          {EQUIPMENT_LIST.length} units
+        </div>
+      </div>
+
+      {/* EOD reminder */}
+      <div style={{ background: "var(--amber-light)", border: "1.5px solid rgba(217,119,6,0.25)", borderRadius: "var(--radius)", padding: "11px 14px", marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <Icon name="alert" size={15} color="var(--amber)" style={{ marginTop: 1, flexShrink: 0 }}/>
+        <div style={{ fontSize: 13, color: "#92400e", lineHeight: 1.5 }}>
+          <strong>End-of-Day Reminder:</strong> Each operator must record remaining fuel levels for all assigned equipment before end of shift.
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))", gap: 12 }}>
+        {EQUIPMENT_LIST.map(eq => {
+          const eodDone = eodStatus[eq.id];
+          const level = lastLevel[eq.id];
+          const hasTrailer = eq.type === "trailer";
+          return (
+            <div key={eq.id} className="fade-up" style={{ background: "var(--card)", border: `1.5px solid ${eodDone ? "rgba(5,150,105,0.25)" : "var(--border)"}`, borderRadius: "var(--radius-lg)", padding: 16, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", gap: 12, position: "relative", overflow: "hidden" }}>
+              {/* EOD status ribbon */}
+              {eodDone && (
+                <div style={{ position: "absolute", top: 0, right: 0, background: "var(--green)", color: "white", fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: "0 var(--radius-lg) 0 var(--radius-sm)", letterSpacing: "0.05em" }}>EOD ✓</div>
+              )}
+
+              {/* Equipment thumbnail + info */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 64, height: 48, borderRadius: "var(--radius)", background: `${eq.color}10`, border: `1.5px solid ${eq.color}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <EquipmentThumb type={eq.type} color={eq.color} size={50}/>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", lineHeight: 1.3 }}>{eq.brand}</div>
+                  {eq.model && <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 1 }}>{eq.model}{eq.year ? ` · ${eq.year}` : ""}</div>}
+                  <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 2, textTransform: "capitalize" }}>{eq.type.replace(/_/g, " ")}</div>
+                </div>
+              </div>
+
+              {/* Fuel level gauge */}
+              {!hasTrailer && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--bg3)", borderRadius: "var(--radius-sm)", padding: "8px 12px" }}>
+                  <FuelGauge level={level ?? 50} size={52}/>
+                  <div>
+                    <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Last Recorded</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", lineHeight: 1.2 }}>
+                      {level != null ? `${level}%` : "—"}
+                    </div>
+                    {level == null && <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 2 }}>No record today</div>}
+                  </div>
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div style={{ display: "flex", gap: 8 }}>
+                {!hasTrailer && (
+                  <button onClick={() => openEntry(eq, "fill")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "9px 6px", borderRadius: "var(--radius-sm)", background: "var(--blue-light)", color: "var(--blue)", border: "1.5px solid var(--blue-mid)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 38 }}>
+                    <Icon name="droplet" size={13} color="var(--blue)"/> Fuel Fill
+                  </button>
+                )}
+                <button onClick={() => openEntry(eq, "eod")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "9px 6px", borderRadius: "var(--radius-sm)", background: eodDone ? "var(--green-light)" : "var(--bg3)", color: eodDone ? "var(--green)" : "var(--text2)", border: `1.5px solid ${eodDone ? "rgba(5,150,105,0.2)" : "var(--border)"}`, fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 38 }}>
+                  <Icon name="flag" size={13} color={eodDone ? "var(--green)" : "var(--text3)"}/> {eodDone ? "EOD ✓" : "End of Day"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, onBack, onSuccess }) {
+  const [type, setType] = useState(entryType);
+  const [submitting, setSubmitting] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [gps, setGps] = useState(null);
+  const [photo1, setPhoto1] = useState(null);
+  const [photo2, setPhoto2] = useState(null);
+  const fileRef1 = useRef(null);
+  const fileRef2 = useRef(null);
+
+  // Form fields
+  const [jobSite, setJobSite] = useState("");
+  const [fuelBefore, setFuelBefore] = useState("");
+  const [fuelAfter, setFuelAfter] = useState("");
+  const [fuelRemaining, setFuelRemaining] = useState("");
+  const [gallonsAdded, setGallonsAdded] = useState("");
+  const [hoursReading, setHoursReading] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [supervisorNote, setSupervisorNote] = useState("");
+
+  // Capture GPS on open
+  useEffect(() => {
+    setLocating(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => { setGps({ lat: pos.coords.latitude, lon: pos.coords.longitude }); setLocating(false); },
+        () => setLocating(false),
+        { timeout: 8000, maximumAge: 30000 }
+      );
+    } else { setLocating(false); }
+  }, []);
+
+  const handlePhoto = (file, setter) => {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { addToast("Photo must be under 10MB.", "error"); return; }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX = 800; let w = img.width, h = img.height;
+        if (w > h) { if (w > MAX) { h = h * MAX / w; w = MAX; } } else { if (h > MAX) { w = w * MAX / h; h = MAX; } }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        setter(canvas.toDataURL("image/jpeg", 0.75));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const validate = () => {
+    if (!jobSite) { addToast("Please select a job site.", "error"); return false; }
+    if (type === "fill") {
+      if (fuelBefore === "") { addToast("Please enter before-fill fuel level.", "error"); return false; }
+      if (!gallonsAdded) { addToast("Please enter gallons added.", "error"); return false; }
+    } else {
+      if (fuelRemaining === "") { addToast("Please enter remaining fuel level.", "error"); return false; }
+    }
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validate()) return;
+    setSubmitting(true);
+    try {
+      const payload = {
+        equipment_id: equipment.id,
+        equipment_brand: equipment.brand,
+        equipment_model: equipment.model,
+        entry_type: type,
+        job_site_id: jobSite,
+        fuel_level_before: type === "fill" ? Number(fuelBefore) : null,
+        fuel_level_after: type === "fill" ? Number(fuelAfter) : null,
+        fuel_level_remaining: type === "eod" ? Number(fuelRemaining) : null,
+        gallons_added: type === "fill" ? Number(gallonsAdded) : null,
+        hours_reading: hoursReading ? Number(hoursReading) : null,
+        remarks: remarks.trim(),
+        supervisor_note: supervisorNote.trim(),
+        photo_before: photo1,
+        photo_after: photo2,
+        gps_lat: gps?.lat,
+        gps_lon: gps?.lon,
+        device_info: navigator.userAgent.slice(0, 200),
+        logged_at: new Date().toISOString(),
+      };
+      const res = await authFetch("/api/fuel/entry", { method: "POST", body: JSON.stringify(payload) });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || "Failed to save fuel entry."); }
+      addToast(type === "eod" ? "End-of-day fuel recorded successfully!" : "Fuel fill logged successfully!", "success");
+      onSuccess();
+    } catch (e) { addToast(e.message || "Error submitting entry.", "error"); }
+    setSubmitting(false);
+  };
+
+  const fuelPct = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+
+  return (
+    <div>
+      {/* Back header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+        <button onClick={onBack} style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text2)", width: 36, height: 36, borderRadius: "var(--radius-sm)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>{equipment.brand}{equipment.model ? ` · ${equipment.model}` : ""}</div>
+          <div style={{ fontSize: 12, color: "var(--text3)" }}>
+            {equipment.year ? `${equipment.year} · ` : ""}{equipment.type.replace(/_/g, " ")}
+          </div>
+        </div>
+      </div>
+
+      {/* Entry type toggle */}
+      <div style={{ display: "grid", gridTemplateColumns: equipment.type === "trailer" ? "1fr" : "1fr 1fr", gap: 8, marginBottom: 20, background: "var(--bg3)", borderRadius: "var(--radius)", padding: 4 }}>
+        {equipment.type !== "trailer" && (
+          <button onClick={() => setType("fill")} style={{ padding: "10px", borderRadius: "var(--radius-sm)", background: type === "fill" ? "white" : "transparent", color: type === "fill" ? "var(--blue)" : "var(--text3)", fontWeight: type === "fill" ? 700 : 450, fontSize: 13.5, border: type === "fill" ? "1px solid var(--blue-mid)" : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: type === "fill" ? "var(--shadow-sm)" : "none" }}>
+            <Icon name="droplet" size={14} color={type === "fill" ? "var(--blue)" : "var(--text3)"}/>
+            Fuel Fill Entry
+          </button>
+        )}
+        <button onClick={() => setType("eod")} style={{ padding: "10px", borderRadius: "var(--radius-sm)", background: type === "eod" ? "white" : "transparent", color: type === "eod" ? "var(--green)" : "var(--text3)", fontWeight: type === "eod" ? 700 : 450, fontSize: 13.5, border: type === "eod" ? "1px solid rgba(5,150,105,0.3)" : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: type === "eod" ? "var(--shadow-sm)" : "none" }}>
+          <Icon name="flag" size={14} color={type === "eod" ? "var(--green)" : "var(--text3)"}/>
+          End-of-Day Remaining
+        </button>
+      </div>
+
+      {/* Operator info bar */}
+      <div style={{ background: "var(--blue-light)", border: "1px solid var(--blue-mid)", borderRadius: "var(--radius)", padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+        <Icon name="user" size={14} color="var(--blue)"/>
+        <div style={{ flex: 1, fontSize: 13, color: "var(--blue)", fontWeight: 500 }}>
+          <strong>{currentUser?.name}</strong> · {currentUser?.userId || currentUser?.id?.slice(0, 8)} · {currentUser?.role}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: locating ? "var(--text3)" : (gps ? "var(--green)" : "var(--red)") }}>
+          {locating ? <span className="spin" style={{ width: 10, height: 10, border: "2px solid var(--text4)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block" }}/> : <Icon name="pin" size={12} color={gps ? "var(--green)" : "var(--red)"}/>}
+          {locating ? "Locating…" : gps ? "GPS captured" : "No GPS"}
+        </div>
+      </div>
+
+      {/* Auto-captured timestamp */}
+      <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "8px 12px", marginBottom: 16, fontSize: 12, color: "var(--text3)", display: "flex", alignItems: "center", gap: 8 }}>
+        <Icon name="clock" size={12} color="var(--text3)"/>
+        Entry timestamp: <strong style={{ color: "var(--text2)" }}>{new Date().toLocaleString()}</strong>
+        {gps && <span style={{ marginLeft: "auto" }}>📍 {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</span>}
+      </div>
+
+      {/* Form fields */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Job site */}
+        <div>
+          <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Job Site <span style={{ color: "var(--red)" }}>*</span></label>
+          <select value={jobSite} onChange={e => setJobSite(e.target.value)} style={{ fontSize: 15 }}>
+            <option value="">Select job site…</option>
+            {jobSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            <option value="__other__">Other / Not Listed</option>
+          </select>
+        </div>
+
+        {/* Hours reading */}
+        <div>
+          <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Machine Hours / Meter Reading</label>
+          <input type="number" min="0" value={hoursReading} onChange={e => setHoursReading(e.target.value)} placeholder="e.g. 3452" style={{ fontSize: 15 }}/>
+        </div>
+
+        {/* Fuel Fill fields */}
+        {type === "fill" && equipment.type !== "trailer" && (<>
+          <div>
+            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Fuel Level Before Fill (%) <span style={{ color: "var(--red)" }}>*</span></label>
+            <select value={fuelBefore} onChange={e => setFuelBefore(e.target.value)} style={{ fontSize: 15 }}>
+              <option value="">Select level…</option>
+              {fuelPct.map(p => <option key={p} value={p}>{p}% {p === 0 ? "(Empty)" : p === 100 ? "(Full)" : p === 25 ? "(¼ Tank)" : p === 50 ? "(½ Tank)" : p === 75 ? "(¾ Tank)" : ""}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Gallons / Liters Added <span style={{ color: "var(--red)" }}>*</span></label>
+            <input type="number" min="0" step="0.1" value={gallonsAdded} onChange={e => setGallonsAdded(e.target.value)} placeholder="e.g. 45.5" style={{ fontSize: 15 }}/>
+          </div>
+          <div>
+            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Fuel Level After Fill (%)</label>
+            <select value={fuelAfter} onChange={e => setFuelAfter(e.target.value)} style={{ fontSize: 15 }}>
+              <option value="">Select level…</option>
+              {fuelPct.map(p => <option key={p} value={p}>{p}% {p === 100 ? "(Full)" : p === 75 ? "(¾ Tank)" : ""}</option>)}
+            </select>
+          </div>
+          {/* Photo — before fill meter */}
+          <div>
+            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Meter Photo (Before Fill)</label>
+            <input ref={fileRef1} type="file" accept="image/*" capture="environment" onChange={e => handlePhoto(e.target.files?.[0], setPhoto1)} style={{ display: "none" }}/>
+            {photo1 ? (
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <img src={photo1} alt="meter" style={{ width: "100%", maxWidth: 260, borderRadius: "var(--radius)", border: "1.5px solid var(--border)", display: "block" }}/>
+                <button onClick={() => setPhoto1(null)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", border: "none", color: "white", borderRadius: 999, width: 24, height: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="x" size={12} color="white"/></button>
+              </div>
+            ) : (
+              <button onClick={() => fileRef1.current?.click()} style={{ width: "100%", padding: "16px", border: "2px dashed var(--border2)", borderRadius: "var(--radius)", background: "var(--bg3)", color: "var(--text3)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13.5 }}>
+                <Icon name="camera" size={16} color="var(--text3)"/> Tap to capture meter photo
+              </button>
+            )}
+          </div>
+          {/* Photo — after fill */}
+          <div>
+            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Meter Photo (After Fill)</label>
+            <input ref={fileRef2} type="file" accept="image/*" capture="environment" onChange={e => handlePhoto(e.target.files?.[0], setPhoto2)} style={{ display: "none" }}/>
+            {photo2 ? (
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <img src={photo2} alt="meter after" style={{ width: "100%", maxWidth: 260, borderRadius: "var(--radius)", border: "1.5px solid var(--border)", display: "block" }}/>
+                <button onClick={() => setPhoto2(null)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", border: "none", color: "white", borderRadius: 999, width: 24, height: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="x" size={12} color="white"/></button>
+              </div>
+            ) : (
+              <button onClick={() => fileRef2.current?.click()} style={{ width: "100%", padding: "16px", border: "2px dashed var(--border2)", borderRadius: "var(--radius)", background: "var(--bg3)", color: "var(--text3)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13.5 }}>
+                <Icon name="camera" size={16} color="var(--text3)"/> Tap to capture post-fill photo
+              </button>
+            )}
+          </div>
+        </>)}
+
+        {/* EOD fields */}
+        {type === "eod" && (<>
+          <div>
+            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Remaining Fuel Level (%) <span style={{ color: "var(--red)" }}>*</span></label>
+            <select value={fuelRemaining} onChange={e => setFuelRemaining(e.target.value)} style={{ fontSize: 15 }}>
+              <option value="">Select remaining level…</option>
+              {fuelPct.map(p => <option key={p} value={p}>{p}% {p === 0 ? "(Empty)" : p === 100 ? "(Full)" : p === 25 ? "(¼ Tank)" : p === 50 ? "(½ Tank)" : p === 75 ? "(¾ Tank)" : ""}</option>)}
+            </select>
+            {fuelRemaining !== "" && (
+              <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+                <FuelGauge level={Number(fuelRemaining)} size={100}/>
+              </div>
+            )}
+          </div>
+          {/* EOD photo */}
+          <div>
+            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Fuel Indicator / Meter Photo <span style={{ color: "var(--red)" }}>*</span></label>
+            <input ref={fileRef1} type="file" accept="image/*" capture="environment" onChange={e => handlePhoto(e.target.files?.[0], setPhoto1)} style={{ display: "none" }}/>
+            {photo1 ? (
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <img src={photo1} alt="fuel proof" style={{ width: "100%", maxWidth: 260, borderRadius: "var(--radius)", border: "1.5px solid var(--green)", display: "block" }}/>
+                <button onClick={() => setPhoto1(null)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", border: "none", color: "white", borderRadius: 999, width: 24, height: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="x" size={12} color="white"/></button>
+                <div style={{ background: "var(--green)", color: "white", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: "0 0 var(--radius-sm) 0", position: "absolute", top: 0, left: 0 }}>Photo captured ✓</div>
+              </div>
+            ) : (
+              <button onClick={() => fileRef1.current?.click()} style={{ width: "100%", padding: "20px 16px", border: "2px dashed rgba(5,150,105,0.4)", borderRadius: "var(--radius)", background: "var(--green-light)", color: "var(--green)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 14, fontWeight: 600 }}>
+                <Icon name="camera" size={22} color="var(--green)"/>
+                <span>Tap to take fuel proof photo</span>
+                <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text3)" }}>Required for end-of-day verification</span>
+              </button>
+            )}
+          </div>
+          {/* Supervisor note */}
+          <div>
+            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Supervisor Note (optional)</label>
+            <textarea value={supervisorNote} onChange={e => setSupervisorNote(e.target.value)} placeholder="Any notes for the supervisor…" rows={2} style={{ fontSize: 14, resize: "vertical", minHeight: 64 }}/>
+          </div>
+        </>)}
+
+        {/* Common remarks */}
+        <div>
+          <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Remarks / Notes</label>
+          <textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Any additional notes…" rows={2} style={{ fontSize: 14, resize: "vertical", minHeight: 64 }}/>
+        </div>
+
+        {/* Submit */}
+        <div style={{ paddingTop: 4 }}>
+          <Btn onClick={handleSubmit} loading={submitting} size="lg" style={{ width: "100%", background: type === "eod" ? "var(--green)" : "var(--blue)" }} variant="primary">
+            <Icon name="check" size={16} color="white"/>
+            {submitting ? "Saving…" : type === "eod" ? "Submit End-of-Day Fuel Record" : "Submit Fuel Fill Entry"}
+          </Btn>
+          <div style={{ fontSize: 11.5, color: "var(--text4)", textAlign: "center", marginTop: 8 }}>
+            This entry will be timestamped and GPS-tagged for accountability
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
