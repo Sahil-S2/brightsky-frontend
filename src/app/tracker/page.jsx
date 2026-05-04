@@ -161,6 +161,31 @@ const GlobalStyle = () => (
     tr:last-child td{border-bottom:none;} tr:hover td{background:#fafbfc;}
     .pin-dot{width:13px;height:13px;border-radius:50%;background:var(--blue);display:inline-block;flex-shrink:0;transition:all 0.2s;box-shadow:0 0 0 3px var(--blue-mid);}
     .pin-dot.empty{background:transparent;border:2px solid var(--border2);box-shadow:none;}
+
+    /* ── Splash & Login premium animations ───────────────────── */
+    @keyframes splashLogoIn{0%{opacity:0;transform:scale(0.55) rotateY(-25deg) rotateX(10deg);filter:blur(8px);}60%{opacity:1;transform:scale(1.06) rotateY(4deg) rotateX(-2deg);filter:blur(0);}80%{transform:scale(0.97) rotateY(-1deg);}100%{opacity:1;transform:scale(1) rotateY(0deg) rotateX(0deg);filter:blur(0);}}
+    @keyframes splashTextIn{0%{opacity:0;transform:translateY(22px) scale(0.96);}100%{opacity:1;transform:translateY(0) scale(1);}}
+    @keyframes splashSubIn{0%{opacity:0;transform:translateY(14px);}100%{opacity:1;transform:translateY(0);}}
+    @keyframes splashRingPulse{0%{transform:scale(0.7);opacity:0.7;}100%{transform:scale(2.4);opacity:0;}}
+    @keyframes splashRingPulse2{0%{transform:scale(0.8);opacity:0.5;}100%{transform:scale(2.0);opacity:0;}}
+    @keyframes splashFadeOut{0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(1.03);}}
+    @keyframes loginCardIn{0%{opacity:0;transform:translateY(28px) scale(0.97);}100%{opacity:1;transform:translateY(0) scale(1);}}
+    @keyframes loginBgShift{0%{background-position:0% 50%;}50%{background-position:100% 50%;}100%{background-position:0% 50%;}}
+    @keyframes loginLogoFloat{0%,100%{transform:translateY(0px) rotate(-1deg);}50%{transform:translateY(-5px) rotate(1deg);}}
+    @keyframes shimmer{0%{transform:translateX(-100%);}100%{transform:translateX(200%);}}
+    @keyframes orb1{0%,100%{transform:translate(0,0) scale(1);}33%{transform:translate(40px,-30px) scale(1.1);}66%{transform:translate(-20px,25px) scale(0.92);}}
+    @keyframes orb2{0%,100%{transform:translate(0,0) scale(1);}33%{transform:translate(-35px,25px) scale(0.88);}66%{transform:translate(30px,-20px) scale(1.08);}}
+    @keyframes loginFadeUp{0%{opacity:0;transform:translateY(18px);}100%{opacity:1;transform:translateY(0);}}
+    @keyframes inputGlow{0%{box-shadow:0 0 0 0 rgba(251,191,36,0);}50%{box-shadow:0 0 0 4px rgba(251,191,36,0.2);}100%{box-shadow:0 0 0 0 rgba(251,191,36,0);}}
+
+    .splash-logo-anim{animation:splashLogoIn 0.8s cubic-bezier(0.16,1,0.3,1) 0.15s both;perspective:1000px;transform-style:preserve-3d;}
+    .splash-text-anim{animation:splashTextIn 0.65s cubic-bezier(0.16,1,0.3,1) 0.7s both;}
+    .splash-sub-anim{animation:splashSubIn 0.55s cubic-bezier(0.16,1,0.3,1) 1.05s both;}
+    .splash-exit{animation:splashFadeOut 0.45s cubic-bezier(0.4,0,1,1) both;}
+    .login-card-anim{animation:loginCardIn 0.55s cubic-bezier(0.16,1,0.3,1) 0.08s both;}
+    .login-field-1{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.18s both;}
+    .login-field-2{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.28s both;}
+    .login-field-btn{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.38s both;}
   `}</style>
 );
 
@@ -427,6 +452,7 @@ function SidebarProfile({currentUser,handleLogout,lang,setLang}){
 export default function App(){
   const[currentUser,setCurrentUser]=useState(null);
   const[mounted,setMounted]=useState(false);
+  const[showSplash,setShowSplash]=useState(true);
   const[lang,setLang]=useState("en");
   useEffect(()=>{
     try{const s=localStorage.getItem("bsc_session");if(s)setCurrentUser(JSON.parse(s));}catch{}
@@ -668,7 +694,16 @@ useEffect(() => {
   ]:[];
 
   if(!mounted)return null;
-  if(!currentUser)return(<><GlobalStyle/><LoginPage onLogin={handleLogin} lang={lang} setLang={setLang}/><Toast toasts={toasts} removeToast={removeToast}/></>);
+  if(!currentUser)return(
+    <>
+      <GlobalStyle/>
+      {showSplash
+        ? <SplashScreen onDone={()=>setShowSplash(false)}/>
+        : <LoginPage onLogin={handleLogin} lang={lang} setLang={setLang}/>
+      }
+      <Toast toasts={toasts} removeToast={removeToast}/>
+    </>
+  );
 
   return(
     <>
@@ -775,6 +810,134 @@ function AdminLocationBar({userLat,userLon,worksites,distanceFt,addToast,t,onWor
   );
 }
 
+
+// ─── SPLASH SCREEN ────────────────────────────────────────────────────────────
+function SplashScreen({ onDone }) {
+  const [exiting, setExiting] = useState(false);
+
+  useEffect(() => {
+    const exitTimer = setTimeout(() => setExiting(true), 2400);
+    const doneTimer = setTimeout(() => onDone(), 2850);
+    return () => { clearTimeout(exitTimer); clearTimeout(doneTimer); };
+  }, [onDone]);
+
+  return (
+    <div
+      className={exiting ? "splash-exit" : ""}
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "linear-gradient(145deg, #080d1a 0%, #0d1424 40%, #111827 100%)",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        overflow: "hidden",
+      }}
+    >
+      {/* Ambient orbs */}
+      <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+        <div style={{
+          position: "absolute", top: "18%", left: "12%", width: 380, height: 380,
+          borderRadius: "50%", background: "radial-gradient(circle, rgba(245,158,11,0.09) 0%, transparent 70%)",
+          animation: "orb1 8s ease-in-out infinite",
+        }}/>
+        <div style={{
+          position: "absolute", bottom: "15%", right: "10%", width: 320, height: 320,
+          borderRadius: "50%", background: "radial-gradient(circle, rgba(37,99,235,0.08) 0%, transparent 70%)",
+          animation: "orb2 10s ease-in-out infinite",
+        }}/>
+        {/* Grid lines */}
+        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0.04 }} preserveAspectRatio="none">
+          <defs>
+            <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+              <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="0.5"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#grid)"/>
+        </svg>
+      </div>
+
+      {/* Pulse rings behind logo */}
+      <div style={{ position: "relative", marginBottom: 36 }}>
+        <div style={{
+          position: "absolute", inset: -24, borderRadius: "50%",
+          border: "1.5px solid rgba(245,158,11,0.3)",
+          animation: "splashRingPulse 2.2s cubic-bezier(0.4,0,0.6,1) 1.0s infinite",
+        }}/>
+        <div style={{
+          position: "absolute", inset: -12, borderRadius: "50%",
+          border: "1px solid rgba(245,158,11,0.2)",
+          animation: "splashRingPulse2 2.2s cubic-bezier(0.4,0,0.6,1) 1.4s infinite",
+        }}/>
+
+        {/* Logo block */}
+        <div className="splash-logo-anim" style={{ perspective: 1000 }}>
+          <div style={{
+            width: 110, height: 110, borderRadius: 32,
+            background: "linear-gradient(145deg, #f59e0b 0%, #f8a000 50%, #e07b00 100%)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: "0 24px 64px rgba(245,158,11,0.45), 0 8px 24px rgba(245,158,11,0.25), inset 0 1px 0 rgba(255,255,255,0.25)",
+            position: "relative", overflow: "hidden",
+            animation: "loginLogoFloat 4s ease-in-out 1.2s infinite",
+          }}>
+            {/* Inner gloss */}
+            <div style={{
+              position: "absolute", top: 0, left: 0, right: 0, height: "55%",
+              background: "linear-gradient(to bottom, rgba(255,255,255,0.2), transparent)",
+              borderRadius: "32px 32px 0 0",
+            }}/>
+            {/* Shimmer sweep */}
+            <div style={{
+              position: "absolute", top: 0, bottom: 0, width: "40%",
+              background: "linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.18) 50%, transparent 100%)",
+              animation: "shimmer 3s ease-in-out 1.5s infinite",
+            }}/>
+            <svg width="58" height="58" viewBox="0 0 58 58" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ position: "relative", zIndex: 1 }}>
+              <path d="M29 8 L49 22 L49 46 L9 46 L9 22 Z" fill="rgba(0,0,0,0.85)" stroke="rgba(0,0,0,0.9)" strokeWidth="1"/>
+              <path d="M19 46 L19 30 Q19 24 25 24 L33 24 Q39 24 39 30 L39 46" fill="rgba(0,0,0,0.7)"/>
+              <path d="M9 23 L29 9 L49 23" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="29" cy="16" r="3.5" fill="rgba(255,255,255,0.35)"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      {/* Company name */}
+      <div className="splash-text-anim" style={{ textAlign: "center" }}>
+        <h1 style={{
+          fontSize: 32, fontWeight: 800, letterSpacing: "-0.03em",
+          color: "#ffffff", lineHeight: 1.1, marginBottom: 8,
+          textShadow: "0 2px 20px rgba(245,158,11,0.15)",
+        }}>
+          Bright Sky
+          <span style={{ display: "block", color: "#f59e0b" }}>Construction</span>
+        </h1>
+      </div>
+
+      <div className="splash-sub-anim" style={{ marginTop: 4 }}>
+        <p style={{
+          fontSize: 13, fontWeight: 500, letterSpacing: "0.12em", textTransform: "uppercase",
+          color: "rgba(255,255,255,0.38)",
+        }}>
+          Employee Management System
+        </p>
+      </div>
+
+      {/* Loading bar */}
+      <div style={{
+        position: "absolute", bottom: 52, left: "50%", transform: "translateX(-50%)",
+        width: 140, height: 2, borderRadius: 2,
+        background: "rgba(255,255,255,0.08)",
+        overflow: "hidden",
+      }}>
+        <div style={{
+          height: "100%", borderRadius: 2,
+          background: "linear-gradient(90deg, #f59e0b, #fbbf24)",
+          animation: "shimmer 1.8s ease-in-out 0.4s 1 forwards",
+          width: "100%",
+        }}/>
+      </div>
+    </div>
+  );
+}
+
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 function LoginPage({onLogin,lang,setLang}){
   const[userId,setUserId]=useState("");
@@ -783,68 +946,305 @@ function LoginPage({onLogin,lang,setLang}){
   const[loading,setLoading]=useState(false);
   const[error,setError]=useState("");
   const[useEmail,setUseEmail]=useState(false);
+  const[focusedField,setFocusedField]=useState(null);
   const t=T[lang]||T.en;
   const validate=()=>{
     if(!useEmail){if(!/^[A-Za-z0-9]{4}$/.test(userId)){setError("User ID must be exactly 4 characters.");return false;}if(!/^\d{4}$/.test(password)){setError("Password must be exactly 4 digits.");return false;}}
     setError("");return true;
   };
   const handle=async(e)=>{e.preventDefault();if(!validate())return;setLoading(true);await onLogin(userId,password,useEmail);setLoading(false);};
+
+  const inputStyle = (focused) => ({
+    fontSize: 16, width: "100%",
+    padding: "13px 16px",
+    background: focused ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.04)",
+    border: `1.5px solid ${focused ? "rgba(245,158,11,0.7)" : "rgba(255,255,255,0.12)"}`,
+    borderRadius: 12, color: "#ffffff",
+    outline: "none",
+    transition: "all 0.2s",
+    boxShadow: focused ? "0 0 0 4px rgba(245,158,11,0.12)" : "none",
+    caretColor: "#f59e0b",
+  });
+
+  const pinInputStyle = (focused) => ({
+    ...inputStyle(focused),
+    fontSize: 28, letterSpacing: "0.45em", textAlign: "center",
+    fontWeight: 700, paddingLeft: 14,
+  });
+
   return(
-    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",background:"var(--bg)"}}>
-      <div style={{padding:"14px 20px",display:"flex",justifyContent:"flex-end",gap:6,background:"var(--bg2)",borderBottom:"1px solid var(--border)"}}>
+    <div style={{
+      minHeight:"100vh", display:"flex", flexDirection:"column",
+      background: "linear-gradient(145deg, #080d1a 0%, #0e1526 45%, #111827 100%)",
+      position: "relative", overflow: "hidden",
+    }}>
+      {/* Background orbs */}
+      <div style={{ position:"absolute", inset:0, pointerEvents:"none", overflow:"hidden" }}>
+        <div style={{
+          position:"absolute", top:"-10%", right:"-5%", width:500, height:500,
+          borderRadius:"50%",
+          background:"radial-gradient(circle, rgba(245,158,11,0.07) 0%, transparent 65%)",
+          animation:"orb1 12s ease-in-out infinite",
+        }}/>
+        <div style={{
+          position:"absolute", bottom:"-8%", left:"-5%", width:450, height:450,
+          borderRadius:"50%",
+          background:"radial-gradient(circle, rgba(37,99,235,0.07) 0%, transparent 65%)",
+          animation:"orb2 14s ease-in-out infinite",
+        }}/>
+        <svg style={{ position:"absolute", inset:0, width:"100%", height:"100%", opacity:0.025 }} preserveAspectRatio="none">
+          <defs>
+            <pattern id="lgrid" width="60" height="60" patternUnits="userSpaceOnUse">
+              <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(255,255,255,1)" strokeWidth="0.5"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#lgrid)"/>
+        </svg>
+      </div>
+
+      {/* Top bar — language toggle */}
+      <div style={{
+        position:"relative", zIndex:10,
+        padding:"16px 20px", display:"flex", justifyContent:"flex-end", gap:6,
+      }}>
         {[["en","EN"],["es","ES"]].map(([code,label])=>(
-          <button key={code} onClick={()=>{setLang(code);localStorage.setItem("bsc_lang",code);}} style={{padding:"5px 14px",borderRadius:999,border:"1.5px solid",borderColor:lang===code?"var(--blue)":"var(--border)",background:lang===code?"var(--blue)":"transparent",color:lang===code?"white":"var(--text3)",fontSize:12,cursor:"pointer",fontFamily:"'Inter',sans-serif",fontWeight:600}}>{label}</button>
+          <button key={code} onClick={()=>{setLang(code);localStorage.setItem("bsc_lang",code);}} style={{
+            padding:"5px 16px", borderRadius:999,
+            border:`1.5px solid ${lang===code?"#f59e0b":"rgba(255,255,255,0.15)"}`,
+            background:lang===code?"#f59e0b":"rgba(255,255,255,0.06)",
+            color:lang===code?"#000":"rgba(255,255,255,0.6)",
+            fontSize:12, cursor:"pointer", fontFamily:"'Inter',sans-serif", fontWeight:700,
+            transition:"all 0.15s",
+          }}>{label}</button>
         ))}
       </div>
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"24px 16px"}}>
-        <div style={{width:"100%",maxWidth:400}}>
-          <div style={{textAlign:"center",marginBottom:32}} className="fade-up">
-            <div style={{width:64,height:64,borderRadius:18,background:"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",boxShadow:"0 8px 24px rgba(37,99,235,0.3)"}}><Icon name="hard_hat" size={32} color="white"/></div>
-            <h1 style={{fontSize:24,fontWeight:800,color:"var(--text)",letterSpacing:"-0.02em",marginBottom:4}}>Bright Sky Construction</h1>
-            <p style={{color:"var(--text3)",fontSize:14,fontWeight:400}}>Employee Time Tracking System</p>
+
+      {/* Main content */}
+      <div style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", padding:"16px 16px 40px", position:"relative", zIndex:5 }}>
+        <div style={{ width:"100%", maxWidth:420 }}>
+
+          {/* Brand header */}
+          <div style={{ textAlign:"center", marginBottom:32 }}>
+            <div style={{
+              width:80, height:80, borderRadius:24, margin:"0 auto 20px",
+              background:"linear-gradient(145deg, #f59e0b 0%, #f8a000 50%, #e07b00 100%)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              boxShadow:"0 16px 48px rgba(245,158,11,0.4), 0 6px 16px rgba(245,158,11,0.2), inset 0 1px 0 rgba(255,255,255,0.2)",
+              position:"relative", overflow:"hidden",
+              animation:"loginLogoFloat 4s ease-in-out infinite",
+            }}>
+              <div style={{
+                position:"absolute", top:0, left:0, right:0, height:"50%",
+                background:"linear-gradient(to bottom, rgba(255,255,255,0.2), transparent)",
+                borderRadius:"24px 24px 0 0",
+              }}/>
+              <Icon name="hard_hat" size={38} color="rgba(0,0,0,0.85)"/>
+            </div>
+            <h1 style={{
+              fontSize:26, fontWeight:800, color:"#ffffff",
+              letterSpacing:"-0.025em", lineHeight:1.15, marginBottom:6,
+            }}>
+              Bright Sky Construction
+            </h1>
+            <p style={{ color:"rgba(255,255,255,0.4)", fontSize:13, fontWeight:400, letterSpacing:"0.04em" }}>
+              Employee Management System
+            </p>
           </div>
-          <Card style={{padding:28,boxShadow:"var(--shadow-md)"}} className="fade-up">
-            <div style={{marginBottom:24}}>
-              <h2 style={{fontSize:18,fontWeight:700,color:"var(--text)",letterSpacing:"-0.01em",marginBottom:4}}>{useEmail?"Admin Sign In":"Employee Sign In"}</h2>
-              <p style={{color:"var(--text3)",fontSize:13.5,fontWeight:400}}>{useEmail?"Enter your email and password":`Enter your 4-character ${t.userId}`}</p>
+
+          {/* Login card */}
+          <div className="login-card-anim" style={{
+            background:"rgba(255,255,255,0.05)",
+            border:"1px solid rgba(255,255,255,0.1)",
+            borderRadius:20,
+            padding:"28px 28px 24px",
+            backdropFilter:"blur(24px)",
+            WebkitBackdropFilter:"blur(24px)",
+            boxShadow:"0 24px 64px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08)",
+          }}>
+            {/* Card header */}
+            <div style={{ marginBottom:22 }}>
+              <h2 style={{ fontSize:17, fontWeight:700, color:"#fff", letterSpacing:"-0.015em", marginBottom:4 }}>
+                {useEmail ? "Admin Sign In" : "Employee Sign In"}
+              </h2>
+              <p style={{ color:"rgba(255,255,255,0.38)", fontSize:13 }}>
+                {useEmail ? "Enter your email and password" : `Enter your 4-character ${t.userId}`}
+              </p>
             </div>
-            <form onSubmit={handle} style={{display:"flex",flexDirection:"column",gap:18}}>
-  <div>
-    <label style={{fontSize:12,color:"var(--text2)",fontWeight:600,display:"block",marginBottom:7}}>{useEmail?"Email Address":t.userId}</label>
-    {useEmail?(
-      <input type="email" value={userId} onChange={e=>{setUserId(e.target.value);setError("");}} placeholder="your@email.com" autoComplete="off" style={{fontSize:16,width:"100%",padding:"12px 14px"}} required/>
-    ):(
-      <>
-        <input type="text" value={userId} onChange={e=>{const v=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,4);setUserId(v);setError("");}} placeholder="· · · ·" maxLength={4} autoComplete="off" inputMode="text" style={{fontSize:28,letterSpacing:"0.4em",textAlign:"center",width:"100%",padding:"12px 14px",fontWeight:700}} required/>
-        <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:10,marginTop:10,height:18}}>
-          {[0,1,2,3].map(i=><div key={i} className={`pin-dot${userId.length>i?"":" empty"}`} style={{transform:userId.length>i?"scale(1.1)":"scale(1)"}}/>)}
-        </div>
-      </>
-    )}
-  </div>
-  <div>
-    <label style={{fontSize:12,color:"var(--text2)",fontWeight:600,display:"block",marginBottom:7}}>{t.password}</label>
-    <div style={{position:"relative"}}>
-      <input type={showPass?"text":"password"} value={password} onChange={e=>{const v=useEmail?e.target.value:e.target.value.replace(/\D/g,"").slice(0,4);setPassword(v);setError("");}} placeholder={useEmail?"••••••••":"· · · ·"} autoComplete="off" inputMode={useEmail?"text":"numeric"} maxLength={useEmail?undefined:4} style={{fontSize:useEmail?16:28,letterSpacing:useEmail?"normal":"0.4em",textAlign:useEmail?"left":"center",width:"100%",padding:"12px 14px",paddingRight:52,paddingLeft:useEmail?14:52,fontWeight:useEmail?400:700}} required/>
-      <button type="button" onClick={()=>setShowPass(s=>!s)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text3)",cursor:"pointer",padding:6,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"var(--radius-sm)",minWidth:34,minHeight:34}}><Icon name={showPass?"eyeOff":"eye"} size={16} color="var(--text3)"/></button>
-    </div>
-    {!useEmail&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:10,marginTop:10,height:18}}>{[0,1,2,3].map(i=><div key={i} className={`pin-dot${password.length>i?"":" empty"}`} style={{transform:password.length>i?"scale(1.1)":"scale(1)"}}/>)}</div>}
-  </div>
-  {error&&<div className="shake" style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",borderRadius:"var(--radius)",background:"var(--red-light)",border:"1.5px solid rgba(220,38,38,0.2)"}}><Icon name="alert" size={14} color="var(--red)"/><span style={{fontSize:13,color:"var(--red)",fontWeight:450}}>{error}</span></div>}
-  <Btn loading={loading} style={{width:"100%",marginTop:2}} size="lg"><Icon name="login" size={16} color="white"/>{t.signIn}</Btn>
-</form>
-            <div style={{marginTop:16,textAlign:"center",paddingTop:14,borderTop:"1px solid var(--border)"}}>
-              <button onClick={()=>{setUseEmail(e=>!e);setUserId("");setPassword("");setError("");}} style={{background:"none",border:"none",color:"var(--blue)",fontSize:13,cursor:"pointer",fontWeight:500,fontFamily:"'Inter',sans-serif"}}>{useEmail?t.useUserId:t.adminLogin}</button>
+
+            <form onSubmit={handle} style={{ display:"flex", flexDirection:"column", gap:16 }}>
+              {/* User ID / Email */}
+              <div className="login-field-1">
+                <label style={{ fontSize:11.5, color:"rgba(255,255,255,0.5)", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase", display:"block", marginBottom:8 }}>
+                  {useEmail ? "Email Address" : t.userId}
+                </label>
+                {useEmail ? (
+                  <input
+                    type="email" value={userId}
+                    onChange={e=>{setUserId(e.target.value);setError("");}}
+                    onFocus={()=>setFocusedField("id")} onBlur={()=>setFocusedField(null)}
+                    placeholder="your@email.com" autoComplete="off"
+                    style={inputStyle(focusedField==="id")} required
+                  />
+                ) : (
+                  <>
+                    <input
+                      type="text" value={userId}
+                      onChange={e=>{const v=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,4);setUserId(v);setError("");}}
+                      onFocus={()=>setFocusedField("id")} onBlur={()=>setFocusedField(null)}
+                      placeholder="· · · ·" maxLength={4} autoComplete="off" inputMode="text"
+                      style={pinInputStyle(focusedField==="id")} required
+                    />
+                    <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:10 }}>
+                      {[0,1,2,3].map(i=>(
+                        <div key={i} style={{
+                          width:10, height:10, borderRadius:"50%",
+                          background: userId.length>i ? "#f59e0b" : "transparent",
+                          border: userId.length>i ? "none" : "1.5px solid rgba(255,255,255,0.2)",
+                          boxShadow: userId.length>i ? "0 0 8px rgba(245,158,11,0.6)" : "none",
+                          transition:"all 0.2s",
+                        }}/>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Password */}
+              <div className="login-field-2">
+                <label style={{ fontSize:11.5, color:"rgba(255,255,255,0.5)", fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase", display:"block", marginBottom:8 }}>
+                  {t.password}
+                </label>
+                <div style={{ position:"relative" }}>
+                  <input
+                    type={showPass?"text":"password"} value={password}
+                    onChange={e=>{const v=useEmail?e.target.value:e.target.value.replace(/\D/g,"").slice(0,4);setPassword(v);setError("");}}
+                    onFocus={()=>setFocusedField("pw")} onBlur={()=>setFocusedField(null)}
+                    placeholder={useEmail?"••••••••":"· · · ·"} autoComplete="off"
+                    inputMode={useEmail?"text":"numeric"} maxLength={useEmail?undefined:4}
+                    style={{
+                      ...pinInputStyle(focusedField==="pw"),
+                      fontSize:useEmail?16:28,
+                      letterSpacing:useEmail?"normal":"0.45em",
+                      textAlign:useEmail?"left":"center",
+                      paddingRight:52,
+                      paddingLeft:useEmail?16:52,
+                      fontWeight:useEmail?400:700,
+                    }} required
+                  />
+                  <button
+                    type="button" onClick={()=>setShowPass(s=>!s)}
+                    style={{
+                      position:"absolute", right:12, top:"50%", transform:"translateY(-50%)",
+                      background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.12)",
+                      color:"rgba(255,255,255,0.5)", cursor:"pointer", padding:6,
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      borderRadius:8, minWidth:34, minHeight:34,
+                      transition:"all 0.15s",
+                    }}
+                  >
+                    <Icon name={showPass?"eyeOff":"eye"} size={16} color="rgba(255,255,255,0.5)"/>
+                  </button>
+                </div>
+                {!useEmail && (
+                  <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:10 }}>
+                    {[0,1,2,3].map(i=>(
+                      <div key={i} style={{
+                        width:10, height:10, borderRadius:"50%",
+                        background: password.length>i ? "#f59e0b" : "transparent",
+                        border: password.length>i ? "none" : "1.5px solid rgba(255,255,255,0.2)",
+                        boxShadow: password.length>i ? "0 0 8px rgba(245,158,11,0.6)" : "none",
+                        transition:"all 0.2s",
+                      }}/>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Error */}
+              {error && (
+                <div className="shake" style={{
+                  display:"flex", alignItems:"center", gap:8,
+                  padding:"10px 14px", borderRadius:10,
+                  background:"rgba(220,38,38,0.15)", border:"1px solid rgba(220,38,38,0.3)",
+                }}>
+                  <Icon name="alert" size={14} color="#f87171"/>
+                  <span style={{ fontSize:13, color:"#f87171", fontWeight:450 }}>{error}</span>
+                </div>
+              )}
+
+              {/* Sign In button */}
+              <div className="login-field-btn" style={{ marginTop:4 }}>
+                <button
+                  type="submit" disabled={loading}
+                  style={{
+                    width:"100%", padding:"14px 20px",
+                    borderRadius:12, border:"none", cursor:loading?"not-allowed":"pointer",
+                    background: loading
+                      ? "rgba(245,158,11,0.4)"
+                      : "linear-gradient(135deg, #f59e0b 0%, #f8a000 50%, #d97706 100%)",
+                    color:"#000", fontSize:15, fontWeight:800,
+                    letterSpacing:"0.01em",
+                    boxShadow: loading ? "none" : "0 8px 24px rgba(245,158,11,0.4), 0 3px 8px rgba(245,158,11,0.2)",
+                    display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                    transition:"all 0.2s", opacity: loading ? 0.7 : 1,
+                    transform: loading ? "scale(0.99)" : "scale(1)",
+                    fontFamily:"'Inter',sans-serif",
+                  }}
+                >
+                  {loading ? (
+                    <>
+                      <div style={{ width:16, height:16, borderRadius:"50%", border:"2.5px solid rgba(0,0,0,0.3)", borderTopColor:"#000", animation:"spin 0.7s linear infinite" }}/>
+                      Signing in…
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="login" size={16} color="rgba(0,0,0,0.8)"/>
+                      {t.signIn}
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+
+            {/* Toggle admin/employee */}
+            <div style={{ marginTop:20, paddingTop:18, borderTop:"1px solid rgba(255,255,255,0.08)", textAlign:"center" }}>
+              <button
+                onClick={()=>{setUseEmail(e=>!e);setUserId("");setPassword("");setError("");}}
+                style={{
+                  background:"none", border:"none", color:"rgba(245,158,11,0.85)",
+                  fontSize:13, cursor:"pointer", fontWeight:500,
+                  fontFamily:"'Inter',sans-serif",
+                  transition:"color 0.15s",
+                }}
+              >
+                {useEmail ? t.useUserId : t.adminLogin}
+              </button>
             </div>
-          </Card>
-          <div style={{marginTop:12,padding:"12px 16px",borderRadius:"var(--radius)",background:"var(--blue-light)",border:"1.5px solid var(--blue-mid)",display:"flex",gap:10,alignItems:"flex-start"}}>
-            <Icon name="alert" size={14} color="var(--blue)" style={{marginTop:1,flexShrink:0}}/>
-            <div style={{fontSize:12.5,color:"var(--blue)",lineHeight:1.5,fontWeight:400}}>Use your <strong>4-character Employee ID</strong> and <strong>4-digit password</strong>. Contact your admin if you need help.</div>
+          </div>
+
+          {/* Helper text */}
+          <div style={{
+            marginTop:16, padding:"12px 16px", borderRadius:12,
+            background:"rgba(37,99,235,0.12)", border:"1px solid rgba(37,99,235,0.2)",
+            display:"flex", gap:10, alignItems:"flex-start",
+          }}>
+            <Icon name="alert" size={13} color="rgba(147,197,253,0.9)" style={{ marginTop:1, flexShrink:0 }}/>
+            <div style={{ fontSize:12.5, color:"rgba(147,197,253,0.75)", lineHeight:1.55 }}>
+              Use your <strong style={{ color:"rgba(147,197,253,1)" }}>4-character Employee ID</strong> and <strong style={{ color:"rgba(147,197,253,1)" }}>4-digit password</strong>. Contact your admin if you need help.
+            </div>
           </div>
         </div>
       </div>
-      <div style={{padding:"14px",textAlign:"center",borderTop:"1px solid var(--border)",background:"var(--bg2)"}}>
-        <p style={{fontSize:12,color:"var(--text4)"}}>Bright Sky Construction · Employee Time Tracking · Secure Login</p>
+
+      {/* Footer */}
+      <div style={{
+        position:"relative", zIndex:5,
+        padding:"14px", textAlign:"center",
+        borderTop:"1px solid rgba(255,255,255,0.06)",
+      }}>
+        <p style={{ fontSize:11.5, color:"rgba(255,255,255,0.2)", letterSpacing:"0.05em" }}>
+          Bright Sky Construction · Secure Login · v2.0
+        </p>
       </div>
     </div>
   );
