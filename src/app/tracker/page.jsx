@@ -664,7 +664,7 @@ useEffect(() => {
   const navItems=currentUser?[
     {id:"dashboard",label:isAdmin?t.dashboard:`My ${t.dashboard}`,icon:"home"},
     {id:"fuel",label:"Fuel Entry",icon:"fuel"},
-    ...(isAdmin?[{id:"employees",label:t.employees,icon:"users"},{id:"worksites",label:t.worksites,icon:"map"},{ id: "tasks", label: t.tasks, icon: "briefcase" },{id:"attendance",label:t.attendance,icon:"calendar"},{id:"reports",label:t.reports,icon:"bar"},{ id: "project_outings", label: t.projectOutings || "Project Outings", icon: "briefcase" },{id:"settings",label:t.settings,icon:"settings"},{id:"export",label:t.export,icon:"download"},{id:"audit",label:t.auditLogs,icon:"log"},{ id: "route", label: t.route || "Route", icon: "navigation" }]:[{id:"my_attendance",label:t.myAttendance,icon:"calendar"},{ id: "task_history", label: t.taskHistory || "Task History", icon: "log" },{ id: "route", label: t.route || "Route", icon: "navigation" },{id:"my_profile",label:t.myProfile,icon:"user"}]),
+    ...(isAdmin?[{id:"employees",label:t.employees,icon:"users"},{id:"worksites",label:t.worksites,icon:"map"},{ id: "tasks", label: t.tasks, icon: "briefcase" },{id:"attendance",label:t.attendance,icon:"calendar"},{id:"reports",label:t.reports,icon:"bar"},{ id: "project_outings", label: t.projectOutings || "Project Outings", icon: "briefcase" },{id:"settings",label:t.settings,icon:"settings"},{id:"export",label:t.export,icon:"download"},{id:"audit",label:t.auditLogs,icon:"log"}]:[{id:"my_attendance",label:t.myAttendance,icon:"calendar"},{id:"my_profile",label:t.myProfile,icon:"user"}]),
   ]:[];
 
   if(!mounted)return null;
@@ -716,12 +716,11 @@ useEffect(() => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} onViewTaskHistory={() => setPage("task_history")} onNavigateToRoute={() => setPage("route")} setAppTitle={setAppTitle} worksites={worksites} onJobSiteSelect={setAppSelectedSiteId}/>)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} setAppTitle={setAppTitle} worksites={worksites} onJobSiteSelect={setAppSelectedSiteId}/>)}
             {page==="fuel"&&<FuelEntryPage currentUser={currentUser} t={t} addToast={addToast} assignedJobSites={employeeJobSites} allJobSites={worksites} onMount={()=>setAppTitle("BSC Fuel Entry")} onUnmount={()=>setAppTitle("BSC Tracker")}/>}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
-            {page === "task_history" && <TaskHistoryPage user={currentUser} t={t} />}
-            {page === "route" && (isAdmin ? <RouteHistoryPage adminData={adminData} t={t} /> : <RoutePage user={currentUser} t={t} />)}
+            {/* task_history and route pages removed — tasks now live in the Tasks workflow tab */}
             {page==="employees"&&isAdmin&&<EmployeeList adminData={adminData} refreshAdminData={refreshAdminData} addToast={addToast} worksites={worksites} t={t}/>}
             {page==="worksites"&&isAdmin&&<WorksitesPage worksites={worksites} refreshWorksites={refreshWorksites} adminData={adminData} addToast={addToast} t={t}/>}
             {page === "tasks" && isAdmin && <TasksPage adminData={adminData} addToast={addToast} t={t} />}
@@ -1225,13 +1224,7 @@ function EmployeeDashboard({
   const [showCamera, setShowCamera] = useState(false);
   const [clockInLoading, setClockInLoading] = useState(false);
   const [directClockInLoading, setDirectClockInLoading] = useState(false);
-  const [employeeTasks, setEmployeeTasks] = useState([]);
-  const [tasksPage, setTasksPage] = useState(1);
-  const [tasksTotal, setTasksTotal] = useState(0);
-  const [tasksLoading, setTasksLoading] = useState(false);
-  const [expandedTaskId, setExpandedTaskId] = useState(null);
-  const [loadingTaskId, setLoadingTaskId] = useState(null);
-  const tasksPerPage = 5;
+  // Task state moved to EmployeeTasksTab component
   const [routeStatus, setRouteStatus] = useState("not_started");
   const [routeLoading, setRouteLoading] = useState(false);
   const [selectedTab, setSelectedTab] = useState("timecard");
@@ -1274,26 +1267,8 @@ function EmployeeDashboard({
     return () => clearInterval(interval);
   }, []);
 
-  const fetchEmployeeTasks = useCallback(async (page = 1) => {
-    setTasksLoading(true);
-    try {
-      const res = await authFetch(`/api/tasks/employee/${user.id}?page=${page}&limit=${tasksPerPage}`);
-      if (res.ok) {
-        const data = await res.json();
-        setEmployeeTasks(data.tasks);
-        setTasksTotal(data.total);
-        setTasksPage(data.page);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setTasksLoading(false);
-    }
-  }, [user.id]);
+  // fetchEmployeeTasks moved to EmployeeTasksTab
 
-  useEffect(() => {
-    fetchEmployeeTasks(1);
-  }, [fetchEmployeeTasks]);
 
   const fetchRouteStatus = useCallback(async () => {
     setRouteLoading(true);
@@ -1776,128 +1751,6 @@ function EmployeeDashboard({
   </div>
 </Card>
 
-      {/* My Tasks Section (unchanged) */}
-      <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>My Tasks</div>
-          {tasksLoading && <span className="spin" style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%" }} />}
-        </div>
-        {employeeTasks.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "24px 0", color: "var(--text4)", fontSize: 13 }}>No tasks assigned.</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {employeeTasks.map((task) => {
-              const isExpanded = expandedTaskId === task.id;
-              const isLoading = loadingTaskId === task.id;
-
-              const handleComplete = async () => {
-                if (isLoading) return;
-                setLoadingTaskId(task.id);
-                try {
-                  const res = await authFetch(`/api/tasks/${task.id}/status`, {
-                    method: "PUT",
-                    body: JSON.stringify({ status: "completed" }),
-                  });
-                  if (res.ok) {
-                    addToast("Task marked as completed", "success");
-                    fetchEmployeeTasks(tasksPage);
-                  } else {
-                    const errData = await res.json();
-                    console.error("Task update failed:", errData);
-                    addToast(errData.error || "Failed to update", "error");
-                  }
-                } catch (err) {
-                  console.error("Network error:", err);
-                  addToast("Network error", "error");
-                } finally {
-                  setLoadingTaskId(null);
-                }
-              };
-
-              const handleIncomplete = async () => {
-                const reason = prompt("Why is this task incomplete?");
-                if (!reason) return;
-                if (isLoading) return;
-                setLoadingTaskId(task.id);
-                try {
-                  const res = await authFetch(`/api/tasks/${task.id}/status`, {
-                    method: "PUT",
-                    body: JSON.stringify({ status: "incomplete", incompleteReason: reason }),
-                  });
-                  if (res.ok) {
-                    addToast("Task marked as incomplete", "success");
-                    fetchEmployeeTasks(tasksPage);
-                  } else {
-                    addToast("Failed to update", "error");
-                  }
-                } catch (err) {
-                  addToast("Network error", "error");
-                } finally {
-                  setLoadingTaskId(null);
-                }
-              };
-
-              return (
-                <div
-                  key={task.id}
-                  style={{
-                    padding: "12px",
-                    background: "var(--bg3)",
-                    borderRadius: "var(--radius)",
-                    border: `1px solid ${isExpanded ? "var(--blue)" : "var(--border)"}`,
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                  }}
-                  onClick={() => setExpandedTaskId(isExpanded ? null : task.id)}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{task.title}</div>
-                      {task.description && <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>{task.description}</div>}
-                      {task.url && (
-                        <div style={{ marginTop: 6 }}>
-                          {task.task_type === "youtube" ? (
-                            <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)", display: "flex", alignItems: "center", gap: 4 }} onClick={(e) => e.stopPropagation()}>
-                              <Icon name="play" size={12} /> Watch on YouTube
-                            </a>
-                          ) : (
-                            <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "var(--blue)" }} onClick={(e) => e.stopPropagation()}>
-                              {task.task_type === "document" ? "📄 View Document" : "🔗 Open Link"}
-                            </a>
-                          )}
-                        </div>
-                      )}
-                      {task.due_date && <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 4 }}>Due: {fmtDate(task.due_date)}</div>}
-                    </div>
-                    {task.status === "completed" && <span style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--green)" }}>✓ Completed</span>}
-                    {task.status === "incomplete" && <span style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "4px 10px", fontSize: 11, fontWeight: 600, color: "var(--red)" }}>✗ Incomplete</span>}
-                    {task.status === "pending" && <Icon name={isExpanded ? "chevronUp" : "chevronDown"} size={18} color="var(--text3)" />}
-                  </div>
-
-                  {isExpanded && task.status === "pending" && (
-                    <div style={{ marginTop: 12, display: "flex", gap: 8, borderTop: "1px solid var(--border)", paddingTop: 12 }} onClick={(e) => e.stopPropagation()}>
-                      <button onClick={handleComplete} disabled={isLoading} style={{ background: "var(--green-light)", border: "1px solid rgba(5,150,105,0.2)", borderRadius: "var(--radius-sm)", padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "var(--green)", cursor: "pointer", flex: 1, opacity: isLoading ? 0.6 : 1 }}>{isLoading ? "Updating..." : "✓ Completed"}</button>
-                      <button onClick={handleIncomplete} disabled={isLoading} style={{ background: "var(--red-light)", border: "1px solid rgba(220,38,38,0.2)", borderRadius: "var(--radius-sm)", padding: "6px 12px", fontSize: 12, fontWeight: 600, color: "var(--red)", cursor: "pointer", flex: 1, opacity: isLoading ? 0.6 : 1 }}>✗ Incomplete</button>
-                    </div>
-                  )}
-
-                  {task.status === "incomplete" && task.incomplete_reason && (
-                    <div style={{ marginTop: 12, fontSize: 11, color: "var(--red)", background: "var(--red-light)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>Reason: {task.incomplete_reason}</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {tasksTotal > tasksPerPage && (
-          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
-            <button onClick={() => fetchEmployeeTasks(tasksPage - 1)} disabled={tasksPage === 1} style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage === 1 ? "not-allowed" : "pointer", opacity: tasksPage === 1 ? 0.5 : 1 }}>Previous</button>
-            <span style={{ fontSize: 13, padding: "6px 12px" }}>Page {tasksPage} of {Math.ceil(tasksTotal / tasksPerPage)}</span>
-            <button onClick={() => fetchEmployeeTasks(tasksPage + 1)} disabled={tasksPage * tasksPerPage >= tasksTotal} style={{ padding: "6px 12px", borderRadius: "var(--radius-sm)", background: "var(--bg3)", border: "1px solid var(--border)", cursor: tasksPage * tasksPerPage >= tasksTotal ? "not-allowed" : "pointer", opacity: tasksPage * tasksPerPage >= tasksTotal ? 0.5 : 1 }}>Next</button>
-          </div>
-        )}
-      </Card>
-
       {/* Today's Work Breaks (unchanged) */}
       <Card>
         <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Today's Work Breaks</div>
@@ -2202,8 +2055,267 @@ function EmployeeDashboard({
         <WorkflowEquipmentTab isAdmin={false} addToast={addToast}/>
       )}
       {selectedTab === "tasks" && (
-        <RouteTabContent user={user} t={t} addToast={addToast}/>
+        <EmployeeTasksTab user={user} t={t} addToast={addToast}/>
       )}
+    </div>
+  );
+}
+
+// ─── EMPLOYEE TASKS TAB ──────────────────────────────────────────────────────
+// Shows My Tasks (active/pending) + Task History (all, with status filter).
+// Completely self-contained — owns its own API fetching and state.
+function EmployeeTasksTab({ user, t, addToast }) {
+  const HIST_PER_PAGE = 10;
+
+  // ── Active (pending) tasks ────────────────────────────────────────────────
+  const [activeTasks,    setActiveTasks]    = useState([]);
+  const [activeLoading,  setActiveLoading]  = useState(true);
+  const [expandedId,     setExpandedId]     = useState(null);
+  const [loadingId,      setLoadingId]      = useState(null);
+
+  // ── History tasks ─────────────────────────────────────────────────────────
+  const [histTasks,   setHistTasks]   = useState([]);
+  const [histLoading, setHistLoading] = useState(true);
+  const [histPage,    setHistPage]    = useState(1);
+  const [histTotal,   setHistTotal]   = useState(0);
+  const [histFilter,  setHistFilter]  = useState("all");
+
+  const loadActive = useCallback(async () => {
+    setActiveLoading(true);
+    try {
+      const res = await authFetch(`/api/tasks/employee/${user.id}?page=1&limit=50&status=pending`);
+      if (res.ok) { const d = await res.json(); setActiveTasks(d.tasks || []); }
+    } catch(e) {}
+    setActiveLoading(false);
+  }, [user.id]);
+
+  const loadHistory = useCallback(async () => {
+    setHistLoading(true);
+    try {
+      const statusQ = histFilter !== "all" ? `&status=${histFilter}` : "";
+      const res = await authFetch(`/api/tasks/employee/${user.id}?page=${histPage}&limit=${HIST_PER_PAGE}${statusQ}`);
+      if (res.ok) { const d = await res.json(); setHistTasks(d.tasks || []); setHistTotal(d.total || 0); }
+    } catch(e) {}
+    setHistLoading(false);
+  }, [user.id, histPage, histFilter]);
+
+  useEffect(() => { loadActive(); }, [loadActive]);
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
+  const handleComplete = async (taskId) => {
+    setLoadingId(taskId);
+    try {
+      const res = await authFetch(`/api/tasks/${taskId}/status`, {
+        method: "PUT", body: JSON.stringify({ status: "completed" }),
+      });
+      if (res.ok) { addToast("Task marked as completed", "success"); loadActive(); loadHistory(); }
+      else { const d = await safeJson(res); addToast(d?.error || "Failed to update", "error"); }
+    } catch(e) { addToast("Network error", "error"); }
+    setLoadingId(null);
+  };
+
+  const handleIncomplete = async (taskId) => {
+    const reason = prompt("Why is this task incomplete?");
+    if (!reason) return;
+    setLoadingId(taskId);
+    try {
+      const res = await authFetch(`/api/tasks/${taskId}/status`, {
+        method: "PUT", body: JSON.stringify({ status: "incomplete", incompleteReason: reason }),
+      });
+      if (res.ok) { addToast("Task marked as incomplete", "success"); loadActive(); loadHistory(); }
+      else { addToast("Failed to update", "error"); }
+    } catch(e) { addToast("Network error", "error"); }
+    setLoadingId(null);
+  };
+
+  const histPages = Math.ceil(histTotal / HIST_PER_PAGE);
+  const statusColor = s => s === "completed" ? "var(--green)" : s === "incomplete" ? "var(--red)" : "var(--amber)";
+  const statusBg    = s => s === "completed" ? "var(--green-light)" : s === "incomplete" ? "var(--red-light)" : "var(--amber-light)";
+  const statusBdr   = s => s === "completed" ? "rgba(5,150,105,0.2)" : s === "incomplete" ? "rgba(220,38,38,0.2)" : "rgba(217,119,6,0.2)";
+  const statusLabel = s => s === "completed" ? "✓ Completed" : s === "incomplete" ? "✗ Incomplete" : "● Pending";
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+
+      {/* ── Section 1: My Tasks (Active) ── */}
+      <div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, gap:8 }}>
+          <div>
+            <div style={{ fontSize:16, fontWeight:800, color:"var(--text)", letterSpacing:"-0.01em" }}>My Tasks</div>
+            <div style={{ fontSize:12.5, color:"var(--text3)", marginTop:2 }}>Active &amp; pending assignments</div>
+          </div>
+          <Btn onClick={loadActive} variant="secondary" size="sm" loading={activeLoading}>
+            <Icon name="refresh" size={13}/> Refresh
+          </Btn>
+        </div>
+
+        {activeLoading ? (
+          <div style={{ textAlign:"center", padding:32, color:"var(--text4)", fontSize:14 }}>Loading…</div>
+        ) : activeTasks.length === 0 ? (
+          <Card>
+            <div style={{ textAlign:"center", padding:"28px 0" }}>
+              <div style={{ fontSize:28, marginBottom:8 }}>✅</div>
+              <div style={{ fontSize:14, fontWeight:600, color:"var(--text2)" }}>All caught up!</div>
+              <div style={{ fontSize:12.5, color:"var(--text4)", marginTop:4 }}>No active tasks assigned right now.</div>
+            </div>
+          </Card>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {activeTasks.map(task => {
+              const expanded = expandedId === task.id;
+              const busy     = loadingId === task.id;
+              const overdue  = task.due_date && new Date(task.due_date) < new Date();
+              return (
+                <div
+                  key={task.id}
+                  style={{ background:"var(--card)", border:`1.5px solid ${expanded ? "var(--blue-mid)" : "var(--border)"}`, borderRadius:"var(--radius-lg)", padding:"14px 16px", cursor:"pointer", transition:"all 0.15s", boxShadow: expanded ? "var(--shadow-sm)" : "none" }}
+                  onClick={() => setExpandedId(expanded ? null : task.id)}
+                >
+                  {/* Header row */}
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:10 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:4 }}>
+                        <span style={{ fontSize:14, fontWeight:700, color:"var(--text)", lineHeight:1.3 }}>{task.title}</span>
+                        {overdue && (
+                          <span style={{ background:"var(--red-light)", color:"var(--red)", border:"1px solid rgba(220,38,38,0.2)", borderRadius:999, padding:"1px 7px", fontSize:10.5, fontWeight:700 }}>OVERDUE</span>
+                        )}
+                      </div>
+                      {task.description && (
+                        <div style={{ fontSize:12.5, color:"var(--text3)", lineHeight:1.45, marginBottom:6 }}>{task.description}</div>
+                      )}
+                      <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+                        {task.due_date && (
+                          <span style={{ fontSize:11.5, color: overdue ? "var(--red)" : "var(--text3)", display:"flex", alignItems:"center", gap:4 }}>
+                            <Icon name="calendar" size={11} color={overdue ? "var(--red)" : "var(--text3)"}/>
+                            Due {fmtDate(task.due_date)}
+                          </span>
+                        )}
+                        {task.url && (
+                          <a href={task.url} target="_blank" rel="noopener noreferrer"
+                            style={{ fontSize:11.5, color:"var(--blue)", display:"inline-flex", alignItems:"center", gap:4, textDecoration:"none" }}
+                            onClick={e => e.stopPropagation()}>
+                            {task.task_type === "youtube" ? <><Icon name="play" size={11}/> YouTube</> :
+                             task.task_type === "document" ? "📄 Doc" : "🔗 Link"}
+                          </a>
+                        )}
+                        <span style={{ background:"var(--amber-light)", color:"var(--amber)", border:"1px solid rgba(217,119,6,0.2)", borderRadius:999, padding:"2px 8px", fontSize:11, fontWeight:600 }}>Pending</span>
+                      </div>
+                    </div>
+                    <div style={{ flexShrink:0 }}>
+                      <Icon name={expanded ? "chevronUp" : "chevronDown"} size={18} color="var(--text4)"/>
+                    </div>
+                  </div>
+
+                  {/* Expanded action buttons */}
+                  {expanded && (
+                    <div style={{ marginTop:14, paddingTop:12, borderTop:"1px solid var(--border)", display:"flex", gap:8 }}
+                      onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={() => handleComplete(task.id)}
+                        disabled={busy}
+                        style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"9px 12px", background:"var(--green-light)", border:"1.5px solid rgba(5,150,105,0.25)", borderRadius:"var(--radius)", fontSize:13, fontWeight:700, color:"var(--green)", cursor:"pointer", opacity:busy?0.6:1, transition:"opacity 0.15s" }}>
+                        {busy ? "Updating…" : <><Icon name="check" size={14} color="var(--green)"/> Mark Complete</>}
+                      </button>
+                      <button
+                        onClick={() => handleIncomplete(task.id)}
+                        disabled={busy}
+                        style={{ flex:1, display:"flex", alignItems:"center", justifyContent:"center", gap:6, padding:"9px 12px", background:"var(--red-light)", border:"1.5px solid rgba(220,38,38,0.25)", borderRadius:"var(--radius)", fontSize:13, fontWeight:700, color:"var(--red)", cursor:"pointer", opacity:busy?0.6:1, transition:"opacity 0.15s" }}>
+                        <Icon name="x" size={14} color="var(--red)"/> Incomplete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Section 2: Task History ── */}
+      <div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, gap:8 }}>
+          <div>
+            <div style={{ fontSize:16, fontWeight:800, color:"var(--text)", letterSpacing:"-0.01em" }}>Task History</div>
+            <div style={{ fontSize:12.5, color:"var(--text3)", marginTop:2 }}>{histTotal} total task{histTotal !== 1 ? "s" : ""}</div>
+          </div>
+          <Btn onClick={loadHistory} variant="secondary" size="sm" loading={histLoading}>
+            <Icon name="refresh" size={13}/>
+          </Btn>
+        </div>
+
+        {/* Filter chips */}
+        <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" }}>
+          {["all","pending","completed","incomplete"].map(f => (
+            <button key={f}
+              onClick={() => { setHistFilter(f); setHistPage(1); }}
+              style={{ padding:"5px 13px", borderRadius:999, fontSize:12.5, fontWeight: histFilter===f ? 700 : 500,
+                background: histFilter===f ? "var(--blue)" : "var(--bg3)",
+                color: histFilter===f ? "white" : "var(--text3)",
+                border: histFilter===f ? "1.5px solid transparent" : "1.5px solid var(--border)",
+                cursor:"pointer", transition:"all 0.15s" }}>
+              {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+            </button>
+          ))}
+        </div>
+
+        {histLoading ? (
+          <div style={{ textAlign:"center", padding:32, color:"var(--text4)", fontSize:14 }}>Loading…</div>
+        ) : histTasks.length === 0 ? (
+          <Card>
+            <div style={{ textAlign:"center", padding:"24px 0", color:"var(--text4)", fontSize:13 }}>No tasks found.</div>
+          </Card>
+        ) : (
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {histTasks.map(task => (
+              <div key={task.id} style={{ background:"var(--card)", border:"1px solid var(--border)", borderRadius:"var(--radius-lg)", padding:"12px 16px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:12 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13.5, fontWeight:700, color:"var(--text)", marginBottom:3 }}>{task.title}</div>
+                    {task.description && (
+                      <div style={{ fontSize:12, color:"var(--text3)", lineHeight:1.4, marginBottom:5 }}>
+                        {task.description.length > 80 ? task.description.slice(0,80) + "…" : task.description}
+                      </div>
+                    )}
+                    <div style={{ display:"flex", gap:10, flexWrap:"wrap", alignItems:"center" }}>
+                      {task.due_date && <span style={{ fontSize:11.5, color:"var(--text3)", display:"flex", alignItems:"center", gap:4 }}><Icon name="calendar" size={11} color="var(--text3)"/>Due {fmtDate(task.due_date)}</span>}
+                      <span style={{ fontSize:11.5, color:"var(--text4)" }}>Assigned {fmtDate(task.assigned_date)}</span>
+                      {task.url && (
+                        <a href={task.url} target="_blank" rel="noopener noreferrer"
+                          style={{ fontSize:11.5, color:"var(--blue)", textDecoration:"none" }}>
+                          {task.task_type === "youtube" ? "▶ YouTube" : task.task_type === "document" ? "📄 Doc" : "🔗 Link"}
+                        </a>
+                      )}
+                    </div>
+                    {task.status === "incomplete" && task.incomplete_reason && (
+                      <div style={{ marginTop:7, fontSize:12, color:"var(--red)", background:"var(--red-light)", padding:"5px 10px", borderRadius:"var(--radius-sm)", border:"1px solid rgba(220,38,38,0.15)" }}>
+                        Reason: {task.incomplete_reason}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ background:statusBg(task.status), color:statusColor(task.status), border:`1px solid ${statusBdr(task.status)}`, borderRadius:999, padding:"3px 10px", fontSize:11.5, fontWeight:700, flexShrink:0, whiteSpace:"nowrap" }}>
+                    {statusLabel(task.status)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {histPages > 1 && (
+          <div style={{ display:"flex", justifyContent:"center", alignItems:"center", gap:10, marginTop:16 }}>
+            <button onClick={() => setHistPage(p => Math.max(1, p-1))} disabled={histPage===1}
+              style={{ padding:"7px 16px", borderRadius:"var(--radius-sm)", background:"var(--bg3)", border:"1px solid var(--border)", cursor:histPage===1?"not-allowed":"pointer", opacity:histPage===1?0.45:1, fontSize:13 }}>
+              ← Prev
+            </button>
+            <span style={{ fontSize:13, color:"var(--text2)", fontWeight:600 }}>{histPage} / {histPages}</span>
+            <button onClick={() => setHistPage(p => Math.min(histPages, p+1))} disabled={histPage===histPages}
+              style={{ padding:"7px 16px", borderRadius:"var(--radius-sm)", background:"var(--bg3)", border:"1px solid var(--border)", cursor:histPage===histPages?"not-allowed":"pointer", opacity:histPage===histPages?0.45:1, fontSize:13 }}>
+              Next →
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
