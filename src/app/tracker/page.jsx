@@ -6057,20 +6057,51 @@ function FuelGauge({ level, size = 80 }) {
   );
 }
 
-// Simple bar chart for fuel dashboard
+// Bar chart for fuel dashboard — with value labels above bars
 function FuelBarChart({ data, height = 140, color = "var(--blue)" }) {
-  if (!data || data.length === 0) return <div style={{ height, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text4)", fontSize: 13 }}>No data</div>;
+  const [hovered, setHovered] = React.useState(null);
+  if (!data || data.length === 0 || data.every(d => d.value === 0)) return (
+    <div style={{ height, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", color:"var(--text4)", fontSize:13, gap:6 }}>
+      <span style={{ fontSize:22, opacity:0.4 }}>📊</span>
+      <span>No data yet</span>
+    </div>
+  );
   const max = Math.max(...data.map(d => d.value), 1);
+  const LABEL_H = 18; // px reserved for value label above bar
+  const XAXIS_H = 20; // px reserved for x-axis label below
+  const barAreaH = height - LABEL_H - XAXIS_H;
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height, paddingTop: 8 }}>
-      {data.map((d, i) => (
-        <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, height: "100%" }}>
-          <div style={{ flex: 1, display: "flex", alignItems: "flex-end", width: "100%" }}>
-            <div style={{ width: "100%", background: color, borderRadius: "4px 4px 0 0", height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? 4 : 0, opacity: 0.8, transition: "height 0.4s ease" }} title={`${d.label}: ${d.value}`}/>
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height, paddingTop: 0, position: "relative" }}>
+      {data.map((d, i) => {
+        const barH = d.value > 0 ? Math.max(4, (d.value / max) * barAreaH) : 0;
+        const isHov = hovered === i;
+        const label = d.value >= 1000 ? `${(d.value/1000).toFixed(1)}k` : d.value > 0 ? String(d.value) : "";
+        return (
+          <div key={i}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", cursor: "default", position: "relative" }}>
+            {/* Tooltip on hover */}
+            {isHov && (
+              <div style={{ position: "absolute", top: -30, left: "50%", transform: "translateX(-50%)", background: "rgba(15,20,30,0.88)", color: "white", fontSize: 11.5, fontWeight: 700, padding: "4px 8px", borderRadius: 6, whiteSpace: "nowrap", zIndex: 10, pointerEvents: "none" }}>
+                {d.label}: {d.value}
+              </div>
+            )}
+            {/* Value label area */}
+            <div style={{ height: LABEL_H, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: 2 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: d.value > 0 ? color : "transparent", transition: "color 0.2s" }}>{label}</span>
+            </div>
+            {/* Bar */}
+            <div style={{ height: barAreaH, display: "flex", alignItems: "flex-end", width: "100%" }}>
+              <div style={{ width: "100%", background: isHov ? color : color, borderRadius: "4px 4px 0 0", height: barH, opacity: isHov ? 1 : 0.75, transition: "all 0.3s ease", boxShadow: isHov ? `0 2px 8px ${color}55` : "none" }}/>
+            </div>
+            {/* X-axis label */}
+            <div style={{ height: XAXIS_H, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ fontSize: 10, color: "var(--text3)", textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%", fontWeight: isHov ? 700 : 400 }}>{d.label}</span>
+            </div>
           </div>
-          <div style={{ fontSize: 10, color: "var(--text3)", textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{d.label}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -6607,16 +6638,26 @@ function FuelJobSitesAdmin({ jobSites, setJobSites, addToast }) {
 // ─── 3. FUEL HISTORY VIEW ─────────────────────────────────────────────────────
 // Replaces FuelMyLogs. Works for both admin (all logs) and employee (own logs).
 // Features: on/off-site badge, More Details expandable card, filter by type.
-function FuelHistoryView({ logs, loadingLogs, currentUser, isAdmin }) {
+function FuelHistoryView({ logs, loadingLogs, currentUser, isAdmin, onRefresh }) {
   const [filter, setFilter] = useState("all");
+  const [search, setSearch]  = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [page, setPage] = useState(1);
   const [photoCache, setPhotoCache] = useState({}); // id → { photo_before, photo_after }
   const [loadingPhoto, setLoadingPhoto] = useState(null);
+  const [previewPhoto, setPreviewPhoto] = useState(null); // modal src
   const PER_PAGE = 20;
 
   const myLogs = isAdmin ? logs : logs.filter(l => l.operator_id === currentUser?.id);
-  const filtered = filter === "all" ? myLogs : myLogs.filter(l => l.entry_type === filter);
+  const filtered = myLogs.filter(l => {
+    if (filter !== "all" && l.entry_type !== filter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const hay = `${l.equipment_brand||""} ${l.equipment_model||""} ${l.job_site_name||""} ${l.operator_name||""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
   const paged = filtered.slice(0, page * PER_PAGE);
   const hasMore = filtered.length > paged.length;
 
@@ -6648,24 +6689,42 @@ function FuelHistoryView({ logs, loadingLogs, currentUser, isAdmin }) {
   };
 
   const OnSiteBadge = ({ val }) => {
-    if (val === true)  return <span style={{ background:"rgba(5,150,105,0.1)", color:"var(--green)", border:"1px solid rgba(5,150,105,0.3)", padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>✓ On-Site</span>;
-    if (val === false) return <span style={{ background:"rgba(217,119,6,0.1)", color:"var(--amber)", border:"1px solid rgba(217,119,6,0.3)", padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>⚠ Off-Site</span>;
-    return <span style={{ background:"var(--bg3)", color:"var(--text4)", border:"1px solid var(--border)", padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:600 }}>Not Checked</span>;
+    if (val === true)  return <span style={{ background:"rgba(5,150,105,0.1)", color:"#047857", border:"1px solid rgba(5,150,105,0.3)", padding:"2px 9px", borderRadius:999, fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>● On-Site</span>;
+    if (val === false) return <span style={{ background:"rgba(220,38,38,0.08)", color:"#b91c1c",  border:"1px solid rgba(220,38,38,0.25)", padding:"2px 9px", borderRadius:999, fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>● Off-Site</span>;
+    return <span style={{ background:"var(--bg3)", color:"var(--text4)", border:"1px solid var(--border)", padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:500 }}>— Location N/A</span>;
   };
 
   return (
     <div>
-      {/* Header + filter */}
-      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:10 }}>
-        <div>
-          <div style={{ fontSize:15, fontWeight:700, color:"var(--text)" }}>{isAdmin ? "All Fuel Entries" : "My Fuel Log"}</div>
-          <div style={{ fontSize:12.5, color:"var(--text3)", marginTop:2 }}>{filtered.length} record{filtered.length!==1?"s":""}</div>
+      {/* Photo preview modal */}
+      {previewPhoto && (
+        <div onClick={() => setPreviewPhoto(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ position:"relative", maxWidth:"90vw", maxHeight:"85vh" }}>
+            <img src={previewPhoto} alt="meter" style={{ maxWidth:"100%", maxHeight:"80vh", objectFit:"contain", borderRadius:8, display:"block" }}/>
+            <button onClick={() => setPreviewPhoto(null)} style={{ position:"absolute", top:-12, right:-12, width:32, height:32, borderRadius:"50%", background:"white", border:"2px solid var(--border)", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700, color:"var(--text)" }}>×</button>
+          </div>
         </div>
-        <div style={{ display:"flex", gap:6 }}>
-          {[["all","All"],["fill","Fills"],["eod","EOD"]].map(([v,l]) => (
-            <button key={v} onClick={() => { setFilter(v); setPage(1); }} style={{ padding:"6px 14px", background:filter===v?"#1e3a5f":"var(--bg3)", color:filter===v?"white":"var(--text3)", border:`1px solid ${filter===v?"#1e3a5f":"var(--border)"}`, borderRadius:999, fontSize:12.5, fontWeight:filter===v?700:450, cursor:"pointer" }}>{l}</button>
-          ))}
+      )}
+
+      {/* Header + filters */}
+      <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
+          <div>
+            <div style={{ fontSize:15, fontWeight:700, color:"var(--text)" }}>{isAdmin ? "All Fuel Entries" : "My Fuel Log"}</div>
+            <div style={{ fontSize:12.5, color:"var(--text3)", marginTop:2 }}>{filtered.length} record{filtered.length!==1?"s":""}</div>
+          </div>
+          <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+            {onRefresh && <button onClick={onRefresh} style={{ padding:"6px 10px", background:"var(--bg3)", color:"var(--text3)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:12, cursor:"pointer" }}>↻ Refresh</button>}
+            {[["all","All"],["fill","Fills"],["eod","EOD"]].map(([v,l]) => (
+              <button key={v} onClick={() => { setFilter(v); setPage(1); }} style={{ padding:"6px 14px", background:filter===v?"#1e3a5f":"var(--bg3)", color:filter===v?"white":"var(--text3)", border:`1px solid ${filter===v?"#1e3a5f":"var(--border)"}`, borderRadius:999, fontSize:12.5, fontWeight:filter===v?700:450, cursor:"pointer" }}>{l}</button>
+            ))}
+          </div>
         </div>
+        {/* Search bar */}
+        <input
+          value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+          placeholder="Search equipment, job site, operator…"
+          style={{ fontSize:13.5, padding:"8px 12px", borderRadius:"var(--radius-sm)", border:"1.5px solid var(--border2)", background:"var(--bg2)", color:"var(--text)", width:"100%", boxSizing:"border-box" }}/>
       </div>
 
       {loadingLogs && (
@@ -6829,17 +6888,19 @@ function FuelHistoryView({ logs, loadingLogs, currentUser, isAdmin }) {
                               {photos.photo_before && (
                                 <div>
                                   <div style={{ fontSize:11, color:"var(--text3)", marginBottom:5, fontWeight:600 }}>Before Fill</div>
-                                  <a href={photos.photo_before} target="_blank" rel="noreferrer">
-                                    <img src={photos.photo_before} alt="before" style={{ width:140, height:105, objectFit:"cover", borderRadius:"var(--radius)", border:"2px solid var(--border)", display:"block", cursor:"pointer" }}/>
-                                  </a>
+                                  <div onClick={() => setPreviewPhoto(photos.photo_before)} style={{ cursor:"pointer" }}>
+                                    <img src={photos.photo_before} alt="before" style={{ width:140, height:105, objectFit:"cover", borderRadius:"var(--radius)", border:"2px solid var(--blue)", display:"block", cursor:"pointer" }} title="Click to enlarge"/>
+                                    <div style={{ fontSize:10, color:"var(--blue)", textAlign:"center", marginTop:3 }}>🔍 Click to enlarge</div>
+                                  </div>
                                 </div>
                               )}
                               {photos.photo_after && (
                                 <div>
                                   <div style={{ fontSize:11, color:"var(--text3)", marginBottom:5, fontWeight:600 }}>After Fill</div>
-                                  <a href={photos.photo_after} target="_blank" rel="noreferrer">
-                                    <img src={photos.photo_after} alt="after" style={{ width:140, height:105, objectFit:"cover", borderRadius:"var(--radius)", border:"2px solid var(--border)", display:"block", cursor:"pointer" }}/>
-                                  </a>
+                                  <div onClick={() => setPreviewPhoto(photos.photo_after)} style={{ cursor:"pointer" }}>
+                                    <img src={photos.photo_after} alt="after" style={{ width:140, height:105, objectFit:"cover", borderRadius:"var(--radius)", border:"2px solid var(--green)", display:"block", cursor:"pointer" }} title="Click to enlarge"/>
+                                    <div style={{ fontSize:10, color:"var(--green)", textAlign:"center", marginTop:3 }}>🔍 Click to enlarge</div>
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -6874,9 +6935,12 @@ function FuelDashboard({ dashData, logs, alerts, onViewAlerts }) {
   const eodLogs   = filteredLogs.filter(l => l.entry_type === "eod");
 
   const totalGallons  = fillLogs.reduce((s, l) => s + (Number(l.gallons_added) || 0), 0);
-  const todayLogs     = filteredLogs.filter(l => l.log_date === today);
-  const todayGallons  = fillLogs.filter(l => l.log_date === today).reduce((s, l) => s + (Number(l.gallons_added) || 0), 0);
-  const eodToday      = new Set(eodLogs.filter(l => l.log_date === today).map(l => l.equipment_id)).size;
+  const todayLogs     = filteredLogs.filter(l => (l.log_date||"").slice(0,10) === today);
+  // Prefer server-side aggregated KPIs from dashData, fallback to client-computed
+  const todayGallons  = equipFilter === "all"
+    ? (dashData?.today_summary?.today_gallons ?? fillLogs.filter(l => (l.log_date||"").slice(0,10) === today).reduce((s,l) => s+(Number(l.gallons_added)||0), 0))
+    : fillLogs.filter(l => (l.log_date||"").slice(0,10) === today).reduce((s,l) => s+(Number(l.gallons_added)||0), 0);
+  const eodToday      = new Set(eodLogs.filter(l => (l.log_date||"").slice(0,10) === today).map(l => l.equipment_id)).size;
   const motorEquip    = EQUIPMENT_LIST.filter(e => e.type !== "trailer");
   const missingEod    = motorEquip.length - eodToday;
   const unresolvedAlerts = alerts.filter(a => !a.resolved).length;
@@ -6890,23 +6954,29 @@ function FuelDashboard({ dashData, logs, alerts, onViewAlerts }) {
     }, {}))
   ];
 
-  // Last 7 days chart data
+  // Last 7 days chart data — prefer dashData.daily_totals (aggregated by DB), fallback to logs
   const days7 = Array.from({ length:7 }, (_, i) => {
     const d = new Date(); d.setDate(d.getDate() - (6-i));
     const ds = d.toISOString().slice(0, 10);
-    const gal = fillLogs.filter(l => l.log_date === ds).reduce((s, l) => s + (Number(l.gallons_added)||0), 0);
+    // Try dashData first (authoritative DB aggregation)
+    const dbEntry = (dashData?.daily_totals || []).find(r => (r.log_date||"").slice(0,10) === ds);
+    const gal = dbEntry != null
+      ? Math.round(Number(dbEntry.gallons)||0)
+      : fillLogs.filter(l => (l.log_date||"").slice(0,10) === ds).reduce((s, l) => s + (Number(l.gallons_added)||0), 0);
     return { label:d.toLocaleDateString([], { weekday:"short" }), value:Math.round(gal) };
   });
 
-  // Per-equipment totals
+  // Per-equipment totals — from dashData (authoritative DB aggregation)
   const byEquipChart = (dashData?.by_equipment || [])
-    .filter(e => equipFilter === "all" || e.equipment_id === equipFilter)
+    .filter(e => (equipFilter === "all" || e.equipment_id === equipFilter) && Number(e.total_gallons||0) > 0)
     .slice(0, 8)
-    .map(e => ({ label:(e.equipment_brand||"").slice(0, 7), value:Math.round(e.total_gallons||0) }));
+    .map(e => ({ label:`${e.equipment_brand||""} ${e.equipment_model||""}`.trim().slice(0, 10), value:Math.round(Number(e.total_gallons)||0) }));
 
-  // By site
-  const bySiteChart = (dashData?.by_site || []).slice(0, 6)
-    .map(s => ({ label:(s.site_name||"").slice(0, 10), value:Math.round(s.total_gallons||0) }));
+  // By site — use dashData from backend (authoritative)
+  const bySiteChart = (dashData?.by_site || [])
+    .filter(s => s.site_name && s.total_gallons > 0)
+    .slice(0, 8)
+    .map(s => ({ label:(s.site_name||"").slice(0, 12), value:Math.round(Number(s.total_gallons)||0) }));
 
   // Operator table
   const operatorData = dashData?.by_operator || [];
@@ -6925,7 +6995,7 @@ function FuelDashboard({ dashData, logs, alerts, onViewAlerts }) {
       </div>
 
       {/* KPI row */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(min(100%,150px),1fr))", gap:10 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(min(100%,130px),1fr))", gap:8 }}>
         <StatCard label="Total Fuel Added" value={`${totalGallons.toFixed(0)} gal`} icon="droplet" color="var(--blue)"   sub="All-time fills"/>
         <StatCard label="Today's Fuel"     value={`${todayGallons.toFixed(0)} gal`} icon="droplet" color="var(--green)"  sub="Filled today"/>
         <StatCard label="Today's Entries"  value={todayLogs.length}                 icon="clock"   color="var(--blue)"   sub="Logs today"/>
@@ -6945,7 +7015,7 @@ function FuelDashboard({ dashData, logs, alerts, onViewAlerts }) {
       )}
 
       {/* Charts row */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(min(100%,300px),1fr))", gap:14 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(min(100%,260px),1fr))", gap:12 }}>
         <Card>
           <div style={{ fontSize:13, fontWeight:700, color:"var(--text)", marginBottom:12 }}>Daily Fuel — Last 7 Days</div>
           <FuelBarChart data={days7} color="var(--blue)" height={130}/>
@@ -6970,7 +7040,7 @@ function FuelDashboard({ dashData, logs, alerts, onViewAlerts }) {
             <thead><tr><th>Equipment</th><th>Model</th><th>EOD</th><th>Last Level</th><th>Operator</th></tr></thead>
             <tbody>
               {motorEquip.map(eq => {
-                const eodEntry = eodLogs.find(l => l.equipment_id === eq.id && l.log_date === today);
+                const eodEntry = eodLogs.find(l => l.equipment_id === eq.id && (l.log_date||"").slice(0,10) === today);
                 const lastLog  = [...logs].find(l => l.equipment_id === eq.id);
                 return (
                   <tr key={eq.id}>
@@ -7805,7 +7875,7 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
   const loadLogs = async () => {
     setLoadingLogs(true);
     try {
-      const res = await authFetch("/api/fuel/logs?limit=50");
+      const res = await authFetch("/api/fuel/logs?limit=200");
       if (res.ok) {
         const data = await res.json();
         setLogs(data.logs || []);
@@ -7854,11 +7924,12 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
   const tabs = [
     { id: "equipment", label: "Equipment", icon: "hard_hat" },
     ...(isAdmin ? [
+      { id: "history",   label: "History",   icon: "log"   },
       { id: "dashboard", label: "Dashboard", icon: "gauge" },
-      { id: "alerts", label: `Alerts${unresolvedAlerts ? ` (${unresolvedAlerts})` : ""}`, icon: "alert" },
-      { id: "reports", label: "Reports", icon: "bar" },
+      { id: "alerts",    label: `Alerts${unresolvedAlerts ? ` (${unresolvedAlerts})` : ""}`, icon: "alert" },
+      { id: "reports",   label: "Reports",   icon: "bar"   },
     ] : [
-      { id: "my_logs", label: "My Logs", icon: "log" },
+      { id: "my_logs",   label: "My Logs",   icon: "log"   },
     ]),
   ];
 
@@ -7908,6 +7979,7 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
           onSuccess={() => { loadLogs(); loadAlerts(); if (isAdmin) loadDashboard(); setView("equipment"); }}
         />
       )}
+      {view === "history"   && isAdmin && <FuelHistoryView logs={logs} loadingLogs={loadingLogs} currentUser={currentUser} isAdmin={true} onRefresh={loadLogs}/>}
       {view === "dashboard" && isAdmin && <FuelDashboard dashData={dashData} logs={logs} alerts={alerts} onViewAlerts={() => setView("alerts")}/>}
       {view === "alerts" && isAdmin && <FuelAlertsView alerts={alerts} onRefresh={loadAlerts} addToast={addToast}/>}
       {view === "reports" && isAdmin && <FuelReportsPage logs={logs} addToast={addToast}/>}
@@ -8068,12 +8140,28 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, 
     if (!validate()) return;
     setSubmitting(true);
     try {
+      // Compute is_on_site based on GPS vs selected job site geofence
+      let isOnSite = null;
+      if (gps && jobSite && jobSite !== "__other__") {
+        const site = jobSites.find(s => String(s.id) === String(jobSite));
+        if (site?.latitude && site?.longitude) {
+          const R = 6371000; // metres
+          const dLat = (site.latitude - gps.lat) * Math.PI / 180;
+          const dLon = (site.longitude - gps.lon) * Math.PI / 180;
+          const a = Math.sin(dLat/2)**2 + Math.cos(gps.lat*Math.PI/180) * Math.cos(site.latitude*Math.PI/180) * Math.sin(dLon/2)**2;
+          const distM = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          const distFt = distM * 3.28084;
+          const radiusFt = site.geofence_radius_ft || 500;
+          isOnSite = distFt <= radiusFt;
+        }
+      }
       const payload = {
         equipment_id: equipment.id,
         equipment_brand: equipment.brand,
         equipment_model: equipment.model,
         entry_type: type,
         job_site_id: jobSite,
+        is_on_site: isOnSite,
         fuel_level_before: type === "fill" ? Number(fuelBefore) : null,
         fuel_level_after: type === "fill" ? Number(fuelAfter) : null,
         fuel_level_remaining: type === "eod" ? Number(fuelRemaining) : null,
@@ -8275,3 +8363,4 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, 
     </div>
   );
 }
+
