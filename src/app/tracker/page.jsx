@@ -715,7 +715,7 @@ useEffect(() => {
 
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
-            {isAdmin&&<AdminLocationBar userLat={userLat} userLon={userLon} worksites={worksites} distanceFt={distanceFt} addToast={addToast} t={t} onWorksiteSelect={ws=>setEmployeeWorksite(ws)}/>}
+            {/* AdminLocationBar removed */}
             {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} setAppTitle={setAppTitle} worksites={worksites} onJobSiteSelect={setAppSelectedSiteId}/>)}
             {page==="fuel"&&<FuelEntryPage currentUser={currentUser} t={t} addToast={addToast} assignedJobSites={employeeJobSites} allJobSites={worksites} onMount={()=>setAppTitle("BSC Fuel Entry")} onUnmount={()=>setAppTitle("BSC Tracker")}/>}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
@@ -2025,8 +2025,8 @@ function EmployeeDashboard({
         <WorkflowSection selectedTab={selectedTab} setSelectedTab={setSelectedTab} isAdmin={false}/>
       </div>
 
-      {/* Job Site Selector — always visible across all tabs */}
-      <FuelJobSiteSelector
+      {/* Job Site Selector — hidden on Tasks tab */}
+      {selectedTab !== "tasks" && <FuelJobSiteSelector
         jobSites={(employeeJobSites.length > 0 ? employeeJobSites : [employeeWorksite].filter(Boolean)).map(s => ({
           ...s,
           geofence_radius_ft: s.geofence_radius_ft || s.radius_feet || 1000,
@@ -2037,7 +2037,7 @@ function EmployeeDashboard({
         setIsOnSite={setIsOnSiteTime}
         gpsForDistance={gpsForDistanceTime}
         setGpsForDistance={setGpsForDistanceTime}
-      />
+      />}
 
       {/* Content based on selected tab */}
       {selectedTab === "timecard" && renderTimeCard()}
@@ -3355,6 +3355,12 @@ function TasksPage({ adminData, addToast, t }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [filterEmployee, setFilterEmployee] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+  const [expandedId, setExpandedId] = useState(null);
+  const [page, setPage] = useState(1);
+  const TASKS_PER_PAGE = 12;
+
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -3381,9 +3387,7 @@ function TasksPage({ adminData, addToast, t }) {
     }
   }, []);
 
-  useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+  useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
   const handleCreate = async () => {
     if (!form.title || !form.assignedTo) {
@@ -3424,105 +3428,257 @@ function TasksPage({ adminData, addToast, t }) {
     }
   };
 
+  // Filtered + paginated tasks
+  const filtered = tasks.filter(tk => {
+    const empMatch = filterEmployee === "all" || String(tk.assigned_to) === String(filterEmployee);
+    const statusMatch = filterStatus === "all" || tk.status === filterStatus;
+    return empMatch && statusMatch;
+  });
+  const totalPages = Math.ceil(filtered.length / TASKS_PER_PAGE);
+  const paginated = filtered.slice((page - 1) * TASKS_PER_PAGE, page * TASKS_PER_PAGE);
+
+  // Status badge style helper
+  const statusStyle = (status) => {
+    if (status === "completed") return { bg: "rgba(5,150,105,0.12)", color: "var(--green)", border: "rgba(5,150,105,0.25)", label: "Completed" };
+    if (status === "incomplete") return { bg: "rgba(220,38,38,0.10)", color: "var(--red)",   border: "rgba(220,38,38,0.22)",  label: "Incomplete" };
+    return { bg: "rgba(245,158,11,0.12)", color: "var(--amber)", border: "rgba(245,158,11,0.25)", label: "Pending" };
+  };
+
+  const chipStyle = (active) => ({
+    padding: "5px 14px",
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+    border: `1.5px solid ${active ? "var(--blue)" : "var(--border)"}`,
+    background: active ? "var(--blue)" : "var(--bg2)",
+    color: active ? "#fff" : "var(--text3)",
+    transition: "all 0.15s",
+  });
+
+  const STATUS_CHIPS = [
+    { id: "all",        label: "All"        },
+    { id: "pending",    label: "Pending"    },
+    { id: "completed",  label: "Completed"  },
+    { id: "incomplete", label: "Incomplete" },
+  ];
+
+  // Counts for chips
+  const countFor = (s) => s === "all" ? tasks.length : tasks.filter(tk => {
+    const empMatch = filterEmployee === "all" || String(tk.assigned_to) === String(filterEmployee);
+    return empMatch && tk.status === s;
+  }).length;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionHeader
         title={t.tasks || "Tasks"}
-        subtitle={`${tasks.length} total tasks`}
+        subtitle={`${filtered.length} of ${tasks.length} tasks`}
         action={
           <Btn onClick={() => setShowCreateModal(true)} size="sm">
             <Icon name="plus" size={13} color="white" /> New Task
           </Btn>
         }
       />
-      <Card>
-        {loading ? (
-          <div style={{ textAlign: "center", padding: 24 }}>Loading...</div>
-        ) : tasks.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 24, color: "var(--text4)" }}>
-            No tasks yet. Click "New Task" to assign.
-          </div>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ minWidth: 600 }}>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Employee</th>
-                  <th>Type</th>
-                  <th>Due Date</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-  {tasks.map(task => (
-    <tr key={task.id} style={{ verticalAlign: "middle" }}>
-      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
-        <strong>{task.title}</strong>
-        {task.description && (
-          <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4 }}>
-            {task.description.slice(0, 60)}
-          </div>
-        )}
-      </td>
-      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
-        {task.assigned_to_name}
-        <div style={{ fontSize: 11, color: "var(--blue)" }}>
-          {task.assigned_to_user_id}
+
+      {/* Filters Row */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        {/* Employee dropdown */}
+        <select
+          value={filterEmployee}
+          onChange={e => { setFilterEmployee(e.target.value); setPage(1); }}
+          style={{ fontSize: 13, padding: "6px 10px", width: "auto", minWidth: 180, borderRadius: "var(--radius-sm)", border: "1.5px solid var(--border)", background: "var(--bg2)", color: "var(--text1)" }}
+        >
+          <option value="all">All Employees</option>
+          {employees.map(emp => (
+            <option key={emp.id} value={emp.id}>{emp.name} ({emp.user_id})</option>
+          ))}
+        </select>
+
+        {/* Status chips */}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {STATUS_CHIPS.map(chip => (
+            <button
+              key={chip.id}
+              style={chipStyle(filterStatus === chip.id)}
+              onClick={() => { setFilterStatus(chip.id); setPage(1); }}
+            >
+              {chip.label}
+              <span style={{ marginLeft: 5, opacity: 0.75, fontSize: 11 }}>({countFor(chip.id)})</span>
+            </button>
+          ))}
         </div>
-      </td>
-      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
-        {task.task_type === "youtube" && task.url ? (
-          <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--blue)", textDecoration: "underline" }}>YouTube</a>
-        ) : task.task_type === "link" && task.url ? (
-          <a href={task.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--blue)", textDecoration: "underline" }}>Link</a>
-        ) : (
-          task.task_type
+
+        {(filterEmployee !== "all" || filterStatus !== "all") && (
+          <button
+            onClick={() => { setFilterEmployee("all"); setFilterStatus("all"); setPage(1); }}
+            style={{ fontSize: 12, color: "var(--text4)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
+          >
+            Clear filters
+          </button>
         )}
-      </td>
-      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
-        {task.due_date ? fmtDate(task.due_date) : "—"}
-      </td>
-      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
-        <span
-          style={{
-            background: task.status === "completed" ? "var(--green-light)" : task.status === "incomplete" ? "var(--red-light)" : "var(--bg3)",
-            color: task.status === "completed" ? "var(--green)" : task.status === "incomplete" ? "var(--red)" : "var(--text3)",
-            padding: "2px 8px",
-            borderRadius: 999,
-            fontSize: 11,
-            fontWeight: 600,
-            border: `1px solid ${
-              task.status === "completed" ? "rgba(5,150,105,0.2)" : task.status === "incomplete" ? "rgba(220,38,38,0.2)" : "var(--border)"
-            }`,
-            display: "inline-block",
-          }}
-        >
-          {task.status === "completed" ? "Completed" : task.status === "incomplete" ? "Incomplete" : "Pending"}
-        </span>
-      </td>
-      <td style={{ padding: "11px 14px", verticalAlign: "middle" }}>
-        <button
-          onClick={() => handleDelete(task.id)}
-          style={{
-            background: "var(--red-light)",
-            border: "none",
-            borderRadius: "var(--radius-sm)",
-            padding: "4px 8px",
-            cursor: "pointer",
-          }}
-        >
-          <Icon name="x" size={14} color="var(--red)" />
-        </button>
-      </td>
-    </tr>
-  ))}
-</tbody>
-            </table>
+      </div>
+
+      {/* Task Cards */}
+      {loading ? (
+        <Card><div style={{ textAlign: "center", padding: 32, color: "var(--text4)" }}>Loading tasks…</div></Card>
+      ) : paginated.length === 0 ? (
+        <Card>
+          <div style={{ textAlign: "center", padding: 36, color: "var(--text4)" }}>
+            {filtered.length === 0 && tasks.length > 0
+              ? "No tasks match the selected filters."
+              : tasks.length === 0
+              ? 'No tasks yet. Click "New Task" to assign.'
+              : "No tasks on this page."}
           </div>
-        )}
-      </Card>
+        </Card>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
+          {paginated.map(task => {
+            const ss = statusStyle(task.status);
+            const isExpanded = expandedId === task.id;
+            return (
+              <div
+                key={task.id}
+                style={{
+                  background: "var(--bg2)",
+                  border: "1.5px solid var(--border)",
+                  borderRadius: "var(--radius)",
+                  padding: "16px 18px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                  transition: "box-shadow 0.15s",
+                  boxShadow: isExpanded ? "0 4px 18px rgba(0,0,0,0.10)" : "none",
+                }}
+              >
+                {/* Card Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text1)", lineHeight: 1.3, wordBreak: "break-word" }}>
+                      {task.title}
+                    </div>
+                  </div>
+                  {/* Status badge */}
+                  <span style={{
+                    flexShrink: 0,
+                    background: ss.bg,
+                    color: ss.color,
+                    border: `1px solid ${ss.border}`,
+                    padding: "3px 10px",
+                    borderRadius: 999,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.3px",
+                  }}>
+                    {ss.label}
+                  </span>
+                </div>
+
+                {/* Employee row */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon name="user" size={14} color="white" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text1)" }}>{task.assigned_to_name}</div>
+                    <div style={{ fontSize: 11, color: "var(--blue)", fontFamily: "monospace" }}>{task.assigned_to_user_id}</div>
+                  </div>
+                </div>
+
+                {/* Meta row: due date + type */}
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: "var(--text3)" }}>
+                  {task.due_date && (
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <Icon name="calendar" size={12} color="var(--text4)" />
+                      Due: <strong style={{ color: "var(--text2)" }}>{fmtDate(task.due_date)}</strong>
+                    </span>
+                  )}
+                  {task.url && (
+                    <a
+                      href={task.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--blue)", textDecoration: "none", fontWeight: 600 }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <Icon name="external" size={12} color="var(--blue)" />
+                      {task.task_type === "youtube" ? "YouTube" : task.task_type === "document" ? "Document" : "Link"}
+                    </a>
+                  )}
+                  {task.completed_at && (
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <Icon name="check" size={12} color="var(--green)" />
+                      <span style={{ color: "var(--green)", fontWeight: 600 }}>{fmtDate(task.completed_at)}</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Description (collapsed by default) */}
+                {task.description && (
+                  <div>
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : task.id)}
+                      style={{ fontSize: 12, color: "var(--blue)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 4 }}
+                    >
+                      <Icon name={isExpanded ? "chevron-up" : "chevron-down"} size={12} color="var(--blue)" />
+                      {isExpanded ? "Hide details" : "Show details"}
+                    </button>
+                    {isExpanded && (
+                      <div style={{ marginTop: 8, fontSize: 13, color: "var(--text2)", background: "var(--bg3)", borderRadius: "var(--radius-sm)", padding: "10px 12px", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                        {task.description}
+                      </div>
+                    )}
+                    {!isExpanded && (
+                      <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {task.description.slice(0, 80)}{task.description.length > 80 ? "…" : ""}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Incomplete reason */}
+                {task.status === "incomplete" && task.incomplete_reason && (
+                  <div style={{ fontSize: 12, color: "var(--red)", background: "rgba(220,38,38,0.07)", borderRadius: "var(--radius-sm)", padding: "7px 10px", borderLeft: "3px solid var(--red)" }}>
+                    <strong>Reason:</strong> {task.incomplete_reason}
+                  </div>
+                )}
+
+                {/* Delete button */}
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 2 }}>
+                  <button
+                    onClick={() => handleDelete(task.id)}
+                    style={{ background: "rgba(220,38,38,0.09)", border: "1px solid rgba(220,38,38,0.18)", borderRadius: "var(--radius-sm)", padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: "var(--red)", fontWeight: 600 }}
+                  >
+                    <Icon name="x" size={13} color="var(--red)" /> Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, marginTop: 4 }}>
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            style={{ padding: "5px 14px", borderRadius: "var(--radius-sm)", border: "1.5px solid var(--border)", background: "var(--bg2)", cursor: page === 1 ? "not-allowed" : "pointer", opacity: page === 1 ? 0.4 : 1 }}
+          >
+            ‹ Prev
+          </button>
+          <span style={{ fontSize: 13, color: "var(--text3)" }}>Page {page} of {totalPages}</span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            style={{ padding: "5px 14px", borderRadius: "var(--radius-sm)", border: "1.5px solid var(--border)", background: "var(--bg2)", cursor: page === totalPages ? "not-allowed" : "pointer", opacity: page === totalPages ? 0.4 : 1 }}
+          >
+            Next ›
+          </button>
+        </div>
+      )}
 
       {/* Create Task Modal */}
       {showCreateModal && (
@@ -8250,6 +8406,9 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
 function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs, siteRequired }) {
   const today = new Date().toISOString().slice(0, 10);
 
+  // Custom equipment images (same localStorage store as WorkflowEquipmentTab)
+  const { images: eqImages } = useEquipmentImages();
+
   // Last known fuel level per equipment from logs
   const lastLevel = {};
   [...logs].reverse().forEach(l => {
@@ -8290,8 +8449,11 @@ function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs, s
 
               {/* Equipment thumbnail + info */}
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 64, height: 48, borderRadius: "var(--radius)", background: `${eq.color}10`, border: `1.5px solid ${eq.color}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <EquipmentThumb type={eq.type} color={eq.color} size={50}/>
+                <div style={{ width: 64, height: 48, borderRadius: "var(--radius)", background: eqImages[eq.id] ? "transparent" : `${eq.color}10`, border: `1.5px solid ${eqImages[eq.id] ? eq.color + "30" : eq.color + "30"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
+                  {eqImages[eq.id]
+                    ? <img src={eqImages[eq.id]} alt={eq.brand} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "var(--radius)" }}/>
+                    : <EquipmentThumb type={eq.type} color={eq.color} size={50}/>
+                  }
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", lineHeight: 1.3 }}>{eq.brand}</div>
