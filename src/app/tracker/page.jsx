@@ -78,8 +78,13 @@ const T = {
 const authFetch = async (path, opts = {}) => {
   let token = localStorage.getItem("accessToken");
   let res = await fetch(`${API}${path}`, {
-    ...opts, credentials:"include",
-    headers:{"Content-Type":"application/json",...(token?{Authorization:`Bearer ${token}`}:{}),...opts.headers},
+    ...opts,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opts.headers,
+    },
   });
   if (res.status === 401) {
     try {
@@ -91,6 +96,18 @@ const authFetch = async (path, opts = {}) => {
     } catch { localStorage.removeItem("accessToken"); localStorage.removeItem("bsc_session"); window.location.reload(); }
   }
   return res;
+};
+
+// Safe JSON parser — returns null instead of crashing when server sends HTML/empty
+const safeJson = async (res) => {
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch {
+    // Server returned HTML (404 page, crash page, etc.) — extract useful info
+    const title = text.match(/<title>(.*?)<\/title>/i)?.[1] || "";
+    console.error("[API non-JSON response]", res.status, res.url, text.slice(0, 300));
+    return { error: `Server error ${res.status}${title ? `: ${title}` : ""}. Check backend logs.` };
+  }
 };
 
 const GlobalStyle = () => (
@@ -2540,10 +2557,22 @@ function RouteTabContent({ user, t, addToast }) {
   );
 }
 // ─── ADMIN DASHBOARD ──────────────────────────────────────────────────────────
+// Workflow-card landing mirrors the Employee Profile layout.
+// Four module cards at the top; selected module's content renders below.
+const ADMIN_WORKFLOW_CARDS = [
+  { id: "timetracker", label: "Time Tracker", icon: "clock",     color: "var(--blue)",   desc: "Staff sessions & attendance"  },
+  { id: "fuel",        label: "Fuel Entry",   icon: "fuel",      color: "var(--amber)",  desc: "Logs, dashboard & alerts"     },
+  { id: "equipment",   label: "Equipment",    icon: "hard_hat",  color: "var(--green)",  desc: "Fleet management & photos"    },
+  { id: "tasks",       label: "Tasks",        icon: "briefcase", color: "var(--purple)", desc: "Assign & track work orders"   },
+];
+
 function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{},currentUser=null,worksites=[]}){
   const{employees,attendance,allAttendance}=adminData;
   const todayActive=attendance.filter(s=>s.status==="active").length;
   const totalMins=attendance.reduce((a,s)=>{if(s.status==="active"&&s.clock_in_time)return a+Math.max(0,Math.round((Date.now()-new Date(s.clock_in_time).getTime())/60000)-(parseInt(s.break_minutes)||0));return a+(parseInt(s.worked_minutes)||0);},0);
+
+  // Active module (Workflow Card selection)
+  const [activeModule, setActiveModule] = useState("timetracker");
 
   // Compute per-employee totals from individual attendance records (same approach as Reports page)
   const now = Date.now();
@@ -2592,6 +2621,43 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
         </div>
         <Btn onClick={refreshAdminData} variant="secondary" size="sm"><Icon name="refresh" size={13}/>{t.refresh}</Btn>
       </div>
+
+      {/* ── Workflow Cards (mirrors Employee Profile layout) ── */}
+      <div className="fade-up-d1" style={{
+        display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6,
+        background:"var(--bg3)", borderRadius:"var(--radius-lg)", padding:6, border:"1px solid var(--border)",
+      }}>
+        {ADMIN_WORKFLOW_CARDS.map(card => {
+          const active = activeModule === card.id;
+          return (
+            <button key={card.id} onClick={() => setActiveModule(card.id)} style={{
+              display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+              gap:4, padding:"10px 4px",
+              background: active ? "var(--card)" : "transparent",
+              border: active ? `1.5px solid ${card.color}30` : "1.5px solid transparent",
+              borderRadius:"var(--radius)", cursor:"pointer", transition:"all 0.15s",
+              boxShadow: active ? "var(--shadow-sm)" : "none", position:"relative",
+            }}>
+              {active && <div style={{ position:"absolute", top:0, left:"20%", right:"20%", height:2, background:card.color, borderRadius:"0 0 2px 2px" }}/>}
+              <div style={{
+                width:28, height:28, borderRadius:"var(--radius-sm)",
+                background: active ? `${card.color}15` : "transparent",
+                display:"flex", alignItems:"center", justifyContent:"center", transition:"all 0.15s",
+              }}>
+                <Icon name={card.icon} size={15} color={active ? card.color : "var(--text4)"}/>
+              </div>
+              <span style={{
+                fontSize:10.5, fontWeight: active ? 700 : 500,
+                color: active ? card.color : "var(--text3)",
+                lineHeight:1.2, textAlign:"center", whiteSpace:"nowrap",
+              }}>{card.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Time Tracker module ── */}
+      {activeModule === "timetracker" && <>
 
       {/* ── Stat cards ── */}
       <div className="fade-up-d1" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -2681,8 +2747,35 @@ function AdminDashboard({adminData,refreshAdminData,isOvertime,t,addToast=()=>{}
         </div>
       </Card>
 
-      {/* ── ADMIN WORKFLOW SECTION ────────────────────────────────────────── */}
-      <AdminWorkflowSection addToast={addToast} currentUser={currentUser} worksites={worksites}/>
+      </> /* end timetracker module */}
+
+      {/* ── Fuel Entry module (History / Dashboard / Alerts / Reports) ── */}
+      {activeModule === "fuel" && (
+        <div className="fade-up">
+          <FuelEntryPage
+            currentUser={currentUser}
+            t={t}
+            addToast={addToast}
+            allJobSites={worksites}
+            assignedJobSites={worksites}
+          />
+        </div>
+      )}
+
+      {/* ── Equipment module ── */}
+      {activeModule === "equipment" && (
+        <div className="fade-up">
+          <WorkflowEquipmentTab isAdmin={true} addToast={addToast}/>
+        </div>
+      )}
+
+      {/* ── Tasks module ── */}
+      {activeModule === "tasks" && (
+        <div className="fade-up">
+          <TasksPage adminData={adminData} addToast={addToast} t={t}/>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -7521,7 +7614,7 @@ function FuelMyLogs({ logs, loadingLogs, currentUser, onRefresh }) {
 // =============================================================================
 // WORKFLOW COMPONENTS
 // WorkflowSection        — shared tab bar used inside EmployeeDashboard
-// AdminWorkflowSection   — full workflow panel added to AdminDashboard
+// AdminWorkflowSection   — REMOVED (replaced by Workflow Cards inside AdminDashboard)
 // WorkflowEquipmentTab   — equipment grid with custom image upload
 // useEquipmentImages     — localStorage hook for custom equipment thumbnails
 // =============================================================================
@@ -7620,82 +7713,6 @@ function WorkflowSection({ selectedTab, setSelectedTab }) {
 // Standalone panel added to the bottom of AdminDashboard.
 // Has its own tab state, no dependency on parent.
 
-function AdminWorkflowSection({ addToast, currentUser, worksites = [] }) {
-  const [tab, setTab] = useState("fuel");
-  const adminTabs = [
-    { id: "fuel",      label: "Fuel Entry",  icon: "fuel",     color: "var(--amber)"  },
-    { id: "equipment", label: "Equipment",   icon: "hard_hat", color: "var(--green)"  },
-  ];
-
-  return (
-    <div style={{
-      background: "var(--card)",
-      border: "1px solid var(--border)",
-      borderRadius: "var(--radius-lg)",
-      overflow: "hidden",
-      boxShadow: "var(--shadow-sm)",
-      marginTop: 4,
-    }}>
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 10,
-        padding: "12px 16px",
-        background: "linear-gradient(135deg, #1e3a5f 0%, #0f2d47 100%)",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
-      }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: "var(--radius-sm)",
-          background: "rgba(255,255,255,0.12)",
-          display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-          border: "1px solid rgba(255,255,255,0.15)",
-        }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-            <rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>
-          </svg>
-        </div>
-        <div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "white", letterSpacing: "-0.01em" }}>Workflow Hub</div>
-          <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.5)", marginTop: 1 }}>Manage fuel tracking &amp; equipment fleet</div>
-        </div>
-      </div>
-
-      {/* Tab bar */}
-      <div style={{ display: "flex", background: "var(--bg3)", borderBottom: "1px solid var(--border)" }}>
-        {adminTabs.map((t, i) => {
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                padding: "11px 12px",
-                background: active ? "white" : "transparent",
-                border: "none",
-                borderRight: i < adminTabs.length - 1 ? "1px solid var(--border)" : "none",
-                borderBottom: active ? `2.5px solid ${t.color}` : "2.5px solid transparent",
-                cursor: "pointer",
-                fontSize: 13.5, fontWeight: active ? 700 : 500,
-                color: active ? t.color : "var(--text3)",
-                transition: "all 0.15s",
-              }}
-            >
-              <Icon name={t.icon} size={15} color={active ? t.color : "var(--text4)"}/>
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Content */}
-      <div style={{ padding: 16 }}>
-        {tab === "fuel" && <FuelEntryPage currentUser={currentUser} t={{}} addToast={addToast} allJobSites={worksites} assignedJobSites={worksites}/>}
-        {tab === "equipment" && <WorkflowEquipmentTab isAdmin={true} addToast={addToast}/>}
-      </div>
-    </div>
-  );
-}
 
 // ─── WORKFLOW EQUIPMENT TAB ───────────────────────────────────────────────────
 // Displays the full fleet with custom thumbnail upload (admin) or read-only (employee).
@@ -7966,7 +7983,10 @@ function AuditPage({t}){
 function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJobSites = [], onMount, onUnmount,
   preselectedJobSiteId = "", preselectedIsOnSite = null, preselectedGps = null }) {
   const isAdmin = ["admin", "manager", "owner"].includes(currentUser?.role);
-  const [view, setView] = useState("equipment"); // "equipment" | "form" | "dashboard" | "alerts" | "reports"
+  // Admins land on History (no equipment grid); employees land on Equipment grid
+  const [view, setView] = useState(() =>
+    ["admin", "manager", "owner"].includes(currentUser?.role) ? "history" : "equipment"
+  );
   const [selectedEquipment, setSelectedEquipment] = useState(null);
   const [entryType, setEntryType] = useState("eod"); // "fill" | "eod"
   const [logs, setLogs] = useState([]);
@@ -7999,8 +8019,8 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
     try {
       const res = await authFetch("/api/fuel/logs?limit=200");
       if (res.ok) {
-        const data = await res.json();
-        setLogs(data.logs || []);
+        const data = await safeJson(res);
+        setLogs(data?.logs || []);
         // Build EOD status map for today
         const today = new Date().toISOString().slice(0, 10);
         const status = {};
@@ -8016,21 +8036,21 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
   const loadAlerts = async () => {
     try {
       const res = await authFetch("/api/fuel/alerts");
-      if (res.ok) { const d = await res.json(); setAlerts(d.alerts || []); }
+      if (res.ok) { const d = await safeJson(res); setAlerts(d?.alerts || []); }
     } catch {}
   };
 
   const loadDashboard = async () => {
     try {
       const res = await authFetch("/api/fuel/dashboard");
-      if (res.ok) { const d = await res.json(); setDashData(d); }
+      if (res.ok) { const d = await safeJson(res); if(d && !d.error) setDashData(d); }
     } catch {}
   };
 
   const loadJobSites = async () => {
     try {
       const res = await authFetch("/api/fuel/job-sites");
-      if (res.ok) { const d = await res.json(); setJobSites(d.sites || []); }
+      if (res.ok) { const d = await safeJson(res); setJobSites(d?.sites || []); }
     } catch {}
   };
 
@@ -8042,17 +8062,16 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
 
   const unresolvedAlerts = alerts.filter(a => !a.resolved).length;
 
-  // ── Tab bar (top navigation within fuel module) ────────────────────────────
-  const tabs = [
+  // ── Tab bar — admin sees History/Dashboard/Alerts/Reports (no Equipment grid)
+  //             employee sees Equipment grid + My Logs
+  const tabs = isAdmin ? [
+    { id: "history",   label: "History",   icon: "log"   },
+    { id: "dashboard", label: "Dashboard", icon: "gauge" },
+    { id: "alerts",    label: `Alerts${unresolvedAlerts ? ` (${unresolvedAlerts})` : ""}`, icon: "alert" },
+    { id: "reports",   label: "Reports",   icon: "bar"   },
+  ] : [
     { id: "equipment", label: "Equipment", icon: "hard_hat" },
-    ...(isAdmin ? [
-      { id: "history",   label: "History",   icon: "log"   },
-      { id: "dashboard", label: "Dashboard", icon: "gauge" },
-      { id: "alerts",    label: `Alerts${unresolvedAlerts ? ` (${unresolvedAlerts})` : ""}`, icon: "alert" },
-      { id: "reports",   label: "Reports",   icon: "bar"   },
-    ] : [
-      { id: "my_logs",   label: "My Logs",   icon: "log"   },
-    ]),
+    { id: "my_logs",   label: "My Logs",   icon: "log"   },
   ];
 
   return (
@@ -8066,25 +8085,7 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
         </div>
       )}
 
-      {/* Admin-only job site selector (employees use the top-level FuelJobSiteSelector) */}
-      {isAdmin && view !== "form" && (
-        <div style={{ background:"var(--bg2)", border:"1.5px solid var(--border2)", borderRadius:"var(--radius)", padding:"10px 14px", marginBottom:2, display:"flex", alignItems:"center", gap:10 }}>
-          <Icon name="pin" size={15} color="var(--blue)" style={{ flexShrink:0 }}/>
-          <div style={{ fontSize:12.5, fontWeight:600, color:"var(--text2)", flexShrink:0, whiteSpace:"nowrap" }}>Job Site:</div>
-          <select
-            value={adminJobSiteId}
-            onChange={e => setAdminJobSiteId(e.target.value)}
-            style={{ flex:1, fontSize:13.5, padding:"6px 10px", borderRadius:"var(--radius-sm)", border:"1.5px solid var(--border2)", background:"var(--bg)", color:"var(--text)", fontWeight:500, minWidth:0 }}>
-            <option value="">— All Sites / Not Selected —</option>
-            {(jobSites.length > 0 ? jobSites : allJobSites).map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-          {adminJobSiteId && (
-            <button onClick={() => setAdminJobSiteId("")} style={{ flexShrink:0, background:"none", border:"none", cursor:"pointer", color:"var(--text4)", fontSize:18, padding:"0 4px", lineHeight:1 }} title="Clear">×</button>
-          )}
-        </div>
-      )}
+      {/* Admin no longer has a job site dropdown here — site context is in History/Dashboard views */}
 
       {/* Employee: gate access until a job site is selected */}
       {!isAdmin && !preselectedJobSiteId && view !== "form" && (
@@ -8110,7 +8111,7 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
       )}
 
       {/* Views */}
-      {view === "equipment" && <FuelEquipmentGrid eodStatus={eodStatus} openEntry={openEntry} isAdmin={isAdmin} logs={logs} loadingLogs={loadingLogs} siteRequired={!isAdmin && !preselectedJobSiteId}/>}
+      {view === "equipment" && !isAdmin && <FuelEquipmentGrid eodStatus={eodStatus} openEntry={openEntry} isAdmin={false} logs={logs} loadingLogs={loadingLogs} siteRequired={!preselectedJobSiteId}/>}
       {view === "form" && selectedEquipment && (
         <FuelEntryForm
           equipment={selectedEquipment}
@@ -8298,47 +8299,75 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJob
     if (!validate()) return;
     setSubmitting(true);
     try {
-      // Compute is_on_site — prefer parent's pre-verified status, fallback to own GPS check
-      let isOnSite = preselectedIsOnSite; // may be true/false/null
+      // ── Compute is_on_site ──────────────────────────────────────────────
+      let isOnSite = preselectedIsOnSite; // use parent-verified value when available
       if (isOnSite === null && gps && jobSite && jobSite !== "__other__") {
         const site = jobSites.find(s => String(s.id) === String(jobSite));
         if (site?.latitude && site?.longitude) {
-          const R = 6371000; // metres
+          const R = 6371000;
           const dLat = (site.latitude - gps.lat) * Math.PI / 180;
           const dLon = (site.longitude - gps.lon) * Math.PI / 180;
-          const a = Math.sin(dLat/2)**2 + Math.cos(gps.lat*Math.PI/180) * Math.cos(site.latitude*Math.PI/180) * Math.sin(dLon/2)**2;
-          const distM = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-          const distFt = distM * 3.28084;
-          const radiusFt = site.geofence_radius_ft || 500;
-          isOnSite = distFt <= radiusFt;
+          const a = Math.sin(dLat/2)**2 + Math.cos(gps.lat*Math.PI/180)*Math.cos(site.latitude*Math.PI/180)*Math.sin(dLon/2)**2;
+          const distFt = R * 2 * Math.atan2(Math.sqrt(a),Math.sqrt(1-a)) * 3.28084;
+          isOnSite = distFt <= (site.geofence_radius_ft || 500);
         }
       }
+
+      // ── Build payload — strip undefined/null photos to reduce payload size ──
       const payload = {
-        equipment_id: equipment.id,
-        equipment_brand: equipment.brand,
-        equipment_model: equipment.model,
-        entry_type: type,
-        job_site_id: jobSite,
-        is_on_site: isOnSite,
-        fuel_level_before: type === "fill" ? Number(fuelBefore) : null,
-        fuel_level_after: type === "fill" ? Number(fuelAfter) : null,
-        fuel_level_remaining: type === "eod" ? Number(fuelRemaining) : null,
-        gallons_added: type === "fill" ? Number(gallonsAdded) : null,
-        hours_reading: hoursReading ? Number(hoursReading) : null,
-        remarks: remarks.trim(),
-        supervisor_note: supervisorNote.trim(),
-        photo_before: photo1,
-        photo_after: photo2,
-        gps_lat: gps?.lat,
-        gps_lon: gps?.lon,
-        device_info: navigator.userAgent.slice(0, 200),
-        logged_at: new Date().toISOString(),
+        equipment_id:          equipment.id,
+        equipment_brand:       equipment.brand,
+        equipment_model:       equipment.model,
+        entry_type:            type,
+        job_site_id:           (jobSite && jobSite !== "__other__") ? jobSite : null,
+        is_on_site:            isOnSite,
+        fuel_level_before:     type === "fill" ? Number(fuelBefore)     : null,
+        fuel_level_after:      type === "fill" ? Number(fuelAfter)      : null,
+        fuel_level_remaining:  type === "eod"  ? Number(fuelRemaining)  : null,
+        gallons_added:         type === "fill" ? Number(gallonsAdded)   : null,
+        hours_reading:         hoursReading ? Number(hoursReading)      : null,
+        remarks:               remarks.trim()        || null,
+        supervisor_note:       supervisorNote.trim() || null,
+        photo_before:          photo1 || null,
+        photo_after:           photo2 || null,
+        gps_lat:               gps?.lat ?? null,
+        gps_lon:               gps?.lon ?? null,
+        device_info:           navigator.userAgent.slice(0, 200),
+        logged_at:             new Date().toISOString(),
       };
-      const res = await authFetch("/api/fuel/entry", { method: "POST", body: JSON.stringify(payload) });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || "Failed to save fuel entry."); }
-      addToast(type === "eod" ? "End-of-day fuel recorded successfully!" : "Fuel fill logged successfully!", "success");
+
+      console.log("[fuel/entry] submitting", { entry_type: payload.entry_type, equipment_id: payload.equipment_id, job_site_id: payload.job_site_id });
+
+      // ── POST to backend ─────────────────────────────────────────────────
+      let res;
+      try {
+        res = await authFetch("/api/fuel/entry", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+      } catch (networkErr) {
+        throw new Error("Network error — check your internet connection and try again.");
+      }
+
+      // ── Parse response safely (server may return HTML on 404/crash) ─────
+      const data = await safeJson(res);
+
+      if (!res.ok) {
+        const msg = data?.error || data?.message || `Server returned ${res.status}`;
+        console.error("[fuel/entry] server error", res.status, data);
+        throw new Error(msg);
+      }
+
+      console.log("[fuel/entry] success", data);
+      addToast(
+        type === "eod" ? "End-of-day fuel recorded successfully!" : "Fuel fill logged successfully!",
+        "success"
+      );
       onSuccess();
-    } catch (e) { addToast(e.message || "Error submitting entry.", "error"); }
+    } catch (err) {
+      console.error("[fuel/entry] submit error", err);
+      addToast(err?.message || "Unexpected error submitting entry. Please try again.", "error");
+    }
     setSubmitting(false);
   };
 
