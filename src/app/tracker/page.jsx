@@ -6059,7 +6059,7 @@ function FuelGauge({ level, size = 80 }) {
 
 // Bar chart for fuel dashboard — with value labels above bars
 function FuelBarChart({ data, height = 140, color = "var(--blue)" }) {
-  const [hovered, setHovered] = React.useState(null);
+  const [hovered, setHovered] = useState(null);
   if (!data || data.length === 0 || data.every(d => d.value === 0)) return (
     <div style={{ height, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", color:"var(--text4)", fontSize:13, gap:6 }}>
       <span style={{ fontSize:22, opacity:0.4 }}>📊</span>
@@ -7354,46 +7354,159 @@ function FuelReportsPage({ logs, addToast }) {
 }
 
 // ─── MY LOGS (Employee) ────────────────────────────────────────────────────────
-function FuelMyLogs({ logs, loadingLogs, currentUser }) {
+function FuelMyLogs({ logs, loadingLogs, currentUser, onRefresh }) {
+  const [filter, setFilter]       = useState("all");
+  const [search, setSearch]       = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+  const [page, setPage]           = useState(1);
+  const [photoCache, setPhotoCache] = useState({});
+  const [loadingPhoto, setLoadingPhoto] = useState(null);
+  const [previewPhoto, setPreviewPhoto] = useState(null);
+  const PER_PAGE = 20;
+
+  const fmtDate = d => { try { return d ? new Date(d).toLocaleDateString([], { month:"short", day:"numeric", year:"numeric" }) : "—"; } catch { return d||"—"; } };
+  const fmtTime = d => { try { return d ? new Date(d).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) : ""; } catch { return ""; } };
+
   const myLogs = logs.filter(l => l.operator_id === currentUser?.id);
+  const filtered = myLogs.filter(l => {
+    if (filter !== "all" && l.entry_type !== filter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!`${l.equipment_brand||""} ${l.equipment_model||""} ${l.job_site_name||""}`.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+  const paged = filtered.slice(0, page * PER_PAGE);
+
+  const OnSiteBadge = ({ val }) => {
+    if (val === true)  return <span style={{ background:"rgba(5,150,105,0.1)", color:"#047857", border:"1px solid rgba(5,150,105,0.3)", padding:"2px 9px", borderRadius:999, fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>● On-Site</span>;
+    if (val === false) return <span style={{ background:"rgba(220,38,38,0.08)", color:"#b91c1c", border:"1px solid rgba(220,38,38,0.25)", padding:"2px 9px", borderRadius:999, fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>● Off-Site</span>;
+    return <span style={{ background:"var(--bg3)", color:"var(--text4)", border:"1px solid var(--border)", padding:"2px 8px", borderRadius:999, fontSize:11 }}>— Location N/A</span>;
+  };
+
+  const toggleExpand = async (l) => {
+    if (expandedId === l.id) { setExpandedId(null); return; }
+    setExpandedId(l.id);
+    if ((l.has_photo_before || l.has_photo_after) && !photoCache[l.id]) {
+      setLoadingPhoto(l.id);
+      try {
+        const res = await authFetch(`/api/fuel/logs/${l.id}`);
+        if (res.ok) { const d = await res.json(); setPhotoCache(prev => ({ ...prev, [l.id]: { photo_before: d.photo_before, photo_after: d.photo_after } })); }
+      } catch {}
+      setLoadingPhoto(null);
+    }
+  };
+
   return (
     <div>
-      <SectionHeader title="My Fuel Logs" subtitle="Your personal fuel entry history"/>
-      {loadingLogs && <div style={{ textAlign: "center", padding: 24, color: "var(--text3)", fontSize: 13 }}>Loading…</div>}
-      {!loadingLogs && myLogs.length === 0 && (
-        <Card style={{ textAlign: "center", padding: 28 }}>
-          <Icon name="droplet" size={32} color="var(--text4)" style={{ marginBottom: 10 }}/>
-          <div style={{ fontSize: 14, color: "var(--text3)" }}>No fuel entries yet. Use the Equipment tab to log fuel.</div>
+      {/* Photo preview modal */}
+      {previewPhoto && (
+        <div onClick={() => setPreviewPhoto(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ position:"relative", maxWidth:"90vw", maxHeight:"85vh" }}>
+            <img src={previewPhoto} alt="meter" style={{ maxWidth:"100%", maxHeight:"80vh", objectFit:"contain", borderRadius:8, display:"block" }}/>
+            <button onClick={() => setPreviewPhoto(null)} style={{ position:"absolute", top:-12, right:-12, width:32, height:32, borderRadius:"50%", background:"white", border:"2px solid var(--border)", cursor:"pointer", fontSize:16, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:700 }}>×</button>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:14 }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
+          <div>
+            <div style={{ fontSize:15, fontWeight:700, color:"var(--text)" }}>My Fuel Log</div>
+            <div style={{ fontSize:12.5, color:"var(--text3)", marginTop:2 }}>{filtered.length} record{filtered.length!==1?"s":""}</div>
+          </div>
+          <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
+            {onRefresh && <button onClick={onRefresh} style={{ padding:"6px 10px", background:"var(--bg3)", color:"var(--text3)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", fontSize:12, cursor:"pointer" }}>↻</button>}
+            {[["all","All"],["fill","Fills"],["eod","EOD"]].map(([v,l]) => (
+              <button key={v} onClick={() => { setFilter(v); setPage(1); }} style={{ padding:"6px 12px", background:filter===v?"#1e3a5f":"var(--bg3)", color:filter===v?"white":"var(--text3)", border:`1px solid ${filter===v?"#1e3a5f":"var(--border)"}`, borderRadius:999, fontSize:12, fontWeight:filter===v?700:450, cursor:"pointer" }}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search equipment, job site…" style={{ fontSize:13.5, padding:"8px 12px", borderRadius:"var(--radius-sm)", border:"1.5px solid var(--border2)", background:"var(--bg2)", color:"var(--text)", width:"100%", boxSizing:"border-box" }}/>
+      </div>
+
+      {loadingLogs && <div style={{ textAlign:"center", padding:32, color:"var(--text3)", fontSize:13 }}>Loading fuel history…</div>}
+
+      {!loadingLogs && filtered.length === 0 && (
+        <Card style={{ textAlign:"center", padding:32 }}>
+          <Icon name="droplet" size={32} color="var(--text4)" style={{ marginBottom:10 }}/>
+          <div style={{ fontSize:14, color:"var(--text3)" }}>{myLogs.length === 0 ? "No fuel entries yet. Tap Equipment to log fuel." : "No entries match your filter."}</div>
         </Card>
       )}
-      {myLogs.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {myLogs.slice(0, 30).map((l, i) => (
-            <Card key={i} style={{ padding: "12px 14px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <span style={{ background: l.entry_type === "fill" ? "var(--blue-light)" : "var(--green-light)", color: l.entry_type === "fill" ? "var(--blue)" : "var(--green)", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700 }}>
-                      {l.entry_type === "fill" ? "⛽ Fill" : "🏁 EOD"}
-                    </span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{l.equipment_brand} {l.equipment_model}</span>
+
+      {!loadingLogs && paged.length > 0 && (
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {paged.map((l, i) => {
+            const isExpanded = expandedId === l.id;
+            const isFill = l.entry_type === "fill";
+            const photos = photoCache[l.id];
+            return (
+              <Card key={l.id||i} style={{ padding:0, overflow:"hidden", border:"1.5px solid var(--border2)" }}>
+                <div style={{ padding:"12px 14px" }}>
+                  <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                    <div style={{ flexShrink:0, paddingTop:2 }}>
+                      <span style={{ background:isFill?"var(--blue-light)":"var(--green-light)", color:isFill?"var(--blue)":"var(--green)", padding:"3px 9px", borderRadius:999, fontSize:11, fontWeight:700, display:"inline-block" }}>
+                        {isFill ? "⛽ Fill" : "🏁 EOD"}
+                      </span>
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13.5, fontWeight:700, color:"var(--text)", marginBottom:2 }}>{l.equipment_brand} {l.equipment_model}</div>
+                      <div style={{ fontSize:12.5, color:"var(--text2)", marginBottom:3 }}>
+                        {isFill
+                          ? <>{l.fuel_level_before??'—'}% → {l.fuel_level_after??'—'}%{l.gallons_added ? <strong style={{ color:"var(--blue)" }}> · {l.gallons_added} gal</strong> : null}</>
+                          : <>Remaining: <strong style={{ color:"var(--green)" }}>{l.fuel_level_remaining??'—'}%</strong></>}
+                      </div>
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:"4px 10px", alignItems:"center" }}>
+                        {l.job_site_name && <span style={{ fontSize:11.5, color:"var(--text3)", display:"flex", alignItems:"center", gap:3 }}><Icon name="pin" size={11} color="var(--text4)"/>{l.job_site_name}</span>}
+                        {l.hours_reading && <span style={{ fontSize:11.5, color:"var(--text3)" }}>⏱ {l.hours_reading} hrs</span>}
+                        <OnSiteBadge val={l.is_on_site}/>
+                        {(l.has_photo_before || l.has_photo_after) && <span style={{ fontSize:11, color:"var(--blue)", fontWeight:600 }}>📷 Photo</span>}
+                      </div>
+                    </div>
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
+                      <div style={{ fontSize:12, color:"var(--text3)", fontWeight:600 }}>{fmtDate(l.logged_at||l.log_date)}</div>
+                      <div style={{ fontSize:11, color:"var(--text4)", marginTop:1 }}>{fmtTime(l.logged_at)}</div>
+                      <button onClick={() => toggleExpand(l)} style={{ marginTop:6, background:"var(--bg3)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", padding:"4px 10px", fontSize:11, color:"var(--text3)", cursor:"pointer", fontWeight:600 }}>
+                        {isExpanded ? "Less ▲" : "Details ▼"}
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12.5, color: "var(--text3)" }}>
-                    {l.entry_type === "fill"
-                      ? `${l.fuel_level_before ?? "—"}% → ${l.fuel_level_after ?? "—"}% · ${l.gallons_added ? `${l.gallons_added} gal added` : ""}`
-                      : `Remaining: ${l.fuel_level_remaining ?? "—"}%`
-                    }
-                    {l.job_site_name && ` · ${l.job_site_name}`}
+                </div>
+                {isExpanded && (
+                  <div style={{ borderTop:"1px solid var(--border)", background:"var(--bg3)", padding:"14px 14px" }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(130px, 1fr))", gap:12 }}>
+                      <div><div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Submitted At</div><div style={{ fontSize:13, color:"var(--text2)", fontWeight:600 }}>{l.logged_at ? new Date(l.logged_at).toLocaleString() : l.log_date}</div></div>
+                      <div><div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Location</div><OnSiteBadge val={l.is_on_site}/></div>
+                      {l.gps_lat && l.gps_lon && <div><div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>GPS</div><div style={{ fontSize:11.5, color:"var(--text2)", fontFamily:"monospace" }}>{parseFloat(l.gps_lat).toFixed(5)}, {parseFloat(l.gps_lon).toFixed(5)}</div></div>}
+                      {l.job_site_name && <div><div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Job Site</div><div style={{ fontSize:13, color:"var(--text2)", fontWeight:600 }}>{l.job_site_name}</div></div>}
+                      {l.hours_reading && <div><div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Machine Hours</div><div style={{ fontSize:13, color:"var(--text2)", fontWeight:700 }}>{l.hours_reading} hrs</div></div>}
+                      {isFill && l.gallons_added && <div><div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Gallons Added</div><div style={{ fontSize:14, color:"var(--blue)", fontWeight:700 }}>{l.gallons_added} gal</div></div>}
+                      {l.remarks && <div style={{ gridColumn:"1/-1" }}><div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Remarks</div><div style={{ fontSize:13, color:"var(--text2)", fontStyle:"italic" }}>{l.remarks}</div></div>}
+                      {(l.has_photo_before || l.has_photo_after) && (
+                        <div style={{ gridColumn:"1/-1" }}>
+                          <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>Meter Photo</div>
+                          {loadingPhoto === l.id ? (
+                            <div style={{ display:"flex", alignItems:"center", gap:8, color:"var(--text3)", fontSize:12 }}><span className="spin" style={{ width:14, height:14, border:"2px solid var(--blue)", borderTopColor:"transparent", borderRadius:"50%", display:"inline-block" }}/>Loading photo…</div>
+                          ) : photos ? (
+                            <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+                              {photos.photo_before && <div><div style={{ fontSize:11, color:"var(--text3)", marginBottom:5, fontWeight:600 }}>Before Fill</div><div onClick={() => setPreviewPhoto(photos.photo_before)} style={{ cursor:"pointer" }}><img src={photos.photo_before} alt="before" style={{ width:140, height:105, objectFit:"cover", borderRadius:"var(--radius)", border:"2px solid var(--blue)", display:"block" }}/><div style={{ fontSize:10, color:"var(--blue)", textAlign:"center", marginTop:3 }}>🔍 Enlarge</div></div></div>}
+                              {photos.photo_after  && <div><div style={{ fontSize:11, color:"var(--text3)", marginBottom:5, fontWeight:600 }}>After Fill</div><div onClick={() => setPreviewPhoto(photos.photo_after)} style={{ cursor:"pointer" }}><img src={photos.photo_after} alt="after" style={{ width:140, height:105, objectFit:"cover", borderRadius:"var(--radius)", border:"2px solid var(--green)", display:"block" }}/><div style={{ fontSize:10, color:"var(--green)", textAlign:"center", marginTop:3 }}>🔍 Enlarge</div></div></div>}
+                            </div>
+                          ) : <div style={{ fontSize:12, color:"var(--text3)" }}>Expand to load photo</div>}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {l.remarks && <div style={{ fontSize: 12, color: "var(--text4)", marginTop: 3, fontStyle: "italic" }}>{l.remarks}</div>}
-                </div>
-                <div style={{ fontSize: 11, color: "var(--text4)", whiteSpace: "nowrap", textAlign: "right" }}>
-                  <div>{l.log_date}</div>
-                  {l.logged_at && <div style={{ marginTop: 2 }}>{new Date(l.logged_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>}
-                </div>
-              </div>
-            </Card>
-          ))}
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+      {paged.length < filtered.length && (
+        <div style={{ textAlign:"center", marginTop:14 }}>
+          <Btn onClick={() => setPage(p => p+1)} variant="ghost">Load More ({filtered.length - paged.length} remaining)</Btn>
         </div>
       )}
     </div>
@@ -7856,6 +7969,7 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [eodStatus, setEodStatus] = useState({}); // { eq_id: true/false } today's EOD submitted
   const [jobSites, setJobSites] = useState([]);
+  const [globalJobSiteId, setGlobalJobSiteId] = useState(""); // top-level job site selector
 
 
   // Page title lifecycle
@@ -7883,7 +7997,7 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
         const today = new Date().toISOString().slice(0, 10);
         const status = {};
         (data.logs || []).forEach(l => {
-          if (l.entry_type === "eod" && l.log_date === today) status[l.equipment_id] = true;
+          if (l.entry_type === "eod" && (l.log_date||"").slice(0,10) === today) status[l.equipment_id] = true;
         });
         setEodStatus(status);
       }
@@ -7944,7 +8058,6 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 18, fontWeight: 700, color: "white", letterSpacing: "-0.02em" }}>Fuel Entry</div>
-          <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.65)", marginTop: 2, fontWeight: 400 }}>Bright Sky Construction · Equipment Fuel Tracking</div>
         </div>
         {unresolvedAlerts > 0 && (
           <div onClick={() => setView("alerts")} style={{ background: "rgba(220,38,38,0.85)", color: "white", padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, border: "1px solid rgba(255,255,255,0.2)", flexShrink: 0 }}>
@@ -7953,6 +8066,26 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
           </div>
         )}
       </div>
+
+      {/* Global job site selector — visible when not in form */}
+      {view !== "form" && (
+        <div style={{ background:"var(--bg2)", border:"1.5px solid var(--border2)", borderRadius:"var(--radius)", padding:"10px 14px", marginBottom:10, display:"flex", alignItems:"center", gap:10 }}>
+          <Icon name="pin" size={15} color="var(--blue)" style={{ flexShrink:0 }}/>
+          <div style={{ fontSize:12.5, fontWeight:600, color:"var(--text2)", flexShrink:0 }}>Job Site:</div>
+          <select
+            value={globalJobSiteId}
+            onChange={e => setGlobalJobSiteId(e.target.value)}
+            style={{ flex:1, fontSize:13.5, padding:"6px 10px", borderRadius:"var(--radius-sm)", border:"1.5px solid var(--border2)", background:"var(--bg)", color:"var(--text)", fontWeight:500, minWidth:0 }}>
+            <option value="">— Select job site —</option>
+            {(jobSites.length > 0 ? jobSites : (isAdmin ? allJobSites : assignedJobSites).map(w => ({ id: w.id, name: w.name }))).map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          {globalJobSiteId && (
+            <button onClick={() => setGlobalJobSiteId("")} style={{ flexShrink:0, background:"none", border:"none", cursor:"pointer", color:"var(--text4)", fontSize:16, padding:"0 4px", lineHeight:1 }} title="Clear">×</button>
+          )}
+        </div>
+      )}
 
       {/* Sub-navigation tabs */}
       {view !== "form" && (
@@ -7974,6 +8107,7 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
           entryType={entryType}
           currentUser={currentUser}
           jobSites={jobSites.length > 0 ? jobSites : (isAdmin ? allJobSites : assignedJobSites).map(w => ({ id: w.id, name: w.name }))}
+          defaultJobSiteId={globalJobSiteId}
           addToast={addToast}
           onBack={() => { setView("equipment"); setSelectedEquipment(null); }}
           onSuccess={() => { loadLogs(); loadAlerts(); if (isAdmin) loadDashboard(); setView("equipment"); }}
@@ -7983,7 +8117,7 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
       {view === "dashboard" && isAdmin && <FuelDashboard dashData={dashData} logs={logs} alerts={alerts} onViewAlerts={() => setView("alerts")}/>}
       {view === "alerts" && isAdmin && <FuelAlertsView alerts={alerts} onRefresh={loadAlerts} addToast={addToast}/>}
       {view === "reports" && isAdmin && <FuelReportsPage logs={logs} addToast={addToast}/>}
-      {view === "my_logs" && !isAdmin && <FuelMyLogs logs={logs} loadingLogs={loadingLogs} currentUser={currentUser}/>}
+      {view === "my_logs" && !isAdmin && <FuelMyLogs logs={logs} loadingLogs={loadingLogs} currentUser={currentUser} onRefresh={loadLogs}/>}
     </div>
   );
 }
@@ -8074,7 +8208,7 @@ function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs })
   );
 }
 
-function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, onBack, onSuccess }) {
+function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJobSiteId = "", addToast, onBack, onSuccess }) {
   const [type, setType] = useState(entryType);
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
@@ -8084,8 +8218,8 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, 
   const fileRef1 = useRef(null);
   const fileRef2 = useRef(null);
 
-  // Form fields
-  const [jobSite, setJobSite] = useState("");
+  // Form fields — pre-fill jobSite from parent-level selection
+  const [jobSite, setJobSite] = useState(defaultJobSiteId || "");
   const [fuelBefore, setFuelBefore] = useState("");
   const [fuelAfter, setFuelAfter] = useState("");
   const [fuelRemaining, setFuelRemaining] = useState("");
@@ -8236,14 +8370,24 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, addToast, 
 
       {/* Form fields */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Job site */}
+        {/* Job site — shows pre-selected site or dropdown if none chosen */}
         <div>
           <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Job Site <span style={{ color: "var(--red)" }}>*</span></label>
-          <select value={jobSite} onChange={e => setJobSite(e.target.value)} style={{ fontSize: 15 }}>
-            <option value="">Select job site…</option>
-            {jobSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            <option value="__other__">Other / Not Listed</option>
-          </select>
+          {defaultJobSiteId && jobSite === defaultJobSiteId ? (
+            <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 12px", background:"var(--blue-light)", border:"1.5px solid var(--blue-mid)", borderRadius:"var(--radius-sm)" }}>
+              <Icon name="pin" size={13} color="var(--blue)"/>
+              <span style={{ fontSize:14, fontWeight:600, color:"var(--blue)", flex:1 }}>
+                {jobSites.find(s => String(s.id) === String(jobSite))?.name || jobSite}
+              </span>
+              <button onClick={() => setJobSite("")} style={{ background:"none", border:"none", cursor:"pointer", color:"var(--blue)", fontSize:12, fontWeight:600, padding:"0 2px" }}>Change</button>
+            </div>
+          ) : (
+            <select value={jobSite} onChange={e => setJobSite(e.target.value)} style={{ fontSize: 15 }}>
+              <option value="">Select job site…</option>
+              {jobSites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value="__other__">Other / Not Listed</option>
+            </select>
+          )}
         </div>
 
         {/* Hours reading */}
