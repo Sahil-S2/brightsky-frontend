@@ -9132,4 +9132,3 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJob
     </div>
   );
 }
-
