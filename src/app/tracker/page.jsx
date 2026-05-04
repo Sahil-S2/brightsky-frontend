@@ -2155,26 +2155,31 @@ function EmployeeDashboard({
         <WorkflowSection selectedTab={selectedTab} setSelectedTab={setSelectedTab} isAdmin={false}/>
       </div>
 
-      {/* Job Site Selector — hidden when Fuel Entry is active (has its own selector) */}
-      {selectedTab !== "fuel" && (
-        <FuelJobSiteSelector
-          jobSites={(employeeJobSites.length > 0 ? employeeJobSites : [employeeWorksite].filter(Boolean)).map(s => ({
-            ...s,
-            geofence_radius_ft: s.geofence_radius_ft || s.radius_feet || 1000,
-          }))}
-          selectedJobSite={selectedTimeJobSiteId}
-          setSelectedJobSite={(id) => { setSelectedTimeJobSiteId(id); if(onJobSiteSelect) onJobSiteSelect(id); }}
-          isOnSite={isOnSiteTime}
-          setIsOnSite={setIsOnSiteTime}
-          gpsForDistance={gpsForDistanceTime}
-          setGpsForDistance={setGpsForDistanceTime}
-        />
-      )}
+      {/* Job Site Selector — always visible across all tabs */}
+      <FuelJobSiteSelector
+        jobSites={(employeeJobSites.length > 0 ? employeeJobSites : [employeeWorksite].filter(Boolean)).map(s => ({
+          ...s,
+          geofence_radius_ft: s.geofence_radius_ft || s.radius_feet || 1000,
+        }))}
+        selectedJobSite={selectedTimeJobSiteId}
+        setSelectedJobSite={(id) => { setSelectedTimeJobSiteId(id); if(onJobSiteSelect) onJobSiteSelect(id); }}
+        isOnSite={isOnSiteTime}
+        setIsOnSite={setIsOnSiteTime}
+        gpsForDistance={gpsForDistanceTime}
+        setGpsForDistance={setGpsForDistanceTime}
+      />
 
       {/* Content based on selected tab */}
       {selectedTab === "timecard" && renderTimeCard()}
       {selectedTab === "fuel" && (
-        <FuelEntryPage currentUser={user} t={t} addToast={addToast} assignedJobSites={employeeJobSites.length>0?employeeJobSites:[employeeWorksite].filter(Boolean)} allJobSites={worksites}/>
+        <FuelEntryPage
+          currentUser={user} t={t} addToast={addToast}
+          assignedJobSites={employeeJobSites.length>0?employeeJobSites:[employeeWorksite].filter(Boolean)}
+          allJobSites={worksites}
+          preselectedJobSiteId={selectedTimeJobSiteId}
+          preselectedIsOnSite={isOnSiteTime}
+          preselectedGps={gpsForDistanceTime}
+        />
       )}
       {selectedTab === "equipment" && (
         <WorkflowEquipmentTab isAdmin={false} addToast={addToast}/>
@@ -7958,7 +7963,8 @@ function AuditPage({t}){
   );
 }
 
-function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJobSites = [], onMount, onUnmount }) {
+function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJobSites = [], onMount, onUnmount,
+  preselectedJobSiteId = "", preselectedIsOnSite = null, preselectedGps = null }) {
   const isAdmin = ["admin", "manager", "owner"].includes(currentUser?.role);
   const [view, setView] = useState("equipment"); // "equipment" | "form" | "dashboard" | "alerts" | "reports"
   const [selectedEquipment, setSelectedEquipment] = useState(null);
@@ -7969,7 +7975,9 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [eodStatus, setEodStatus] = useState({}); // { eq_id: true/false } today's EOD submitted
   const [jobSites, setJobSites] = useState([]);
-  const [globalJobSiteId, setGlobalJobSiteId] = useState(""); // top-level job site selector
+  // For admins: internal site selection. For employees: driven by preselectedJobSiteId from parent.
+  const [adminJobSiteId, setAdminJobSiteId] = useState("");
+  const globalJobSiteId = isAdmin ? adminJobSiteId : preselectedJobSiteId;
 
 
   // Page title lifecycle
@@ -8049,41 +8057,43 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 0, minHeight: 0 }}>
-      {/* Header banner */}
-      <div style={{ background: "linear-gradient(135deg, #1e3a5f 0%, #1a4971 50%, #0f2d47 100%)", borderRadius: "var(--radius-lg)", padding: "18px 20px", marginBottom: 16, display: "flex", alignItems: "center", gap: 14, position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", right: -20, top: -20, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }}/>
-        <div style={{ position: "absolute", right: 60, bottom: -30, width: 80, height: 80, borderRadius: "50%", background: "rgba(255,255,255,0.03)" }}/>
-        <div style={{ width: 48, height: 48, borderRadius: "var(--radius-lg)", background: "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, border: "1px solid rgba(255,255,255,0.15)" }}>
-          <Icon name="fuel" size={22} color="white"/>
+      {/* Alert badge (for admins — compact, no full card) */}
+      {unresolvedAlerts > 0 && isAdmin && (
+        <div onClick={() => setView("alerts")} style={{ background:"var(--red-light)", border:"1.5px solid rgba(220,38,38,0.2)", borderRadius:"var(--radius)", padding:"9px 14px", marginBottom:4, display:"flex", alignItems:"center", gap:8, cursor:"pointer" }}>
+          <Icon name="alert" size={14} color="var(--red)" style={{ flexShrink:0 }}/>
+          <div style={{ fontSize:13, color:"var(--red)", fontWeight:600, flex:1 }}>{unresolvedAlerts} unresolved fuel alert{unresolvedAlerts!==1?"s":""}</div>
+          <span style={{ fontSize:12, color:"var(--red)", opacity:0.7 }}>View →</span>
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "white", letterSpacing: "-0.02em" }}>Fuel Entry</div>
-        </div>
-        {unresolvedAlerts > 0 && (
-          <div onClick={() => setView("alerts")} style={{ background: "rgba(220,38,38,0.85)", color: "white", padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, border: "1px solid rgba(255,255,255,0.2)", flexShrink: 0 }}>
-            <Icon name="alert" size={12} color="white"/>
-            {unresolvedAlerts} Alert{unresolvedAlerts !== 1 ? "s" : ""}
-          </div>
-        )}
-      </div>
+      )}
 
-      {/* Global job site selector — visible when not in form */}
-      {view !== "form" && (
-        <div style={{ background:"var(--bg2)", border:"1.5px solid var(--border2)", borderRadius:"var(--radius)", padding:"10px 14px", marginBottom:10, display:"flex", alignItems:"center", gap:10 }}>
+      {/* Admin-only job site selector (employees use the top-level FuelJobSiteSelector) */}
+      {isAdmin && view !== "form" && (
+        <div style={{ background:"var(--bg2)", border:"1.5px solid var(--border2)", borderRadius:"var(--radius)", padding:"10px 14px", marginBottom:2, display:"flex", alignItems:"center", gap:10 }}>
           <Icon name="pin" size={15} color="var(--blue)" style={{ flexShrink:0 }}/>
-          <div style={{ fontSize:12.5, fontWeight:600, color:"var(--text2)", flexShrink:0 }}>Job Site:</div>
+          <div style={{ fontSize:12.5, fontWeight:600, color:"var(--text2)", flexShrink:0, whiteSpace:"nowrap" }}>Job Site:</div>
           <select
-            value={globalJobSiteId}
-            onChange={e => setGlobalJobSiteId(e.target.value)}
+            value={adminJobSiteId}
+            onChange={e => setAdminJobSiteId(e.target.value)}
             style={{ flex:1, fontSize:13.5, padding:"6px 10px", borderRadius:"var(--radius-sm)", border:"1.5px solid var(--border2)", background:"var(--bg)", color:"var(--text)", fontWeight:500, minWidth:0 }}>
-            <option value="">— Select job site —</option>
-            {(jobSites.length > 0 ? jobSites : (isAdmin ? allJobSites : assignedJobSites).map(w => ({ id: w.id, name: w.name }))).map(s => (
+            <option value="">— All Sites / Not Selected —</option>
+            {(jobSites.length > 0 ? jobSites : allJobSites).map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
-          {globalJobSiteId && (
-            <button onClick={() => setGlobalJobSiteId("")} style={{ flexShrink:0, background:"none", border:"none", cursor:"pointer", color:"var(--text4)", fontSize:16, padding:"0 4px", lineHeight:1 }} title="Clear">×</button>
+          {adminJobSiteId && (
+            <button onClick={() => setAdminJobSiteId("")} style={{ flexShrink:0, background:"none", border:"none", cursor:"pointer", color:"var(--text4)", fontSize:18, padding:"0 4px", lineHeight:1 }} title="Clear">×</button>
           )}
+        </div>
+      )}
+
+      {/* Employee: gate access until a job site is selected */}
+      {!isAdmin && !preselectedJobSiteId && view !== "form" && (
+        <div style={{ background:"var(--amber-light)", border:"1.5px solid rgba(217,119,6,0.25)", borderRadius:"var(--radius)", padding:"16px 16px", marginBottom:4, display:"flex", alignItems:"center", gap:12 }}>
+          <Icon name="pin" size={18} color="var(--amber)" style={{ flexShrink:0 }}/>
+          <div>
+            <div style={{ fontSize:14, fontWeight:700, color:"#92400e" }}>Select a Job Site to continue</div>
+            <div style={{ fontSize:12.5, color:"#b45309", marginTop:2 }}>Use the Job Site selector above to choose your work location before logging fuel.</div>
+          </div>
         </div>
       )}
 
@@ -8100,7 +8110,7 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
       )}
 
       {/* Views */}
-      {view === "equipment" && <FuelEquipmentGrid eodStatus={eodStatus} openEntry={openEntry} isAdmin={isAdmin} logs={logs} loadingLogs={loadingLogs}/>}
+      {view === "equipment" && <FuelEquipmentGrid eodStatus={eodStatus} openEntry={openEntry} isAdmin={isAdmin} logs={logs} loadingLogs={loadingLogs} siteRequired={!isAdmin && !preselectedJobSiteId}/>}
       {view === "form" && selectedEquipment && (
         <FuelEntryForm
           equipment={selectedEquipment}
@@ -8108,6 +8118,8 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
           currentUser={currentUser}
           jobSites={jobSites.length > 0 ? jobSites : (isAdmin ? allJobSites : assignedJobSites).map(w => ({ id: w.id, name: w.name }))}
           defaultJobSiteId={globalJobSiteId}
+          preselectedIsOnSite={isAdmin ? null : preselectedIsOnSite}
+          preselectedGps={isAdmin ? null : preselectedGps}
           addToast={addToast}
           onBack={() => { setView("equipment"); setSelectedEquipment(null); }}
           onSuccess={() => { loadLogs(); loadAlerts(); if (isAdmin) loadDashboard(); setView("equipment"); }}
@@ -8122,7 +8134,7 @@ function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJob
   );
 }
 
-function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs }) {
+function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs, siteRequired }) {
   const today = new Date().toISOString().slice(0, 10);
 
   // Last known fuel level per equipment from logs
@@ -8189,15 +8201,25 @@ function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs })
                 </div>
               )}
 
-              {/* Action buttons */}
+              {/* Action buttons — disabled until job site is selected (employees) */}
               <div style={{ display: "flex", gap: 8 }}>
                 {!hasTrailer && (
-                  <button onClick={() => openEntry(eq, "fill")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "9px 6px", borderRadius: "var(--radius-sm)", background: "var(--blue-light)", color: "var(--blue)", border: "1.5px solid var(--blue-mid)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 38 }}>
-                    <Icon name="droplet" size={13} color="var(--blue)"/> Fuel Fill
+                  <button
+                    onClick={() => { if (!siteRequired) openEntry(eq, "fill"); }}
+                    disabled={!!siteRequired}
+                    title={siteRequired ? "Select a job site above first" : ""}
+                    style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "9px 6px", borderRadius: "var(--radius-sm)", background: siteRequired ? "var(--bg3)" : "var(--blue-light)", color: siteRequired ? "var(--text4)" : "var(--blue)", border: `1.5px solid ${siteRequired ? "var(--border)" : "var(--blue-mid)"}`, fontSize: 12.5, fontWeight: 600, cursor: siteRequired ? "not-allowed" : "pointer", opacity: siteRequired ? 0.45 : 1, minHeight: 38 }}>
+                    <Icon name="droplet" size={13} color={siteRequired ? "var(--text4)" : "var(--blue)"}/>
+                    Fuel Fill
                   </button>
                 )}
-                <button onClick={() => openEntry(eq, "eod")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "9px 6px", borderRadius: "var(--radius-sm)", background: eodDone ? "var(--green-light)" : "var(--bg3)", color: eodDone ? "var(--green)" : "var(--text2)", border: `1.5px solid ${eodDone ? "rgba(5,150,105,0.2)" : "var(--border)"}`, fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 38 }}>
-                  <Icon name="flag" size={13} color={eodDone ? "var(--green)" : "var(--text3)"}/> {eodDone ? "EOD ✓" : "End of Day"}
+                <button
+                  onClick={() => { if (!siteRequired) openEntry(eq, "eod"); }}
+                  disabled={!!siteRequired}
+                  title={siteRequired ? "Select a job site above first" : ""}
+                  style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "9px 6px", borderRadius: "var(--radius-sm)", background: siteRequired ? "var(--bg3)" : (eodDone ? "var(--green-light)" : "var(--bg3)"), color: siteRequired ? "var(--text4)" : (eodDone ? "var(--green)" : "var(--text2)"), border: `1.5px solid ${siteRequired ? "var(--border)" : (eodDone ? "rgba(5,150,105,0.2)" : "var(--border)")}`, fontSize: 12.5, fontWeight: 600, cursor: siteRequired ? "not-allowed" : "pointer", opacity: siteRequired ? 0.45 : 1, minHeight: 38 }}>
+                  <Icon name="flag" size={13} color={siteRequired ? "var(--text4)" : (eodDone ? "var(--green)" : "var(--text3)")}/>
+                  {eodDone ? "EOD ✓" : "End of Day"}
                 </button>
               </div>
             </div>
@@ -8208,11 +8230,12 @@ function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs })
   );
 }
 
-function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJobSiteId = "", addToast, onBack, onSuccess }) {
+function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJobSiteId = "",
+  preselectedIsOnSite = null, preselectedGps = null, addToast, onBack, onSuccess }) {
   const [type, setType] = useState(entryType);
   const [submitting, setSubmitting] = useState(false);
   const [locating, setLocating] = useState(false);
-  const [gps, setGps] = useState(null);
+  const [gps, setGps] = useState(preselectedGps || null); // seed with parent GPS if available
   const [photo1, setPhoto1] = useState(null);
   const [photo2, setPhoto2] = useState(null);
   const fileRef1 = useRef(null);
@@ -8228,8 +8251,9 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJob
   const [remarks, setRemarks] = useState("");
   const [supervisorNote, setSupervisorNote] = useState("");
 
-  // Capture GPS on open
+  // Capture GPS on open — skip if parent already provided it
   useEffect(() => {
+    if (preselectedGps) { setLocating(false); return; } // already have GPS from job site check
     setLocating(true);
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -8274,9 +8298,9 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJob
     if (!validate()) return;
     setSubmitting(true);
     try {
-      // Compute is_on_site based on GPS vs selected job site geofence
-      let isOnSite = null;
-      if (gps && jobSite && jobSite !== "__other__") {
+      // Compute is_on_site — prefer parent's pre-verified status, fallback to own GPS check
+      let isOnSite = preselectedIsOnSite; // may be true/false/null
+      if (isOnSite === null && gps && jobSite && jobSite !== "__other__") {
         const site = jobSites.find(s => String(s.id) === String(jobSite));
         if (site?.latitude && site?.longitude) {
           const R = 6371000; // metres
