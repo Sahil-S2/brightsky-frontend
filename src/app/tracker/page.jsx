@@ -6608,9 +6608,11 @@ function FuelJobSitesAdmin({ jobSites, setJobSites, addToast }) {
 // Replaces FuelMyLogs. Works for both admin (all logs) and employee (own logs).
 // Features: on/off-site badge, More Details expandable card, filter by type.
 function FuelHistoryView({ logs, loadingLogs, currentUser, isAdmin }) {
-  const [filter, setFilter] = useState("all"); // "all" | "fill" | "eod"
+  const [filter, setFilter] = useState("all");
   const [expandedId, setExpandedId] = useState(null);
   const [page, setPage] = useState(1);
+  const [photoCache, setPhotoCache] = useState({}); // id → { photo_before, photo_after }
+  const [loadingPhoto, setLoadingPhoto] = useState(null);
   const PER_PAGE = 20;
 
   const myLogs = isAdmin ? logs : logs.filter(l => l.operator_id === currentUser?.id);
@@ -6618,203 +6620,232 @@ function FuelHistoryView({ logs, loadingLogs, currentUser, isAdmin }) {
   const paged = filtered.slice(0, page * PER_PAGE);
   const hasMore = filtered.length > paged.length;
 
-  const formatDist = (ft) => {
-    if (ft == null) return null;
-    return ft < 1000 ? `${Math.round(ft)} ft` : `${(ft/5280).toFixed(1)} mi`;
+  const fmtDate = d => {
+    if (!d) return "—";
+    try { return new Date(d).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }); } catch { return d; }
+  };
+  const fmtTime = d => {
+    if (!d) return "";
+    try { return new Date(d).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
+  };
+
+  const toggleExpand = async (l) => {
+    const id = l.id;
+    if (expandedId === id) { setExpandedId(null); return; }
+    setExpandedId(id);
+    // Lazy-load photos if this log has them and we haven't fetched yet
+    if ((l.has_photo_before || l.has_photo_after) && !photoCache[id]) {
+      setLoadingPhoto(id);
+      try {
+        const res = await authFetch(`/api/fuel/logs/${id}`);
+        if (res.ok) {
+          const d = await res.json();
+          setPhotoCache(prev => ({ ...prev, [id]: { photo_before: d.photo_before, photo_after: d.photo_after } }));
+        }
+      } catch {}
+      setLoadingPhoto(null);
+    }
+  };
+
+  const OnSiteBadge = ({ val }) => {
+    if (val === true)  return <span style={{ background:"rgba(5,150,105,0.1)", color:"var(--green)", border:"1px solid rgba(5,150,105,0.3)", padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>✓ On-Site</span>;
+    if (val === false) return <span style={{ background:"rgba(217,119,6,0.1)", color:"var(--amber)", border:"1px solid rgba(217,119,6,0.3)", padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>⚠ Off-Site</span>;
+    return <span style={{ background:"var(--bg3)", color:"var(--text4)", border:"1px solid var(--border)", padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:600 }}>Not Checked</span>;
   };
 
   return (
     <div>
       {/* Header + filter */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14, flexWrap:"wrap", gap:10 }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>
-            {isAdmin ? "All Fuel Entries" : "My Fuel Log"}
-          </div>
-          <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 2 }}>
-            {filtered.length} record{filtered.length !== 1 ? "s" : ""}
-          </div>
+          <div style={{ fontSize:15, fontWeight:700, color:"var(--text)" }}>{isAdmin ? "All Fuel Entries" : "My Fuel Log"}</div>
+          <div style={{ fontSize:12.5, color:"var(--text3)", marginTop:2 }}>{filtered.length} record{filtered.length!==1?"s":""}</div>
         </div>
-        {/* Filter chips */}
-        <div style={{ display: "flex", gap: 6 }}>
-          {[["all","All"],["fill","Fills"],["eod","EOD"]].map(([v, l]) => (
-            <button key={v} onClick={() => { setFilter(v); setPage(1); }} style={{ padding: "6px 14px", background: filter === v ? "#1e3a5f" : "var(--bg3)", color: filter === v ? "white" : "var(--text3)", border: `1px solid ${filter === v ? "#1e3a5f" : "var(--border)"}`, borderRadius: 999, fontSize: 12.5, fontWeight: filter === v ? 700 : 450, cursor: "pointer" }}>
-              {l}
-            </button>
+        <div style={{ display:"flex", gap:6 }}>
+          {[["all","All"],["fill","Fills"],["eod","EOD"]].map(([v,l]) => (
+            <button key={v} onClick={() => { setFilter(v); setPage(1); }} style={{ padding:"6px 14px", background:filter===v?"#1e3a5f":"var(--bg3)", color:filter===v?"white":"var(--text3)", border:`1px solid ${filter===v?"#1e3a5f":"var(--border)"}`, borderRadius:999, fontSize:12.5, fontWeight:filter===v?700:450, cursor:"pointer" }}>{l}</button>
           ))}
         </div>
       </div>
 
       {loadingLogs && (
-        <div style={{ textAlign: "center", padding: 32, color: "var(--text3)", fontSize: 13 }}>
-          <span className="spin" style={{ width: 18, height: 18, border: "2px solid var(--border2)", borderTopColor: "var(--blue)", borderRadius: "50%", display: "inline-block", marginBottom: 8 }}/>
+        <div style={{ textAlign:"center", padding:32, color:"var(--text3)", fontSize:13 }}>
+          <span className="spin" style={{ width:18, height:18, border:"2px solid var(--border2)", borderTopColor:"var(--blue)", borderRadius:"50%", display:"inline-block", marginBottom:8 }}/>
           <div>Loading fuel history…</div>
         </div>
       )}
 
       {!loadingLogs && filtered.length === 0 && (
-        <Card style={{ textAlign: "center", padding: 32 }}>
-          <Icon name="droplet" size={32} color="var(--text4)" style={{ marginBottom: 12 }}/>
-          <div style={{ fontSize: 14, color: "var(--text3)" }}>No fuel entries found.</div>
+        <Card style={{ textAlign:"center", padding:32 }}>
+          <Icon name="droplet" size={32} color="var(--text4)" style={{ marginBottom:12 }}/>
+          <div style={{ fontSize:14, color:"var(--text3)" }}>No fuel entries found.</div>
         </Card>
       )}
 
       {!loadingLogs && paged.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
           {paged.map((l, i) => {
-            const isExpanded = expandedId === (l.id || i);
+            const isExpanded = expandedId === l.id;
             const isFill = l.entry_type === "fill";
-            const onSite = l.is_on_site;
+            const photos = photoCache[l.id];
 
             return (
-              <Card key={l.id || i} style={{ padding: 0, overflow: "hidden", border: "1.5px solid var(--border2)" }}>
-                {/* Main row */}
-                <div style={{ padding: "12px 14px" }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                    {/* Type + on-site badges */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
-                      <span style={{ background: isFill ? "var(--blue-light)" : "var(--green-light)", color: isFill ? "var(--blue)" : "var(--green)", padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: 700, textAlign: "center" }}>
+              <Card key={l.id||i} style={{ padding:0, overflow:"hidden", border:"1.5px solid var(--border2)" }}>
+                {/* ── Main row ── */}
+                <div style={{ padding:"12px 14px" }}>
+                  <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                    {/* Type badge */}
+                    <div style={{ flexShrink:0, paddingTop:2 }}>
+                      <span style={{ background:isFill?"var(--blue-light)":"var(--green-light)", color:isFill?"var(--blue)":"var(--green)", padding:"3px 9px", borderRadius:999, fontSize:11, fontWeight:700, display:"inline-block" }}>
                         {isFill ? "⛽ Fill" : "🏁 EOD"}
                       </span>
-                      {onSite === true && (
-                        <span style={{ background: "rgba(5,150,105,0.1)", color: "var(--green)", border: "1px solid rgba(5,150,105,0.25)", padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 700, textAlign: "center" }}>
-                          ✓ On-Site
-                        </span>
-                      )}
-                      {onSite === false && (
-                        <span style={{ background: "rgba(217,119,6,0.1)", color: "var(--amber)", border: "1px solid rgba(217,119,6,0.3)", padding: "3px 9px", borderRadius: 999, fontSize: 10, fontWeight: 700, textAlign: "center" }}>
-                          ⚠ Off-Site
-                        </span>
-                      )}
                     </div>
 
-                    {/* Main info */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", marginBottom: 3 }}>
+                    {/* Core info */}
+                    <div style={{ flex:1, minWidth:0 }}>
+                      {/* Equipment name */}
+                      <div style={{ fontSize:13.5, fontWeight:700, color:"var(--text)", marginBottom:2 }}>
                         {l.equipment_brand} {l.equipment_model}
                       </div>
-                      <div style={{ fontSize: 12.5, color: "var(--text3)", marginBottom: isAdmin ? 3 : 0 }}>
+
+                      {/* Fuel data line */}
+                      <div style={{ fontSize:12.5, color:"var(--text2)", marginBottom:3 }}>
                         {isFill
-                          ? <>Level: {l.fuel_level_before ?? "—"}% → {l.fuel_level_after ?? "—"}% {l.gallons_added ? `· ${l.gallons_added} gal added` : ""}</>
-                          : <>Remaining: {l.fuel_level_remaining ?? "—"}%</>
+                          ? <>{l.fuel_level_before??'—'}% → {l.fuel_level_after??'—'}%{l.gallons_added ? <strong style={{ color:"var(--blue)" }}> · {l.gallons_added} gal</strong> : null}</>
+                          : <>Remaining: <strong style={{ color:"var(--green)" }}>{l.fuel_level_remaining??'—'}%</strong></>
                         }
-                        {l.job_site_name && <> · <Icon name="pin" size={11} color="var(--text4)"/>{l.job_site_name}</>}
                       </div>
-                      {isAdmin && l.operator_name && (
-                        <div style={{ fontSize: 11.5, color: "var(--text4)" }}>
-                          <Icon name="user" size={11} color="var(--text4)"/> {l.operator_name}
-                        </div>
-                      )}
-                      {l.remarks && <div style={{ fontSize: 12, color: "var(--text4)", fontStyle: "italic", marginTop: 3 }}>{l.remarks}</div>}
+
+                      {/* Meta row: job site + operator + hours */}
+                      <div style={{ display:"flex", flexWrap:"wrap", gap:"4px 10px", alignItems:"center" }}>
+                        {l.job_site_name && (
+                          <span style={{ fontSize:11.5, color:"var(--text3)", display:"flex", alignItems:"center", gap:3 }}>
+                            <Icon name="pin" size={11} color="var(--text4)"/>{l.job_site_name}
+                          </span>
+                        )}
+                        {isAdmin && l.operator_name && (
+                          <span style={{ fontSize:11.5, color:"var(--text3)", display:"flex", alignItems:"center", gap:3 }}>
+                            <Icon name="user" size={11} color="var(--text4)"/>{l.operator_name}
+                          </span>
+                        )}
+                        {l.hours_reading && (
+                          <span style={{ fontSize:11.5, color:"var(--text3)" }}>⏱ {l.hours_reading} hrs</span>
+                        )}
+                        <OnSiteBadge val={l.is_on_site}/>
+                        {(l.has_photo_before || l.has_photo_after) && (
+                          <span style={{ fontSize:11, color:"var(--blue)", fontWeight:600 }}>📷 Photo</span>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Date + time + expand */}
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontSize: 12, color: "var(--text3)", fontWeight: 600 }}>{l.log_date}</div>
-                      {l.logged_at && <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 1 }}>{new Date(l.logged_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>}
-                      <button onClick={() => setExpandedId(isExpanded ? null : (l.id || i))} style={{ marginTop: 6, background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "3px 9px", fontSize: 11, color: "var(--text3)", cursor: "pointer", fontWeight: 600 }}>
+                    {/* Right: date + expand */}
+                    <div style={{ textAlign:"right", flexShrink:0 }}>
+                      <div style={{ fontSize:12, color:"var(--text3)", fontWeight:600 }}>{fmtDate(l.logged_at || l.log_date)}</div>
+                      <div style={{ fontSize:11, color:"var(--text4)", marginTop:1 }}>{fmtTime(l.logged_at)}</div>
+                      <button
+                        onClick={() => toggleExpand(l)}
+                        style={{ marginTop:6, background:"var(--bg3)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", padding:"4px 10px", fontSize:11, color:"var(--text3)", cursor:"pointer", fontWeight:600 }}>
                         {isExpanded ? "Less ▲" : "Details ▼"}
                       </button>
                     </div>
                   </div>
                 </div>
 
-                {/* Expanded details */}
+                {/* ── Expanded details ── */}
                 {isExpanded && (
-                  <div style={{ borderTop: "1px solid var(--border)", background: "var(--bg3)", padding: "12px 14px" }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 10 }}>
-                      {/* Timestamp */}
+                  <div style={{ borderTop:"1px solid var(--border)", background:"var(--bg3)", padding:"14px 14px" }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(140px, 1fr))", gap:12 }}>
+
                       <div>
-                        <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Submitted At</div>
-                        <div style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>
-                          {l.logged_at ? new Date(l.logged_at).toLocaleString() : l.log_date}
-                        </div>
+                        <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Submitted At</div>
+                        <div style={{ fontSize:13, color:"var(--text2)", fontWeight:600 }}>{l.logged_at ? new Date(l.logged_at).toLocaleString() : l.log_date}</div>
                       </div>
 
-                      {/* Location status */}
                       <div>
-                        <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Location Status</div>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: onSite === true ? "var(--green)" : onSite === false ? "var(--amber)" : "var(--text3)" }}>
-                          {onSite === true ? "✓ On-Site" : onSite === false ? "⚠ Off-Site" : "Not checked"}
-                        </div>
+                        <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Location Status</div>
+                        <OnSiteBadge val={l.is_on_site}/>
                       </div>
 
-                      {/* GPS coordinates */}
                       {l.gps_lat && l.gps_lon && (
                         <div>
-                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>GPS Coordinates</div>
-                          <div style={{ fontSize: 12, color: "var(--text2)", fontFamily: "monospace" }}>
-                            {parseFloat(l.gps_lat).toFixed(5)},<br/>{parseFloat(l.gps_lon).toFixed(5)}
-                          </div>
+                          <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>GPS</div>
+                          <div style={{ fontSize:11.5, color:"var(--text2)", fontFamily:"monospace" }}>{parseFloat(l.gps_lat).toFixed(5)}, {parseFloat(l.gps_lon).toFixed(5)}</div>
                         </div>
                       )}
 
-                      {/* Job site */}
                       {l.job_site_name && (
                         <div>
-                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Job Site</div>
-                          <div style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>{l.job_site_name}</div>
+                          <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Job Site</div>
+                          <div style={{ fontSize:13, color:"var(--text2)", fontWeight:600 }}>{l.job_site_name}</div>
                         </div>
                       )}
 
-                      {/* Operator */}
                       {l.operator_name && (
                         <div>
-                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Operator</div>
-                          <div style={{ fontSize: 13, color: "var(--text2)" }}>{l.operator_name}</div>
+                          <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Operator</div>
+                          <div style={{ fontSize:13, color:"var(--text2)" }}>{l.operator_name}</div>
                         </div>
                       )}
 
-                      {/* Hours reading */}
                       {l.hours_reading && (
                         <div>
-                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Machine Hours</div>
-                          <div style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>{l.hours_reading} hrs</div>
+                          <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Machine Hours</div>
+                          <div style={{ fontSize:13, color:"var(--text2)", fontWeight:700 }}>{l.hours_reading} hrs</div>
                         </div>
                       )}
 
-                      {/* Gallons (fill only) */}
                       {isFill && l.gallons_added && (
                         <div>
-                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Gallons Added</div>
-                          <div style={{ fontSize: 13, color: "var(--blue)", fontWeight: 700 }}>{l.gallons_added} gal</div>
+                          <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Gallons Added</div>
+                          <div style={{ fontSize:14, color:"var(--blue)", fontWeight:700 }}>{l.gallons_added} gal</div>
                         </div>
                       )}
 
-                      {/* Remarks */}
                       {l.remarks && (
-                        <div style={{ gridColumn: "1/-1" }}>
-                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Remarks</div>
-                          <div style={{ fontSize: 13, color: "var(--text2)", fontStyle: "italic" }}>{l.remarks}</div>
+                        <div style={{ gridColumn:"1/-1" }}>
+                          <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Remarks</div>
+                          <div style={{ fontSize:13, color:"var(--text2)", fontStyle:"italic" }}>{l.remarks}</div>
+                        </div>
+                      )}
+
+                      {l.supervisor_note && (
+                        <div style={{ gridColumn:"1/-1" }}>
+                          <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:3 }}>Supervisor Note</div>
+                          <div style={{ fontSize:13, color:"var(--text2)" }}>{l.supervisor_note}</div>
                         </div>
                       )}
 
                       {/* Photos */}
-                      {(l.photo_before || l.photo_after) && (
-                        <div style={{ gridColumn: "1/-1" }}>
-                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Photos</div>
-                          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                            {l.photo_before && (
-                              <div>
-                                <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>Before Fill</div>
-                                <img src={l.photo_before} alt="before" style={{ width: 120, height: 90, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}/>
-                              </div>
-                            )}
-                            {l.photo_after && (
-                              <div>
-                                <div style={{ fontSize: 11, color: "var(--text3)", marginBottom: 4 }}>After Fill</div>
-                                <img src={l.photo_after} alt="after" style={{ width: 120, height: 90, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}/>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Device info */}
-                      {l.device_info && (
-                        <div style={{ gridColumn: "1/-1" }}>
-                          <div style={{ fontSize: 10.5, color: "var(--text4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>Device</div>
-                          <div style={{ fontSize: 11, color: "var(--text4)", fontFamily: "monospace", overflowWrap: "break-word" }}>{l.device_info.slice(0, 100)}</div>
+                      {(l.has_photo_before || l.has_photo_after) && (
+                        <div style={{ gridColumn:"1/-1" }}>
+                          <div style={{ fontSize:10.5, color:"var(--text4)", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>Meter Photo</div>
+                          {loadingPhoto === l.id ? (
+                            <div style={{ display:"flex", alignItems:"center", gap:8, color:"var(--text3)", fontSize:12 }}>
+                              <span className="spin" style={{ width:14, height:14, border:"2px solid var(--blue)", borderTopColor:"transparent", borderRadius:"50%", display:"inline-block" }}/>
+                              Loading photo…
+                            </div>
+                          ) : photos ? (
+                            <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+                              {photos.photo_before && (
+                                <div>
+                                  <div style={{ fontSize:11, color:"var(--text3)", marginBottom:5, fontWeight:600 }}>Before Fill</div>
+                                  <a href={photos.photo_before} target="_blank" rel="noreferrer">
+                                    <img src={photos.photo_before} alt="before" style={{ width:140, height:105, objectFit:"cover", borderRadius:"var(--radius)", border:"2px solid var(--border)", display:"block", cursor:"pointer" }}/>
+                                  </a>
+                                </div>
+                              )}
+                              {photos.photo_after && (
+                                <div>
+                                  <div style={{ fontSize:11, color:"var(--text3)", marginBottom:5, fontWeight:600 }}>After Fill</div>
+                                  <a href={photos.photo_after} target="_blank" rel="noreferrer">
+                                    <img src={photos.photo_after} alt="after" style={{ width:140, height:105, objectFit:"cover", borderRadius:"var(--radius)", border:"2px solid var(--border)", display:"block", cursor:"pointer" }}/>
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize:12, color:"var(--text3)" }}>Photo available — expand to load</div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -6826,617 +6857,135 @@ function FuelHistoryView({ logs, loadingLogs, currentUser, isAdmin }) {
         </div>
       )}
 
-      {/* Load more */}
       {hasMore && (
-        <button onClick={() => setPage(p => p + 1)} style={{ width: "100%", marginTop: 12, padding: "11px", background: "var(--bg3)", border: "1.5px solid var(--border2)", borderRadius: "var(--radius-sm)", fontSize: 13, color: "var(--text2)", fontWeight: 600, cursor: "pointer" }}>
-          Load more ({filtered.length - paged.length} remaining)
-        </button>
+        <div style={{ textAlign:"center", marginTop:14 }}>
+          <Btn onClick={() => setPage(p => p + 1)} variant="ghost">Load More</Btn>
+        </div>
       )}
     </div>
   );
 }
+function FuelDashboard({ dashData, logs, alerts, onViewAlerts }) {
+  const [equipFilter, setEquipFilter] = useState("all");
+  const today = new Date().toISOString().slice(0, 10);
 
-// ─── MAIN FUEL ENTRY PAGE ──────────────────────────────────────────────────────
-function FuelEntryPage({ currentUser, t, addToast, assignedJobSites = [], allJobSites = [] }) {
-  const isAdmin = ["admin", "manager", "owner"].includes(currentUser?.role);
-  const [view, setView] = useState("equipment"); // "equipment" | "form" | "dashboard" | "alerts" | "reports"
-  const [selectedEquipment, setSelectedEquipment] = useState(null);
-  const [entryType, setEntryType] = useState("eod"); // "fill" | "eod"
-  const [logs, setLogs] = useState([]);
-  const [alerts, setAlerts] = useState([]);
-  const [selectedJobSite, setSelectedJobSite] = useState(null); // selected at top level, shared by all forms
-  const [isOnSite, setIsOnSite] = useState(null); // true | false | null
-  const [gpsForDistance, setGpsForDistance] = useState(null); // GPS captured in selector, shared to form
-  const [dashData, setDashData] = useState(null);
-  const [loadingLogs, setLoadingLogs] = useState(false);
-  const [eodStatus, setEodStatus] = useState({}); // { eq_id: true/false } today's EOD submitted
+  const filteredLogs = equipFilter === "all" ? logs : logs.filter(l => l.equipment_id === equipFilter);
+  const fillLogs  = filteredLogs.filter(l => l.entry_type === "fill");
+  const eodLogs   = filteredLogs.filter(l => l.entry_type === "eod");
 
-  // Job site list: admins see all sites, employees see only their assigned sites
-  const jobSites = isAdmin ? allJobSites : assignedJobSites;
-
-  // Load today's EOD status + logs on mount
-  useEffect(() => {
-    loadLogs();
-    loadAlerts();
-    if (isAdmin) loadDashboard();
-  }, []);
-
-  const loadLogs = async () => {
-    setLoadingLogs(true);
-    try {
-      const res = await authFetch(isAdmin ? "/api/fuel/logs?limit=200" : "/api/fuel/logs?limit=100");
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data.logs || []);
-        // Build EOD status map for today
-        const today = new Date().toISOString().slice(0, 10);
-        const status = {};
-        (data.logs || []).forEach(l => {
-          if (l.entry_type === "eod" && l.log_date === today) status[l.equipment_id] = true;
-        });
-        setEodStatus(status);
-      }
-    } catch {}
-    setLoadingLogs(false);
-  };
-
-  const loadAlerts = async () => {
-    try {
-      const res = await authFetch("/api/fuel/alerts");
-      if (res.ok) { const d = await res.json(); setAlerts(d.alerts || []); }
-    } catch {}
-  };
-
-  const loadDashboard = async () => {
-    try {
-      const res = await authFetch("/api/fuel/dashboard");
-      if (res.ok) { const d = await res.json(); setDashData(d); }
-    } catch {}
-  };
-
-  const openEntry = (eq, type) => {
-    setSelectedEquipment(eq);
-    setEntryType(type);
-    setView("form");
-  };
-
+  const totalGallons  = fillLogs.reduce((s, l) => s + (Number(l.gallons_added) || 0), 0);
+  const todayLogs     = filteredLogs.filter(l => l.log_date === today);
+  const todayGallons  = fillLogs.filter(l => l.log_date === today).reduce((s, l) => s + (Number(l.gallons_added) || 0), 0);
+  const eodToday      = new Set(eodLogs.filter(l => l.log_date === today).map(l => l.equipment_id)).size;
+  const motorEquip    = EQUIPMENT_LIST.filter(e => e.type !== "trailer");
+  const missingEod    = motorEquip.length - eodToday;
   const unresolvedAlerts = alerts.filter(a => !a.resolved).length;
+  const offSiteCount  = (dashData?.off_site_count ?? filteredLogs.filter(l => l.is_on_site === false).length);
 
-  // ── Tab bar (top navigation within fuel module) ────────────────────────────
-  const tabs = [
-    { id: "equipment", label: "Equipment", icon: "hard_hat" },
-    ...(isAdmin ? [
-      { id: "history", label: "History", icon: "log" },
-      { id: "dashboard", label: "Dashboard", icon: "gauge" },
-      { id: "alerts", label: `Alerts${unresolvedAlerts ? ` (${unresolvedAlerts})` : ""}`, icon: "alert" },
-      { id: "reports", label: "Reports", icon: "bar" },
-    ] : [
-      { id: "history", label: "My Logs", icon: "log" },
-    ]),
+  // Equipment list for filter dropdown (from logs, deduplicated)
+  const equipOptions = [{ id:"all", label:"All Equipment" },
+    ...Object.values(logs.reduce((acc, l) => {
+      if (!acc[l.equipment_id]) acc[l.equipment_id] = { id:l.equipment_id, label:`${l.equipment_brand} ${l.equipment_model}`.trim() };
+      return acc;
+    }, {}))
   ];
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 0, minHeight: 0 }}>
-      {/* Compact header row — only shown when there are alerts or multiple tabs */}
-      {(unresolvedAlerts > 0 || tabs.length > 1) && view !== "form" && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, gap: 8 }}>
-          {tabs.length > 1 && (
-            <div style={{ display: "flex", gap: 4, background: "var(--bg3)", borderRadius: "var(--radius)", padding: 4, flex: 1, overflowX: "auto" }}>
-              {tabs.map(tab => (
-                <button key={tab.id} onClick={() => setView(tab.id)} style={{ flex: 1, minWidth: "fit-content", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "7px 11px", borderRadius: "var(--radius-sm)", background: view === tab.id ? "white" : "transparent", color: view === tab.id ? "var(--blue)" : "var(--text3)", fontWeight: view === tab.id ? 600 : 450, fontSize: 13, border: view === tab.id ? "1px solid var(--blue-mid)" : "1px solid transparent", cursor: "pointer", boxShadow: view === tab.id ? "var(--shadow-sm)" : "none", whiteSpace: "nowrap", transition: "all 0.15s" }}>
-                  <Icon name={tab.icon} size={13} color={view === tab.id ? "var(--blue)" : "var(--text3)"}/>
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          )}
-          {unresolvedAlerts > 0 && (
-            <div onClick={() => setView("alerts")} style={{ background: "var(--red)", color: "white", padding: "6px 12px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-              <Icon name="alert" size={12} color="white"/>
-              {unresolvedAlerts} Alert{unresolvedAlerts !== 1 ? "s" : ""}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Views */}
-      {view === "equipment" && (<>
-        {/* Job Site Selector — always shown at top of equipment view */}
-        <FuelJobSiteSelector
-          jobSites={jobSites.map(s => ({
-            ...s,
-            geofence_radius_ft: s.geofence_radius_ft || s.radius_feet || 1000,
-          }))}
-          selectedJobSite={selectedJobSite}
-          setSelectedJobSite={setSelectedJobSite}
-          isOnSite={isOnSite}
-          setIsOnSite={setIsOnSite}
-          gpsForDistance={gpsForDistance}
-          setGpsForDistance={setGpsForDistance}
-        />
-        <FuelEquipmentGrid eodStatus={eodStatus} openEntry={openEntry} isAdmin={isAdmin} logs={logs} loadingLogs={loadingLogs} jobSiteSelected={!!selectedJobSite}/>
-      </>)}
-      {view === "form" && selectedEquipment && (
-        <FuelEntryForm
-          equipment={selectedEquipment}
-          entryType={entryType}
-          currentUser={currentUser}
-          selectedJobSite={selectedJobSite}
-          jobSiteName={jobSites.find(s => s.id === selectedJobSite)?.name || ""}
-          isOnSite={isOnSite}
-          addToast={addToast}
-          onBack={() => { setView("equipment"); setSelectedEquipment(null); }}
-          onSuccess={() => { loadLogs(); loadAlerts(); if (isAdmin) loadDashboard(); setView("equipment"); }}
-        />
-      )}
-      {view === "history" && (
-        <FuelHistoryView logs={logs} loadingLogs={loadingLogs} currentUser={currentUser} isAdmin={isAdmin}/>
-      )}
-      {view === "dashboard" && isAdmin && <FuelDashboard dashData={dashData} logs={logs} alerts={alerts} onViewAlerts={() => setView("alerts")}/>}
-      {view === "alerts" && isAdmin && <FuelAlertsView alerts={alerts} onRefresh={loadAlerts} addToast={addToast}/>}
-      {view === "reports" && isAdmin && <FuelReportsPage logs={logs} addToast={addToast}/>}
-    </div>
-  );
-}
-
-// ─── EQUIPMENT GRID ───────────────────────────────────────────────────────────
-function FuelEquipmentGrid({ eodStatus, openEntry, isAdmin, logs, loadingLogs, jobSiteSelected }) {
-  const today = new Date().toISOString().slice(0, 10);
-  // Pull custom images from the shared localStorage hook
-  const { images: customImages } = useEquipmentImages();
-
-  // Last known fuel level per equipment from logs
-  const lastLevel = {};
-  [...logs].reverse().forEach(l => {
-    if (!lastLevel[l.equipment_id]) lastLevel[l.equipment_id] = l.fuel_level_after ?? l.fuel_level_remaining;
+  // Last 7 days chart data
+  const days7 = Array.from({ length:7 }, (_, i) => {
+    const d = new Date(); d.setDate(d.getDate() - (6-i));
+    const ds = d.toISOString().slice(0, 10);
+    const gal = fillLogs.filter(l => l.log_date === ds).reduce((s, l) => s + (Number(l.gallons_added)||0), 0);
+    return { label:d.toLocaleDateString([], { weekday:"short" }), value:Math.round(gal) };
   });
 
-  return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>Equipment Fleet</div>
-          <div style={{ fontSize: 12.5, color: jobSiteSelected ? "var(--text3)" : "var(--amber)", marginTop: 2 }}>
-            {jobSiteSelected ? "Tap an equipment card to log fuel" : "Select a job site above before logging"}
-          </div>
-        </div>
-        <div style={{ fontSize: 11.5, color: "var(--text3)", background: "var(--bg3)", padding: "4px 10px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}>
-          {EQUIPMENT_LIST.length} units
-        </div>
-      </div>
+  // Per-equipment totals
+  const byEquipChart = (dashData?.by_equipment || [])
+    .filter(e => equipFilter === "all" || e.equipment_id === equipFilter)
+    .slice(0, 8)
+    .map(e => ({ label:(e.equipment_brand||"").slice(0, 7), value:Math.round(e.total_gallons||0) }));
 
-      {/* EOD reminder */}
-      <div style={{ background: "var(--amber-light)", border: "1.5px solid rgba(217,119,6,0.25)", borderRadius: "var(--radius)", padding: "11px 14px", marginBottom: 16, display: "flex", gap: 10, alignItems: "flex-start" }}>
-        <Icon name="alert" size={15} color="var(--amber)" style={{ marginTop: 1, flexShrink: 0 }}/>
-        <div style={{ fontSize: 13, color: "#92400e", lineHeight: 1.5 }}>
-          <strong>End-of-Day Reminder:</strong> Each operator must record remaining fuel levels for all assigned equipment before end of shift.
-        </div>
-      </div>
+  // By site
+  const bySiteChart = (dashData?.by_site || []).slice(0, 6)
+    .map(s => ({ label:(s.site_name||"").slice(0, 10), value:Math.round(s.total_gallons||0) }));
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 280px), 1fr))", gap: 12 }}>
-        {EQUIPMENT_LIST.map(eq => {
-          const eodDone = eodStatus[eq.id];
-          const level = lastLevel[eq.id];
-          const hasTrailer = eq.type === "trailer";
-          const customImg = customImages[eq.id];
-          return (
-            <div key={eq.id} className="fade-up" style={{ background: "var(--card)", border: `1.5px solid ${eodDone ? "rgba(5,150,105,0.25)" : "var(--border)"}`, borderRadius: "var(--radius-lg)", padding: 16, boxShadow: "var(--shadow-sm)", display: "flex", flexDirection: "column", gap: 12, position: "relative", overflow: "hidden" }}>
-              {/* EOD status ribbon */}
-              {eodDone && (
-                <div style={{ position: "absolute", top: 0, right: 0, background: "var(--green)", color: "white", fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: "0 var(--radius-lg) 0 var(--radius-sm)", letterSpacing: "0.05em" }}>EOD ✓</div>
-              )}
-
-              {/* Equipment thumbnail + info */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 64, height: 48, borderRadius: "var(--radius)", background: customImg ? "transparent" : `${eq.color}10`, border: `1.5px solid ${eq.color}30`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
-                  {customImg
-                    ? <img src={customImg} alt={eq.brand} style={{ width: "100%", height: "100%", objectFit: "cover" }}/>
-                    : <EquipmentThumb type={eq.type} color={eq.color} size={50}/>
-                  }
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", lineHeight: 1.3 }}>{eq.brand}</div>
-                  {eq.model && <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 1 }}>{eq.model}{eq.year ? ` · ${eq.year}` : ""}</div>}
-                  <div style={{ fontSize: 11, color: "var(--text4)", marginTop: 2, textTransform: "capitalize" }}>{eq.type.replace(/_/g, " ")}</div>
-                </div>
-              </div>
-
-              {/* Fuel level gauge */}
-              {!hasTrailer && (
-                <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--bg3)", borderRadius: "var(--radius-sm)", padding: "8px 12px" }}>
-                  <FuelGauge level={level ?? 50} size={52}/>
-                  <div>
-                    <div style={{ fontSize: 11, color: "var(--text3)", fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}>Last Recorded</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text)", lineHeight: 1.2 }}>
-                      {level != null ? `${level}%` : "—"}
-                    </div>
-                    {level == null && <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 2 }}>No record today</div>}
-                  </div>
-                </div>
-              )}
-
-              {/* Action buttons — disabled until a job site is selected */}
-              <div style={{ display: "flex", gap: 8, opacity: jobSiteSelected ? 1 : 0.4, pointerEvents: jobSiteSelected ? "auto" : "none" }}>
-                {!hasTrailer && (
-                  <button onClick={() => openEntry(eq, "fill")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "9px 6px", borderRadius: "var(--radius-sm)", background: "var(--blue-light)", color: "var(--blue)", border: "1.5px solid var(--blue-mid)", fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 38 }}>
-                    <Icon name="droplet" size={13} color="var(--blue)"/> Fuel Fill
-                  </button>
-                )}
-                <button onClick={() => openEntry(eq, "eod")} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "9px 6px", borderRadius: "var(--radius-sm)", background: eodDone ? "var(--green-light)" : "var(--bg3)", color: eodDone ? "var(--green)" : "var(--text2)", border: `1.5px solid ${eodDone ? "rgba(5,150,105,0.2)" : "var(--border)"}`, fontSize: 12.5, fontWeight: 600, cursor: "pointer", minHeight: 38 }}>
-                  <Icon name="flag" size={13} color={eodDone ? "var(--green)" : "var(--text3)"}/> {eodDone ? "EOD ✓" : "End of Day"}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── FUEL ENTRY FORM ──────────────────────────────────────────────────────────
-function FuelEntryForm({ equipment, entryType, currentUser, selectedJobSite, jobSiteName, isOnSite, addToast, onBack, onSuccess }) {
-  const [type, setType] = useState(entryType);
-  const [submitting, setSubmitting] = useState(false);
-  const [locating, setLocating] = useState(false);
-  const [gps, setGps] = useState(null);
-  const [photo1, setPhoto1] = useState(null);
-  const [photo2, setPhoto2] = useState(null);
-  const fileRef1 = useRef(null);
-  const fileRef2 = useRef(null);
-
-  // Form fields (job site is set at page level — not in this form)
-  const [fuelBefore, setFuelBefore] = useState("");
-  const [fuelAfter, setFuelAfter] = useState("");
-  const [fuelRemaining, setFuelRemaining] = useState("");
-  const [gallonsAdded, setGallonsAdded] = useState("");
-  const [hoursReading, setHoursReading] = useState("");
-  const [remarks, setRemarks] = useState("");
-  const [supervisorNote, setSupervisorNote] = useState("");
-
-  // Capture GPS on open
-  useEffect(() => {
-    setLocating(true);
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        pos => { setGps({ lat: pos.coords.latitude, lon: pos.coords.longitude }); setLocating(false); },
-        () => setLocating(false),
-        { timeout: 8000, maximumAge: 30000 }
-      );
-    } else { setLocating(false); }
-  }, []);
-
-  const handlePhoto = (file, setter) => {
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) { addToast("Photo must be under 10MB.", "error"); return; }
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const MAX = 800; let w = img.width, h = img.height;
-        if (w > h) { if (w > MAX) { h = h * MAX / w; w = MAX; } } else { if (h > MAX) { w = w * MAX / h; h = MAX; } }
-        canvas.width = w; canvas.height = h;
-        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        setter(canvas.toDataURL("image/jpeg", 0.75));
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const validate = () => {
-    if (type === "fill") {
-      if (fuelBefore === "") { addToast("Please enter before-fill fuel level.", "error"); return false; }
-      if (!gallonsAdded) { addToast("Please enter gallons added.", "error"); return false; }
-    } else {
-      if (fuelRemaining === "") { addToast("Please enter remaining fuel level.", "error"); return false; }
-    }
-    return true;
-  };
-
-  const handleSubmit = async () => {
-    if (!validate()) return;
-    setSubmitting(true);
-    try {
-      const payload = {
-        equipment_id: equipment.id,
-        equipment_brand: equipment.brand,
-        equipment_model: equipment.model,
-        entry_type: type,
-        job_site_id: selectedJobSite && selectedJobSite !== "__other__" ? selectedJobSite : null,
-        job_site_name: jobSiteName || null,
-        is_on_site: isOnSite,
-        fuel_level_before: type === "fill" ? Number(fuelBefore) : null,
-        fuel_level_after: type === "fill" ? Number(fuelAfter) : null,
-        fuel_level_remaining: type === "eod" ? Number(fuelRemaining) : null,
-        gallons_added: type === "fill" ? Number(gallonsAdded) : null,
-        hours_reading: hoursReading ? Number(hoursReading) : null,
-        remarks: remarks.trim(),
-        supervisor_note: supervisorNote.trim(),
-        photo_before: photo1,
-        photo_after: photo2,
-        gps_lat: gps?.lat,
-        gps_lon: gps?.lon,
-        device_info: navigator.userAgent.slice(0, 200),
-        logged_at: new Date().toISOString(),
-      };
-      const res = await authFetch("/api/fuel/entry", { method: "POST", body: JSON.stringify(payload) });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || "Failed to save fuel entry."); }
-      addToast(type === "eod" ? "End-of-day fuel recorded successfully!" : "Fuel fill logged successfully!", "success");
-      onSuccess();
-    } catch (e) { addToast(e.message || "Error submitting entry.", "error"); }
-    setSubmitting(false);
-  };
-
-  const fuelPct = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+  // Operator table
+  const operatorData = dashData?.by_operator || [];
 
   return (
-    <div>
-      {/* Back header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <button onClick={onBack} style={{ background: "var(--bg3)", border: "1px solid var(--border)", color: "var(--text2)", width: 36, height: 36, borderRadius: "var(--radius-sm)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>{equipment.brand}{equipment.model ? ` · ${equipment.model}` : ""}</div>
-          <div style={{ fontSize: 12, color: "var(--text3)" }}>
-            {equipment.year ? `${equipment.year} · ` : ""}{equipment.type.replace(/_/g, " ")}
-          </div>
-        </div>
+    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
+        <SectionHeader title="Fuel Analytics" subtitle="Fleet-wide consumption overview"/>
+        {/* Equipment filter */}
+        <select
+          value={equipFilter}
+          onChange={e => setEquipFilter(e.target.value)}
+          style={{ fontSize:13, padding:"6px 10px", minWidth:160, borderRadius:"var(--radius-sm)", border:"1.5px solid var(--border2)", background:"var(--bg2)", color:"var(--text)", fontWeight:500 }}>
+          {equipOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
       </div>
 
-      {/* Entry type toggle */}
-      <div style={{ display: "grid", gridTemplateColumns: equipment.type === "trailer" ? "1fr" : "1fr 1fr", gap: 8, marginBottom: 20, background: "var(--bg3)", borderRadius: "var(--radius)", padding: 4 }}>
-        {equipment.type !== "trailer" && (
-          <button onClick={() => setType("fill")} style={{ padding: "10px", borderRadius: "var(--radius-sm)", background: type === "fill" ? "white" : "transparent", color: type === "fill" ? "var(--blue)" : "var(--text3)", fontWeight: type === "fill" ? 700 : 450, fontSize: 13.5, border: type === "fill" ? "1px solid var(--blue-mid)" : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: type === "fill" ? "var(--shadow-sm)" : "none" }}>
-            <Icon name="droplet" size={14} color={type === "fill" ? "var(--blue)" : "var(--text3)"}/>
-            Fuel Fill Entry
-          </button>
-        )}
-        <button onClick={() => setType("eod")} style={{ padding: "10px", borderRadius: "var(--radius-sm)", background: type === "eod" ? "white" : "transparent", color: type === "eod" ? "var(--green)" : "var(--text3)", fontWeight: type === "eod" ? 700 : 450, fontSize: 13.5, border: type === "eod" ? "1px solid rgba(5,150,105,0.3)" : "1px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: type === "eod" ? "var(--shadow-sm)" : "none" }}>
-          <Icon name="flag" size={14} color={type === "eod" ? "var(--green)" : "var(--text3)"}/>
-          End-of-Day Remaining
-        </button>
-      </div>
-
-      {/* Operator info bar */}
-      <div style={{ background: "var(--blue-light)", border: "1px solid var(--blue-mid)", borderRadius: "var(--radius)", padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
-        <Icon name="user" size={14} color="var(--blue)"/>
-        <div style={{ flex: 1, fontSize: 13, color: "var(--blue)", fontWeight: 500 }}>
-          <strong>{currentUser?.name}</strong> · {currentUser?.userId || currentUser?.id?.slice(0, 8)} · {currentUser?.role}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: locating ? "var(--text3)" : (gps ? "var(--green)" : "var(--red)") }}>
-          {locating ? <span className="spin" style={{ width: 10, height: 10, border: "2px solid var(--text4)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block" }}/> : <Icon name="pin" size={12} color={gps ? "var(--green)" : "var(--red)"}/>}
-          {locating ? "Locating…" : gps ? "GPS captured" : "No GPS"}
-        </div>
-      </div>
-
-      {/* Auto-captured timestamp */}
-      <div style={{ background: "var(--bg3)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "8px 12px", marginBottom: 16, fontSize: 12, color: "var(--text3)", display: "flex", alignItems: "center", gap: 8 }}>
-        <Icon name="clock" size={12} color="var(--text3)"/>
-        Entry timestamp: <strong style={{ color: "var(--text2)" }}>{new Date().toLocaleString()}</strong>
-        {gps && <span style={{ marginLeft: "auto" }}>📍 {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</span>}
-      </div>
-
-      {/* Job site badge (read-only — selected at page level) */}
-      {(jobSiteName || selectedJobSite) && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, padding: "8px 12px", background: "var(--bg3)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}>
-          <Icon name="pin" size={13} color="var(--blue)"/>
-          <span style={{ fontSize: 13, color: "var(--text2)", fontWeight: 600 }}>{jobSiteName || "Selected site"}</span>
-          {isOnSite === true && <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--green)", fontWeight: 700, background: "rgba(5,150,105,0.1)", padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(5,150,105,0.25)" }}>On-Site ✓</span>}
-          {isOnSite === false && <span style={{ marginLeft: "auto", fontSize: 11.5, color: "var(--amber)", fontWeight: 700, background: "rgba(217,119,6,0.1)", padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(217,119,6,0.25)" }}>Off-Site ⚠</span>}
-        </div>
-      )}
-
-      {/* Form fields */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Hours reading */}
-        <div>
-          <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Machine Hours / Meter Reading</label>
-          <input type="number" min="0" value={hoursReading} onChange={e => setHoursReading(e.target.value)} placeholder="e.g. 3452" style={{ fontSize: 15 }}/>
-        </div>
-
-        {/* Fuel Fill fields */}
-        {type === "fill" && equipment.type !== "trailer" && (<>
-          <div>
-            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Fuel Level Before Fill (%) <span style={{ color: "var(--red)" }}>*</span></label>
-            <select value={fuelBefore} onChange={e => setFuelBefore(e.target.value)} style={{ fontSize: 15 }}>
-              <option value="">Select level…</option>
-              {fuelPct.map(p => <option key={p} value={p}>{p}% {p === 0 ? "(Empty)" : p === 100 ? "(Full)" : p === 25 ? "(¼ Tank)" : p === 50 ? "(½ Tank)" : p === 75 ? "(¾ Tank)" : ""}</option>)}
-            </select>
-          </div>
-          <div>
-            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Gallons / Liters Added <span style={{ color: "var(--red)" }}>*</span></label>
-            <input type="number" min="0" step="0.1" value={gallonsAdded} onChange={e => setGallonsAdded(e.target.value)} placeholder="e.g. 45.5" style={{ fontSize: 15 }}/>
-          </div>
-          <div>
-            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Fuel Level After Fill (%)</label>
-            <select value={fuelAfter} onChange={e => setFuelAfter(e.target.value)} style={{ fontSize: 15 }}>
-              <option value="">Select level…</option>
-              {fuelPct.map(p => <option key={p} value={p}>{p}% {p === 100 ? "(Full)" : p === 75 ? "(¾ Tank)" : ""}</option>)}
-            </select>
-          </div>
-          {/* Photo — before fill meter */}
-          <div>
-            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Meter Photo (Before Fill)</label>
-            <input ref={fileRef1} type="file" accept="image/*" capture="environment" onChange={e => handlePhoto(e.target.files?.[0], setPhoto1)} style={{ display: "none" }}/>
-            {photo1 ? (
-              <div style={{ position: "relative", display: "inline-block" }}>
-                <img src={photo1} alt="meter" style={{ width: "100%", maxWidth: 260, borderRadius: "var(--radius)", border: "1.5px solid var(--border)", display: "block" }}/>
-                <button onClick={() => setPhoto1(null)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", border: "none", color: "white", borderRadius: 999, width: 24, height: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="x" size={12} color="white"/></button>
-              </div>
-            ) : (
-              <button onClick={() => fileRef1.current?.click()} style={{ width: "100%", padding: "16px", border: "2px dashed var(--border2)", borderRadius: "var(--radius)", background: "var(--bg3)", color: "var(--text3)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13.5 }}>
-                <Icon name="camera" size={16} color="var(--text3)"/> Tap to capture meter photo
-              </button>
-            )}
-          </div>
-          {/* Photo — after fill */}
-          <div>
-            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Meter Photo (After Fill)</label>
-            <input ref={fileRef2} type="file" accept="image/*" capture="environment" onChange={e => handlePhoto(e.target.files?.[0], setPhoto2)} style={{ display: "none" }}/>
-            {photo2 ? (
-              <div style={{ position: "relative", display: "inline-block" }}>
-                <img src={photo2} alt="meter after" style={{ width: "100%", maxWidth: 260, borderRadius: "var(--radius)", border: "1.5px solid var(--border)", display: "block" }}/>
-                <button onClick={() => setPhoto2(null)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", border: "none", color: "white", borderRadius: 999, width: 24, height: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="x" size={12} color="white"/></button>
-              </div>
-            ) : (
-              <button onClick={() => fileRef2.current?.click()} style={{ width: "100%", padding: "16px", border: "2px dashed var(--border2)", borderRadius: "var(--radius)", background: "var(--bg3)", color: "var(--text3)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13.5 }}>
-                <Icon name="camera" size={16} color="var(--text3)"/> Tap to capture post-fill photo
-              </button>
-            )}
-          </div>
-        </>)}
-
-        {/* EOD fields */}
-        {type === "eod" && (<>
-          <div>
-            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Remaining Fuel Level (%) <span style={{ color: "var(--red)" }}>*</span></label>
-            <select value={fuelRemaining} onChange={e => setFuelRemaining(e.target.value)} style={{ fontSize: 15 }}>
-              <option value="">Select remaining level…</option>
-              {fuelPct.map(p => <option key={p} value={p}>{p}% {p === 0 ? "(Empty)" : p === 100 ? "(Full)" : p === 25 ? "(¼ Tank)" : p === 50 ? "(½ Tank)" : p === 75 ? "(¾ Tank)" : ""}</option>)}
-            </select>
-            {fuelRemaining !== "" && (
-              <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
-                <FuelGauge level={Number(fuelRemaining)} size={100}/>
-              </div>
-            )}
-          </div>
-          {/* EOD photo */}
-          <div>
-            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Fuel Indicator / Meter Photo <span style={{ color: "var(--red)" }}>*</span></label>
-            <input ref={fileRef1} type="file" accept="image/*" capture="environment" onChange={e => handlePhoto(e.target.files?.[0], setPhoto1)} style={{ display: "none" }}/>
-            {photo1 ? (
-              <div style={{ position: "relative", display: "inline-block" }}>
-                <img src={photo1} alt="fuel proof" style={{ width: "100%", maxWidth: 260, borderRadius: "var(--radius)", border: "1.5px solid var(--green)", display: "block" }}/>
-                <button onClick={() => setPhoto1(null)} style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.6)", border: "none", color: "white", borderRadius: 999, width: 24, height: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="x" size={12} color="white"/></button>
-                <div style={{ background: "var(--green)", color: "white", fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: "0 0 var(--radius-sm) 0", position: "absolute", top: 0, left: 0 }}>Photo captured ✓</div>
-              </div>
-            ) : (
-              <button onClick={() => fileRef1.current?.click()} style={{ width: "100%", padding: "20px 16px", border: "2px dashed rgba(5,150,105,0.4)", borderRadius: "var(--radius)", background: "var(--green-light)", color: "var(--green)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 14, fontWeight: 600 }}>
-                <Icon name="camera" size={22} color="var(--green)"/>
-                <span>Tap to take fuel proof photo</span>
-                <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text3)" }}>Required for end-of-day verification</span>
-              </button>
-            )}
-          </div>
-          {/* Supervisor note */}
-          <div>
-            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Supervisor Note (optional)</label>
-            <textarea value={supervisorNote} onChange={e => setSupervisorNote(e.target.value)} placeholder="Any notes for the supervisor…" rows={2} style={{ fontSize: 14, resize: "vertical", minHeight: 64 }}/>
-          </div>
-        </>)}
-
-        {/* Common remarks */}
-        <div>
-          <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Remarks / Notes</label>
-          <textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Any additional notes…" rows={2} style={{ fontSize: 14, resize: "vertical", minHeight: 64 }}/>
-        </div>
-
-        {/* Submit */}
-        <div style={{ paddingTop: 4 }}>
-          <Btn onClick={handleSubmit} loading={submitting} size="lg" style={{ width: "100%", background: type === "eod" ? "var(--green)" : "var(--blue)" }} variant="primary">
-            <Icon name="check" size={16} color="white"/>
-            {submitting ? "Saving…" : type === "eod" ? "Submit End-of-Day Fuel Record" : "Submit Fuel Fill Entry"}
-          </Btn>
-          <div style={{ fontSize: 11.5, color: "var(--text4)", textAlign: "center", marginTop: 8 }}>
-            This entry will be timestamped and GPS-tagged for accountability
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── FUEL DASHBOARD (Admin) ───────────────────────────────────────────────────
-function FuelDashboard({ dashData, logs, alerts, onViewAlerts }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const todayLogs = logs.filter(l => l.log_date === today);
-  const fillLogs = logs.filter(l => l.entry_type === "fill");
-  const eodLogs = logs.filter(l => l.entry_type === "eod");
-
-  const totalGallons = fillLogs.reduce((sum, l) => sum + (Number(l.gallons_added) || 0), 0);
-  const totalEquipment = EQUIPMENT_LIST.length;
-  const eodToday = new Set(eodLogs.filter(l => l.log_date === today).map(l => l.equipment_id)).size;
-  const missingEod = EQUIPMENT_LIST.filter(e => e.type !== "trailer").length - eodToday;
-
-  // Per-equipment gallons chart
-  const equip7 = EQUIPMENT_LIST.slice(0, 7).map(eq => {
-    const total = logs.filter(l => l.equipment_id === eq.id && l.entry_type === "fill").reduce((s, l) => s + (Number(l.gallons_added) || 0), 0);
-    return { label: eq.brand.slice(0, 6), value: Math.round(total) };
-  });
-
-  // Last 7 days consumption
-  const days7 = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(); d.setDate(d.getDate() - (6 - i));
-    const dateStr = d.toISOString().slice(0, 10);
-    const dayLogs = logs.filter(l => l.log_date === dateStr && l.entry_type === "fill");
-    return { label: d.toLocaleDateString([], { weekday: "short" }), value: Math.round(dayLogs.reduce((s, l) => s + (Number(l.gallons_added) || 0), 0)) };
-  });
-
-  const unresolvedAlerts = alerts.filter(a => !a.resolved).length;
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <SectionHeader title="Fuel Analytics Dashboard" subtitle="Fleet-wide consumption & efficiency overview"/>
-
-      {/* KPI cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 160px), 1fr))", gap: 10 }}>
-        <StatCard label="Total Fleet" value={totalEquipment} icon="hard_hat" color="var(--blue)" sub="Tracked units"/>
-        <StatCard label="Total Fuel Added" value={`${totalGallons.toFixed(0)} gal`} icon="droplet" color="var(--green)" sub="All time fill logs"/>
-        <StatCard label="Today's Entries" value={todayLogs.length} icon="clock" color="var(--blue)" sub="Logs today"/>
-        <StatCard label="EOD Missing" value={missingEod} icon="alert" color={missingEod > 0 ? "var(--red)" : "var(--green)"} sub="End-of-day not filed" flash={missingEod > 0}/>
-        <StatCard label="Active Alerts" value={unresolvedAlerts} icon="flag" color={unresolvedAlerts > 0 ? "var(--amber)" : "var(--green)"} sub="Unresolved flags" flash={unresolvedAlerts > 0}/>
+      {/* KPI row */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(min(100%,150px),1fr))", gap:10 }}>
+        <StatCard label="Total Fuel Added" value={`${totalGallons.toFixed(0)} gal`} icon="droplet" color="var(--blue)"   sub="All-time fills"/>
+        <StatCard label="Today's Fuel"     value={`${todayGallons.toFixed(0)} gal`} icon="droplet" color="var(--green)"  sub="Filled today"/>
+        <StatCard label="Today's Entries"  value={todayLogs.length}                 icon="clock"   color="var(--blue)"   sub="Logs today"/>
+        <StatCard label="EOD Missing"      value={missingEod} icon="alert" color={missingEod>0?"var(--red)":"var(--green)"} sub="Not filed today" flash={missingEod>0}/>
+        <StatCard label="Off-Site Entries" value={offSiteCount} icon="pin"  color={offSiteCount>0?"var(--amber)":"var(--green)"} sub="Last 30 days"/>
+        <StatCard label="Active Alerts"    value={unresolvedAlerts} icon="flag" color={unresolvedAlerts>0?"var(--amber)":"var(--green)"} sub="Unresolved" flash={unresolvedAlerts>0}/>
       </div>
 
       {/* Missing EOD warning */}
       {missingEod > 0 && (
-        <div style={{ background: "var(--red-light)", border: "1.5px solid rgba(220,38,38,0.25)", borderRadius: "var(--radius)", padding: "12px 16px", display: "flex", gap: 10, alignItems: "center" }}>
-          <Icon name="alert" size={16} color="var(--red)" style={{ flexShrink: 0 }}/>
-          <div style={{ flex: 1, fontSize: 13.5, color: "var(--red)", fontWeight: 500 }}>
-            <strong>{missingEod} equipment unit{missingEod !== 1 ? "s" : ""}</strong> missing end-of-day fuel record for today.
+        <div style={{ background:"var(--red-light)", border:"1.5px solid rgba(220,38,38,0.2)", borderRadius:"var(--radius)", padding:"12px 14px", display:"flex", gap:10, alignItems:"center" }}>
+          <Icon name="alert" size={15} color="var(--red)" style={{ flexShrink:0 }}/>
+          <div style={{ fontSize:13.5, color:"var(--red)", fontWeight:500 }}>
+            <strong>{missingEod} equipment unit{missingEod!==1?"s":""}</strong> missing today's end-of-day fuel record.
           </div>
         </div>
       )}
 
-      {/* Charts */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 320px), 1fr))", gap: 14 }}>
+      {/* Charts row */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(min(100%,300px),1fr))", gap:14 }}>
         <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Fuel Added — Last 7 Days</div>
+          <div style={{ fontSize:13, fontWeight:700, color:"var(--text)", marginBottom:12 }}>Daily Fuel — Last 7 Days</div>
           <FuelBarChart data={days7} color="var(--blue)" height={130}/>
         </Card>
         <Card>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Consumption by Equipment</div>
-          <FuelBarChart data={equip7} color="var(--amber)" height={130}/>
+          <div style={{ fontSize:13, fontWeight:700, color:"var(--text)", marginBottom:12 }}>By Equipment</div>
+          {byEquipChart.length > 0 ? <FuelBarChart data={byEquipChart} color="var(--amber)" height={130}/> : <div style={{ color:"var(--text4)", fontSize:13, textAlign:"center", padding:20 }}>No data</div>}
         </Card>
+        {bySiteChart.length > 0 && (
+          <Card>
+            <div style={{ fontSize:13, fontWeight:700, color:"var(--text)", marginBottom:12 }}>By Job Site</div>
+            <FuelBarChart data={bySiteChart} color="var(--green)" height={130}/>
+          </Card>
+        )}
       </div>
 
-      {/* Per-equipment EOD status table */}
+      {/* EOD status table */}
       <Card>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Today's EOD Status by Equipment</div>
-        <div style={{ overflowX: "auto" }}>
+        <div style={{ fontSize:13, fontWeight:700, color:"var(--text)", marginBottom:12 }}>Today's EOD Status</div>
+        <div style={{ overflowX:"auto" }}>
           <table>
-            <thead>
-              <tr><th>Equipment</th><th>Model</th><th>EOD Status</th><th>Last Level</th></tr>
-            </thead>
+            <thead><tr><th>Equipment</th><th>Model</th><th>EOD</th><th>Last Level</th><th>Operator</th></tr></thead>
             <tbody>
-              {EQUIPMENT_LIST.filter(e => e.type !== "trailer").map(eq => {
+              {motorEquip.map(eq => {
                 const eodEntry = eodLogs.find(l => l.equipment_id === eq.id && l.log_date === today);
-                const lastFill = [...logs].reverse().find(l => l.equipment_id === eq.id);
+                const lastLog  = [...logs].find(l => l.equipment_id === eq.id);
                 return (
                   <tr key={eq.id}>
-                    <td style={{ fontWeight: 600 }}>{eq.brand}</td>
-                    <td style={{ color: "var(--text3)" }}>{eq.model}</td>
+                    <td style={{ fontWeight:600 }}>{eq.brand}</td>
+                    <td style={{ color:"var(--text3)", fontSize:12 }}>{eq.model}</td>
                     <td>
                       {eodEntry
-                        ? <span style={{ background: "var(--green-light)", color: "var(--green)", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, border: "1px solid rgba(5,150,105,0.2)" }}>Submitted ✓</span>
-                        : <span style={{ background: "var(--red-light)", color: "var(--red)", padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700, border: "1px solid rgba(220,38,38,0.2)" }}>Missing</span>
+                        ? <span style={{ background:"var(--green-light)", color:"var(--green)", padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:700, border:"1px solid rgba(5,150,105,0.2)" }}>✓ Filed</span>
+                        : <span style={{ background:"var(--red-light)", color:"var(--red)", padding:"2px 8px", borderRadius:999, fontSize:11, fontWeight:700, border:"1px solid rgba(220,38,38,0.2)" }}>Missing</span>
                       }
                     </td>
-                    <td style={{ fontWeight: 600 }}>
-                      {eodEntry ? `${eodEntry.fuel_level_remaining}%` : lastFill ? `${lastFill.fuel_level_after ?? lastFill.fuel_level_remaining ?? "—"}%` : "—"}
+                    <td style={{ fontWeight:600 }}>
+                      {eodEntry ? `${eodEntry.fuel_level_remaining}%` : lastLog ? `${lastLog.fuel_level_after ?? lastLog.fuel_level_remaining ?? "—"}%` : "—"}
                     </td>
+                    <td style={{ color:"var(--text3)", fontSize:12 }}>{eodEntry?.operator_name || "—"}</td>
                   </tr>
                 );
               })}
@@ -7445,50 +6994,39 @@ function FuelDashboard({ dashData, logs, alerts, onViewAlerts }) {
         </div>
       </Card>
 
-      {/* Recent fill logs */}
-      <Card>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Recent Fuel Logs</div>
-        {logs.length === 0
-          ? <div style={{ color: "var(--text4)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>No fuel logs yet.</div>
-          : (
-            <div style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr><th>Equipment</th><th>Type</th><th>Level</th><th>Gallons</th><th>Operator</th><th>Date</th></tr>
-                </thead>
-                <tbody>
-                  {logs.slice(0, 15).map((l, i) => (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 600 }}>{l.equipment_brand}</td>
-                      <td>
-                        <span style={{ background: l.entry_type === "fill" ? "var(--blue-light)" : "var(--green-light)", color: l.entry_type === "fill" ? "var(--blue)" : "var(--green)", padding: "1px 6px", borderRadius: 4, fontSize: 11, fontWeight: 600 }}>
-                          {l.entry_type === "fill" ? "Fill" : "EOD"}
-                        </span>
-                      </td>
-                      <td>{l.entry_type === "fill" ? `${l.fuel_level_before ?? "—"}% → ${l.fuel_level_after ?? "—"}%` : `${l.fuel_level_remaining ?? "—"}%`}</td>
-                      <td>{l.gallons_added ? `${l.gallons_added} gal` : "—"}</td>
-                      <td style={{ color: "var(--text3)" }}>{l.operator_name}</td>
-                      <td style={{ color: "var(--text3)", fontSize: 12 }}>{l.log_date}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        }
-      </Card>
+      {/* Operator activity */}
+      {operatorData.length > 0 && (
+        <Card>
+          <div style={{ fontSize:13, fontWeight:700, color:"var(--text)", marginBottom:12 }}>Operator Activity</div>
+          <div style={{ overflowX:"auto" }}>
+            <table>
+              <thead><tr><th>Operator</th><th>Total Fuel</th><th>Fills</th><th>EODs</th></tr></thead>
+              <tbody>
+                {operatorData.map((o, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight:600 }}>{o.operator_name||"—"}</td>
+                    <td><span style={{ color:"var(--blue)", fontWeight:700 }}>{Number(o.total_gallons||0).toFixed(1)} gal</span></td>
+                    <td style={{ color:"var(--text3)" }}>{o.fill_count||0}</td>
+                    <td style={{ color:"var(--text3)" }}>{o.eod_count||0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {/* Alerts preview */}
       {unresolvedAlerts > 0 && (
-        <Card style={{ border: "1.5px solid rgba(217,119,6,0.25)", background: "var(--amber-light)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>⚠ Active Alerts</div>
-            <Btn onClick={onViewAlerts} variant="orange" size="sm">View All Alerts</Btn>
+        <Card style={{ border:"1.5px solid rgba(217,119,6,0.25)", background:"var(--amber-light)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+            <div style={{ fontSize:13, fontWeight:700, color:"#92400e" }}>⚠ {unresolvedAlerts} Active Alert{unresolvedAlerts!==1?"s":""}</div>
+            <Btn onClick={onViewAlerts} variant="orange" size="sm">View All</Btn>
           </div>
           {alerts.filter(a => !a.resolved).slice(0, 3).map((a, i) => (
-            <div key={i} style={{ padding: "8px 0", borderBottom: i < 2 ? "1px solid rgba(217,119,6,0.15)" : "none", fontSize: 13, color: "#92400e" }}>
-              <strong>{a.alert_type?.replace(/_/g, " ")}</strong> · {a.equipment_brand} · {a.operator_name}
-              <div style={{ fontSize: 11.5, color: "#b45309", marginTop: 2 }}>{a.reason}</div>
+            <div key={i} style={{ padding:"8px 0", borderBottom:i<2?"1px solid rgba(217,119,6,0.15)":"none", fontSize:13, color:"#92400e" }}>
+              <strong>{(a.alert_type||"").replace(/_/g," ")}</strong> · {a.equipment_brand} · {a.operator_name||"—"}
+              <div style={{ fontSize:11.5, color:"#b45309", marginTop:2 }}>{a.reason}</div>
             </div>
           ))}
         </Card>
@@ -7500,86 +7038,117 @@ function FuelDashboard({ dashData, logs, alerts, onViewAlerts }) {
 // ─── ALERTS VIEW (Admin) ───────────────────────────────────────────────────────
 function FuelAlertsView({ alerts, onRefresh, addToast }) {
   const [resolving, setResolving] = useState(null);
+  const [showResolved, setShowResolved] = useState(false);
 
   const resolveAlert = async (id) => {
     setResolving(id);
     try {
-      const res = await authFetch(`/api/fuel/alerts/${id}/resolve`, { method: "PUT" });
+      const res = await authFetch(`/api/fuel/alerts/${id}/resolve`, { method:"PUT" });
       if (res.ok) { addToast("Alert resolved.", "success"); onRefresh(); }
       else addToast("Failed to resolve alert.", "error");
     } catch { addToast("Error.", "error"); }
     setResolving(null);
   };
 
-  const alertTypeColors = {
-    high_consumption: { bg: "var(--red-light)", c: "var(--red)", label: "High Consumption" },
-    low_hours_high_fuel: { bg: "var(--orange-light)", c: "var(--orange)", label: "Low Hours / High Fuel" },
-    rapid_repeat_entry: { bg: "var(--amber-light)", c: "var(--amber)", label: "Rapid Repeat Entry" },
-    off_site_entry: { bg: "var(--purple-dim)", c: "var(--purple)", label: "Off-Site Entry" },
-    missing_eod: { bg: "var(--red-light)", c: "var(--red)", label: "Missing EOD Record" },
-    meter_inconsistency: { bg: "var(--orange-light)", c: "var(--orange)", label: "Meter Inconsistency" },
+  const ALERT_CFG = {
+    high_consumption:     { bg:"var(--red-light)",    c:"var(--red)",    label:"High Consumption",      icon:"⛽" },
+    low_hours_high_fuel:  { bg:"#fff7ed",             c:"#c2410c",       label:"Low Hours / High Fuel", icon:"⚠" },
+    rapid_repeat_entry:   { bg:"var(--amber-light)",  c:"var(--amber)",  label:"Rapid Repeat Entry",    icon:"⏱" },
+    off_site_entry:       { bg:"#f5f3ff",             c:"#7c3aed",       label:"Off-Site Entry",        icon:"📍" },
+    missing_eod:          { bg:"var(--red-light)",    c:"var(--red)",    label:"Missing EOD",           icon:"🏁" },
+    meter_inconsistency:  { bg:"#fff7ed",             c:"#c2410c",       label:"Meter Inconsistency",   icon:"🔢" },
   };
 
+  const fmtDt = d => { try { return new Date(d).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" }); } catch { return d||"—"; } };
+
   const unresolved = alerts.filter(a => !a.resolved);
-  const resolved = alerts.filter(a => a.resolved);
+  const resolved   = alerts.filter(a => a.resolved);
+
+  const AlertCard = ({ a }) => {
+    const cfg = ALERT_CFG[a.alert_type] || { bg:"var(--amber-light)", c:"var(--amber)", label:a.alert_type||"Alert", icon:"⚠" };
+    return (
+      <Card style={{ border:`1.5px solid ${cfg.c}28`, background:cfg.bg, padding:"14px 14px" }}>
+        <div style={{ display:"flex", alignItems:"flex-start", gap:10, marginBottom:10 }}>
+          {/* Icon */}
+          <div style={{ width:36, height:36, borderRadius:"var(--radius-sm)", background:`${cfg.c}18`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:16 }}>
+            {cfg.icon}
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:13.5, fontWeight:700, color:cfg.c, marginBottom:3 }}>{cfg.label}</div>
+            <div style={{ fontSize:12.5, color:"var(--text2)", lineHeight:1.5 }}>{a.reason}</div>
+          </div>
+          {!a.resolved && (
+            <Btn onClick={() => resolveAlert(a.id)} loading={resolving===a.id} variant="ghost" size="sm" style={{ flexShrink:0 }}>Resolve</Btn>
+          )}
+        </div>
+        {/* Detail pills */}
+        <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+          {a.equipment_brand && (
+            <span style={{ background:"var(--bg3)", border:"1px solid var(--border)", borderRadius:999, padding:"3px 10px", fontSize:11.5, color:"var(--text2)", fontWeight:600 }}>
+              ⚙ {a.equipment_brand} {a.equipment_model||""}
+            </span>
+          )}
+          {a.operator_name && (
+            <span style={{ background:"var(--bg3)", border:"1px solid var(--border)", borderRadius:999, padding:"3px 10px", fontSize:11.5, color:"var(--text2)" }}>
+              👤 {a.operator_name}
+            </span>
+          )}
+          {a.job_site_name && (
+            <span style={{ background:"var(--bg3)", border:"1px solid var(--border)", borderRadius:999, padding:"3px 10px", fontSize:11.5, color:"var(--text2)" }}>
+              📍 {a.job_site_name}
+            </span>
+          )}
+          <span style={{ background:"var(--bg3)", border:"1px solid var(--border)", borderRadius:999, padding:"3px 10px", fontSize:11.5, color:"var(--text3)" }}>
+            🕐 {fmtDt(a.created_at)}
+          </span>
+          {a.resolved && (
+            <span style={{ background:"var(--green-light)", border:"1px solid rgba(5,150,105,0.2)", borderRadius:999, padding:"3px 10px", fontSize:11, color:"var(--green)", fontWeight:700 }}>
+              ✓ Resolved
+            </span>
+          )}
+        </div>
+      </Card>
+    );
+  };
 
   return (
     <div>
-      <SectionHeader title="Fuel Theft & Misuse Alerts" subtitle="Smart monitoring — flagged suspicious activity"/>
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:10 }}>
+        <SectionHeader title="Fuel Alerts" subtitle="Flagged suspicious or abnormal activity"/>
+        <Btn onClick={onRefresh} variant="ghost" size="sm">↻ Refresh</Btn>
+      </div>
+
       {alerts.length === 0 && (
-        <Card style={{ textAlign: "center", padding: 32 }}>
-          <Icon name="shield" size={36} color="var(--green)" style={{ marginBottom: 10 }}/>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--green)", marginBottom: 4 }}>All Clear</div>
-          <div style={{ fontSize: 13, color: "var(--text3)" }}>No suspicious fuel activity detected.</div>
+        <Card style={{ textAlign:"center", padding:32 }}>
+          <Icon name="shield" size={36} color="var(--green)" style={{ marginBottom:10 }}/>
+          <div style={{ fontSize:15, fontWeight:600, color:"var(--green)", marginBottom:4 }}>All Clear</div>
+          <div style={{ fontSize:13, color:"var(--text3)" }}>No suspicious fuel activity detected.</div>
         </Card>
       )}
+
       {unresolved.length > 0 && (
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--red)", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
-            <Icon name="alert" size={14} color="var(--red)"/> {unresolved.length} Unresolved Alert{unresolved.length !== 1 ? "s" : ""}
+        <div style={{ marginBottom:24 }}>
+          <div style={{ fontSize:12.5, fontWeight:700, color:"var(--red)", marginBottom:10, display:"flex", alignItems:"center", gap:6, textTransform:"uppercase", letterSpacing:"0.05em" }}>
+            <Icon name="alert" size={13} color="var(--red)"/> {unresolved.length} Unresolved
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {unresolved.map(a => {
-              const cfg = alertTypeColors[a.alert_type] || { bg: "var(--amber-light)", c: "var(--amber)", label: a.alert_type };
-              return (
-                <Card key={a.id} style={{ border: `1.5px solid ${cfg.c}30`, background: cfg.bg }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 10 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: "var(--radius-sm)", background: `${cfg.c}18`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <Icon name="alert" size={16} color={cfg.c}/>
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 700, color: cfg.c }}>{cfg.label}</div>
-                      <div style={{ fontSize: 12.5, color: "var(--text2)", marginTop: 3, lineHeight: 1.5 }}>{a.reason}</div>
-                    </div>
-                    <Btn onClick={() => resolveAlert(a.id)} loading={resolving === a.id} variant="ghost" size="sm">Resolve</Btn>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, fontSize: 12, color: "var(--text3)" }}>
-                    <div><span style={{ fontWeight: 600 }}>Equipment:</span><br/>{a.equipment_brand}</div>
-                    <div><span style={{ fontWeight: 600 }}>Operator:</span><br/>{a.operator_name || "—"}</div>
-                    <div><span style={{ fontWeight: 600 }}>Date:</span><br/>{a.created_at ? new Date(a.created_at).toLocaleDateString() : "—"}</div>
-                  </div>
-                </Card>
-              );
-            })}
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {unresolved.map(a => <AlertCard key={a.id} a={a}/>)}
           </div>
         </div>
       )}
+
       {resolved.length > 0 && (
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text3)", marginBottom: 8, letterSpacing: "0.05em", textTransform: "uppercase" }}>Resolved ({resolved.length})</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {resolved.slice(0, 10).map(a => {
-              const cfg = alertTypeColors[a.alert_type] || { bg: "var(--bg3)", c: "var(--text3)", label: a.alert_type };
-              return (
-                <Card key={a.id} style={{ opacity: 0.6, padding: "10px 14px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text2)" }}>
-                    <Icon name="check" size={13} color="var(--green)"/>
-                    <span style={{ fontWeight: 600 }}>{cfg.label}</span> · {a.equipment_brand} · {a.reason?.slice(0, 60)}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+          <button
+            onClick={() => setShowResolved(v => !v)}
+            style={{ fontSize:12.5, fontWeight:600, color:"var(--text3)", background:"none", border:"none", cursor:"pointer", padding:"4px 0", display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+            {showResolved ? "▲" : "▼"} {resolved.length} Resolved Alert{resolved.length!==1?"s":""}
+          </button>
+          {showResolved && (
+            <div style={{ display:"flex", flexDirection:"column", gap:10, opacity:0.75 }}>
+              {resolved.map(a => <AlertCard key={a.id} a={a}/>)}
+            </div>
+          )}
         </div>
       )}
     </div>
