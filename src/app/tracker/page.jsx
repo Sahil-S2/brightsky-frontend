@@ -894,7 +894,31 @@ function WelcomeBanner({ msg, onDone }) {
     const t1 = setTimeout(() => setVisible(true), 80);
     // Auto-dismiss after 5 s
     const t2 = setTimeout(() => dismiss(), 5000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+
+    // Audio greeting — plays once after login when this banner mounts
+    const t3 = setTimeout(() => {
+      try {
+        if (typeof window !== "undefined" && window.speechSynthesis) {
+          window.speechSynthesis.cancel(); // clear any queued speech
+          const greeting = getGreeting();
+          const utterance = new SpeechSynthesisUtterance(
+            `Hello, ${firstName}. ${greeting}. ${roleMsg}`
+          );
+          utterance.rate   = 0.95;   // slightly slower — natural pace
+          utterance.pitch  = 1.05;   // slightly warm
+          utterance.volume = 1;
+          // Prefer a natural-sounding voice if available
+          const voices = window.speechSynthesis.getVoices();
+          const preferred = voices.find(v =>
+            /Google US English|Samantha|Karen|Moira|Daniel|en-US|en-GB/i.test(v.name)
+          );
+          if (preferred) utterance.voice = preferred;
+          window.speechSynthesis.speak(utterance);
+        }
+      } catch (_) { /* silently ignore if speech API unavailable */ }
+    }, 600); // slight delay so banner animation is visible first
+
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, []); // eslint-disable-line
 
   return (
