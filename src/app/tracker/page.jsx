@@ -111,6 +111,9 @@ const safeJson = async (res) => {
 };
 
 
+// Module-level flag: splash shows once per app session (every cold launch)
+let _splashDone = false;
+
 // ─── PWA HEAD TAG INJECTION ───────────────────────────────────────────────────
 // Sets favicon, theme-color, apple-touch-icon, and inline manifest so the
 // installed PWA / APK shows the correct blue-and-white icon.
@@ -225,16 +228,16 @@ const GlobalStyle = () => (
     .pin-dot{width:13px;height:13px;border-radius:50%;background:var(--blue);display:inline-block;flex-shrink:0;transition:all 0.2s;box-shadow:0 0 0 3px var(--blue-mid);}
     .pin-dot.empty{background:transparent;border:2px solid var(--border2);box-shadow:none;}
 
-    /* ── Login animations ───────────────────────────────────── */
+    /* ── Splash & Login animations ──────────────────────────── */
+    @keyframes splashLogoIn{0%{opacity:0;transform:translateY(-40px) scale(0.7);}60%{opacity:1;transform:translateY(6px) scale(1.04);}100%{opacity:1;transform:translateY(0) scale(1);}}
+    @keyframes pinFloat{0%,100%{transform:translateY(0px);}50%{transform:translateY(-7px);}}
+    @keyframes pinShadow{0%,100%{transform:translateX(-50%) scale(1);opacity:0.4;}50%{transform:translateX(-50%) scale(0.75);opacity:0.2;}}
     @keyframes loginCardIn{0%{opacity:0;transform:translateY(22px) scale(0.97);}100%{opacity:1;transform:translateY(0) scale(1);}}
-    @keyframes loginLogoFloat{0%,100%{transform:translateY(0px);}50%{transform:translateY(-5px);}}
     @keyframes loginFadeUp{0%{opacity:0;transform:translateY(14px);}100%{opacity:1;transform:translateY(0);}}
-    @keyframes orb1{0%,100%{transform:translate(0,0) scale(1);}33%{transform:translate(40px,-30px) scale(1.1);}66%{transform:translate(-20px,25px) scale(0.92);}}
-    @keyframes orb2{0%,100%{transform:translate(0,0) scale(1);}33%{transform:translate(-35px,25px) scale(0.88);}66%{transform:translate(30px,-20px) scale(1.08);}}
-    .login-card-anim{animation:loginCardIn 0.5s cubic-bezier(0.16,1,0.3,1) 0.05s both;}
-    .login-field-1{animation:loginFadeUp 0.4s cubic-bezier(0.16,1,0.3,1) 0.14s both;}
-    .login-field-2{animation:loginFadeUp 0.4s cubic-bezier(0.16,1,0.3,1) 0.22s both;}
-    .login-field-btn{animation:loginFadeUp 0.4s cubic-bezier(0.16,1,0.3,1) 0.30s both;}
+    .login-card-anim{animation:loginCardIn 0.55s cubic-bezier(0.16,1,0.3,1) 0.05s both;}
+    .login-field-1{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.15s both;}
+    .login-field-2{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.25s both;}
+    .login-field-btn{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.34s both;}
   `}</style>
 );
 
@@ -501,6 +504,7 @@ function SidebarProfile({currentUser,handleLogout,lang,setLang}){
 export default function App(){
   const[currentUser,setCurrentUser]=useState(null);
   const[mounted,setMounted]=useState(false);
+  const[showSplash,setShowSplash]=useState(()=>!_splashDone);
   const[lang,setLang]=useState("en");
   useEffect(()=>{
     try{const s=localStorage.getItem("bsc_session");if(s)setCurrentUser(JSON.parse(s));}catch{}
@@ -743,6 +747,8 @@ useEffect(() => {
   ]:[];
 
   if(!mounted)return null;
+  // Splash always shows on every cold launch (even if session is saved)
+  if(showSplash)return(<><GlobalStyle/><SplashScreen onDone={()=>{_splashDone=true;setShowSplash(false);}}/><Toast toasts={toasts} removeToast={removeToast}/></>);
   if(!currentUser)return(<><GlobalStyle/><LoginPage onLogin={handleLogin} lang={lang} setLang={setLang}/><Toast toasts={toasts} removeToast={removeToast}/></>);
 
   return(
@@ -851,6 +857,268 @@ function AdminLocationBar({userLat,userLon,worksites,distanceFt,addToast,t,onWor
 }
 
 
+// ─── SPLASH SCREEN ────────────────────────────────────────────────────────────
+function SplashScreen({ onDone }) {
+  const [phase, setPhase] = useState(0); // 0=logo-in 1=tagline-in 2=exit
+  const [progress, setProgress] = useState(0);
+  const onDoneRef = useRef(onDone);
+  useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
+
+  useEffect(() => {
+    // Phase timeline: logo animates → tagline → progress fills → exit
+    const t1 = setTimeout(() => setPhase(1), 900);
+    const t2 = setTimeout(() => setPhase(2), 2800);
+    const t3 = setTimeout(() => onDoneRef.current?.(), 3350);
+    // Progress bar fill over 2.4s starting at 200ms
+    let start = null;
+    let raf;
+    const DURATION = 2400;
+    const tick = (ts) => {
+      if (!start) start = ts;
+      const pct = Math.min(((ts - start) / DURATION) * 100, 100);
+      setProgress(pct);
+      if (pct < 100) raf = requestAnimationFrame(tick);
+    };
+    const rafStart = setTimeout(() => { raf = requestAnimationFrame(tick); }, 200);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(rafStart); cancelAnimationFrame(raf); };
+  }, []);
+
+  const exiting = phase === 2;
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999, overflow: "hidden",
+      opacity: exiting ? 0 : 1,
+      transform: exiting ? "scale(1.04)" : "scale(1)",
+      transition: exiting ? "opacity 0.5s ease, transform 0.5s ease" : "none",
+    }}>
+      {/* ── Sky / construction background ── */}
+      <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#0a1628"/>
+            <stop offset="30%"  stopColor="#0d2456"/>
+            <stop offset="60%"  stopColor="#1a4a9e"/>
+            <stop offset="80%"  stopColor="#2e6cc7"/>
+            <stop offset="90%"  stopColor="#5b9fd4"/>
+            <stop offset="100%" stopColor="#8fc4e8"/>
+          </linearGradient>
+          <linearGradient id="sunGlow" x1="0.5" y1="0" x2="0.5" y2="1">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.35"/>
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0"/>
+          </linearGradient>
+          <linearGradient id="ground" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#0a1220"/>
+            <stop offset="100%" stopColor="#060b14"/>
+          </linearGradient>
+          <linearGradient id="bldg1" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#1a3a6e"/>
+            <stop offset="100%" stopColor="#0a1628"/>
+          </linearGradient>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <radialGradient id="horizonGlow" cx="50%" cy="85%" r="45%">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.4"/>
+            <stop offset="50%" stopColor="#2563eb" stopOpacity="0.15"/>
+            <stop offset="100%" stopColor="#2563eb" stopOpacity="0"/>
+          </radialGradient>
+          <linearGradient id="glassCard" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.18)"/>
+            <stop offset="100%" stopColor="rgba(255,255,255,0.07)"/>
+          </linearGradient>
+        </defs>
+        {/* Sky */}
+        <rect width="390" height="844" fill="url(#sky)"/>
+        {/* Horizon sun glow */}
+        <ellipse cx="195" cy="580" rx="200" ry="80" fill="url(#sunGlow)"/>
+        <rect width="390" height="844" fill="url(#horizonGlow)"/>
+        {/* Distant buildings (right) */}
+        <rect x="280" y="440" width="18" height="160" fill="#0e2040" opacity="0.9"/>
+        <rect x="302" y="460" width="14" height="140" fill="#0e2040" opacity="0.8"/>
+        <rect x="320" y="430" width="22" height="170" fill="#0c1e3a" opacity="0.95"/>
+        <rect x="346" y="450" width="16" height="150" fill="#0e2040" opacity="0.85"/>
+        <rect x="365" y="470" width="25" height="130" fill="#0c1e3a"/>
+        {/* Building under construction (center-left) */}
+        <rect x="60" y="360" width="120" height="220" fill="url(#bldg1)" opacity="0.95"/>
+        {/* Floor lines */}
+        {[380,360,340,320,300,280,260].map((y,i) => (
+          <rect key={i} x="60" y={y} width="120" height="1" fill="rgba(100,160,255,0.2)"/>
+        ))}
+        {/* Vertical columns */}
+        <rect x="70"  y="360" width="4" height="220" fill="rgba(100,160,255,0.15)"/>
+        <rect x="100" y="360" width="4" height="220" fill="rgba(100,160,255,0.15)"/>
+        <rect x="130" y="360" width="4" height="220" fill="rgba(100,160,255,0.15)"/>
+        <rect x="166" y="360" width="4" height="220" fill="rgba(100,160,255,0.15)"/>
+        {/* Scaffolding */}
+        <rect x="55"  y="320" width="130" height="5" fill="#1e4080" opacity="0.8"/>
+        <rect x="55"  y="290" width="130" height="3" fill="#1e4080" opacity="0.6"/>
+        <rect x="55"  y="310" width="3"   height="80" fill="#1e4080" opacity="0.7"/>
+        <rect x="181" y="310" width="3"   height="80" fill="#1e4080" opacity="0.7"/>
+        {/* Crane (left) */}
+        <rect x="30" y="120" width="5" height="460" fill="#162d52" opacity="0.95"/>
+        {/* Crane horizontal arm */}
+        <rect x="30" y="120" width="130" height="5" fill="#162d52" opacity="0.9"/>
+        <rect x="30" y="120" width="5"   height="-60" fill="#162d52" opacity="0.9"/>
+        {/* Crane cables */}
+        <line x1="90"  y1="120" x2="75"  y2="200" stroke="#1a3a6e" strokeWidth="1.5" opacity="0.7"/>
+        <line x1="130" y1="125" x2="115" y2="220" stroke="#1a3a6e" strokeWidth="1.5" opacity="0.6"/>
+        <line x1="155" y1="125" x2="90"  y2="320" stroke="#1a3a6e" strokeWidth="1" opacity="0.5"/>
+        {/* Windows with light */}
+        {[[72,370],[90,370],[108,370],[130,370],[150,370],
+          [72,395],[90,395],[108,395],[130,395],[150,395],
+          [72,420],[90,420],[108,420],[130,420],[150,420],
+          [72,445],[90,445],[108,445],[130,445],[150,445]].map(([x,y],i)=>(
+          <rect key={i} x={x} y={y} width="12" height="16"
+            fill={i%3===0?"rgba(245,200,80,0.6)":i%5===0?"rgba(100,180,255,0.5)":"rgba(30,70,130,0.4)"}
+            rx="1"/>
+        ))}
+        {/* Ground / water reflection */}
+        <rect x="0" y="580" width="390" height="264" fill="url(#ground)"/>
+        {/* Reflection streak */}
+        <ellipse cx="195" cy="600" rx="120" ry="12" fill="rgba(37,99,235,0.12)"/>
+        <rect x="148" y="590" width="6" height="100" fill="rgba(245,180,60,0.12)" rx="3"/>
+        <rect x="188" y="590" width="4" height="120" fill="rgba(100,160,255,0.10)" rx="2"/>
+        <rect x="220" y="595" width="5" height="80"  fill="rgba(100,160,255,0.08)" rx="2"/>
+        {/* Atmospheric haze */}
+        <rect x="0" y="490" width="390" height="100" fill="rgba(30,80,160,0.08)"/>
+      </svg>
+
+      {/* ── Logo section ── */}
+      <div style={{
+        position: "absolute", top: "12%", width: "100%",
+        display: "flex", flexDirection: "column", alignItems: "center",
+        animation: "splashLogoIn 0.9s cubic-bezier(0.16,1,0.3,1) 0.1s both",
+      }}>
+        {/* 3D location-pin logo */}
+        <div style={{ position: "relative", width: 100, height: 110, marginBottom: 20 }}>
+          {/* Pin shadow */}
+          <div style={{
+            position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)",
+            width: 50, height: 14, borderRadius: "50%",
+            background: "rgba(0,0,0,0.4)", filter: "blur(8px)",
+            animation: "pinShadow 3s ease-in-out 1.2s infinite",
+          }}/>
+          {/* Pin body */}
+          <svg width="100" height="110" viewBox="0 0 100 110" style={{
+            filter: "drop-shadow(0 12px 30px rgba(37,99,235,0.7)) drop-shadow(0 4px 10px rgba(0,0,0,0.5))",
+            animation: "pinFloat 3s ease-in-out 1.2s infinite",
+          }}>
+            <defs>
+              <linearGradient id="pinGrad" x1="0.2" y1="0" x2="0.8" y2="1">
+                <stop offset="0%"  stopColor="#60a5fa"/>
+                <stop offset="40%" stopColor="#2563eb"/>
+                <stop offset="100%" stopColor="#1e40af"/>
+              </linearGradient>
+              <linearGradient id="pinShine" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%"   stopColor="rgba(255,255,255,0.55)"/>
+                <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
+              </linearGradient>
+              <radialGradient id="pinInner" cx="40%" cy="35%" r="50%">
+                <stop offset="0%"   stopColor="rgba(255,255,255,0.9)"/>
+                <stop offset="100%" stopColor="rgba(200,220,255,0.6)"/>
+              </radialGradient>
+            </defs>
+            {/* Pin shape */}
+            <path d="M50 5 C28 5 12 21 12 43 C12 66 50 105 50 105 C50 105 88 66 88 43 C88 21 72 5 50 5Z" fill="url(#pinGrad)"/>
+            {/* Shine overlay */}
+            <path d="M50 5 C28 5 12 21 12 43 C12 66 50 105 50 105 C50 105 88 66 88 43 C88 21 72 5 50 5Z" fill="url(#pinShine)" opacity="0.4"/>
+            {/* Inner circle */}
+            <circle cx="50" cy="42" r="22" fill="url(#pinInner)"/>
+            {/* Inner circle shadow */}
+            <circle cx="50" cy="44" r="19" fill="rgba(30,64,175,0.25)"/>
+            {/* Construction icon inside pin */}
+            <g transform="translate(36,30)" fill="rgba(30,64,175,0.85)">
+              <rect x="4" y="8" width="20" height="12" rx="1"/>
+              <rect x="7" y="5" width="14" height="5" rx="1"/>
+              <rect x="0" y="18" width="28" height="3" rx="1"/>
+            </g>
+          </svg>
+        </div>
+
+        {/* Brand text */}
+        <div style={{ textAlign: "center" }}>
+          <h1 style={{
+            fontSize: 42, fontWeight: 900, color: "#ffffff",
+            letterSpacing: "-0.03em", lineHeight: 1,
+            textShadow: "0 2px 20px rgba(0,0,0,0.5), 0 0 40px rgba(37,99,235,0.3)",
+            margin: 0,
+          }}>Tracker</h1>
+          <p style={{
+            fontSize: 15, fontWeight: 500, color: "rgba(255,255,255,0.75)",
+            letterSpacing: "0.06em", marginTop: 6,
+            textShadow: "0 1px 8px rgba(0,0,0,0.5)",
+          }}>Bright Sky Construction</p>
+        </div>
+      </div>
+
+      {/* ── Tagline card ── */}
+      <div style={{
+        position: "absolute", bottom: "22%", left: "50%", transform: "translateX(-50%)",
+        width: "78%", maxWidth: 320,
+        opacity: phase >= 1 ? 1 : 0,
+        transform: `translateX(-50%) translateY(${phase >= 1 ? 0 : 20}px)`,
+        transition: "opacity 0.6s ease, transform 0.6s ease",
+      }}>
+        <div style={{
+          background: "rgba(255,255,255,0.10)",
+          border: "1px solid rgba(255,255,255,0.20)",
+          borderRadius: 18, padding: "20px 24px 18px",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+          textAlign: "center",
+        }}>
+          {/* Building icon */}
+          <svg width="44" height="44" viewBox="0 0 44 44" style={{ marginBottom: 10, opacity: 0.9 }}>
+            <rect x="10" y="16" width="24" height="22" rx="1" fill="none" stroke="#60a5fa" strokeWidth="1.8"/>
+            <rect x="14" y="10" width="16" height="8"  rx="1" fill="none" stroke="#60a5fa" strokeWidth="1.6"/>
+            <rect x="17" y="5"  width="10" height="7"  rx="1" fill="none" stroke="#93c5fd" strokeWidth="1.4"/>
+            <rect x="16" y="26" width="5"  height="7"  fill="#3b82f6" opacity="0.6" rx="0.5"/>
+            <rect x="23" y="26" width="5"  height="7"  fill="#3b82f6" opacity="0.6" rx="0.5"/>
+            <rect x="16" y="20" width="5"  height="5"  fill="#93c5fd" opacity="0.5" rx="0.5"/>
+            <rect x="23" y="20" width="5"  height="5"  fill="#93c5fd" opacity="0.5" rx="0.5"/>
+          </svg>
+          <p style={{
+            fontSize: 14, fontWeight: 600, color: "#ffffff",
+            letterSpacing: "0.05em", margin: 0,
+            textShadow: "0 1px 6px rgba(0,0,0,0.4)",
+          }}>
+            <span style={{ color: "#60a5fa" }}>Tracking.</span>{" "}
+            <span style={{ color: "#93c5fd" }}>Transparency.</span>{" "}
+            <span style={{ color: "#bfdbfe" }}>Trust.</span>
+          </p>
+        </div>
+      </div>
+
+      {/* ── Progress bar ── */}
+      <div style={{
+        position: "absolute", bottom: "12%", left: "50%", transform: "translateX(-50%)",
+        width: "60%", maxWidth: 220,
+        opacity: phase >= 1 ? 1 : 0,
+        transition: "opacity 0.5s ease 0.3s",
+      }}>
+        <p style={{
+          textAlign: "center", fontSize: 10, fontWeight: 700, letterSpacing: "0.18em",
+          color: "#60a5fa", marginBottom: 8, textTransform: "uppercase",
+        }}>Loading…</p>
+        <div style={{
+          height: 3, borderRadius: 3,
+          background: "rgba(255,255,255,0.12)", overflow: "hidden",
+        }}>
+          <div style={{
+            height: "100%", borderRadius: 3,
+            background: "linear-gradient(90deg, #60a5fa, #2563eb, #3b82f6)",
+            width: `${progress}%`, transition: "width 0.05s linear",
+            boxShadow: "0 0 8px rgba(96,165,250,0.8)",
+          }}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 function LoginPage({onLogin,lang,setLang}){
   const[userId,setUserId]=useState("");
@@ -859,7 +1127,6 @@ function LoginPage({onLogin,lang,setLang}){
   const[loading,setLoading]=useState(false);
   const[error,setError]=useState("");
   const[useEmail,setUseEmail]=useState(false);
-  const[focusedField,setFocusedField]=useState(null);
   const t=T[lang]||T.en;
   const validate=()=>{
     if(!useEmail){if(!/^[A-Za-z0-9]{4}$/.test(userId)){setError("User ID must be exactly 4 characters.");return false;}if(!/^\d{4}$/.test(password)){setError("Password must be exactly 4 digits.");return false;}}
@@ -870,122 +1137,268 @@ function LoginPage({onLogin,lang,setLang}){
   return(
     <div style={{
       minHeight:"100vh", display:"flex", flexDirection:"column",
-      background:"linear-gradient(160deg,#eff6ff 0%,#dbeafe 40%,#bfdbfe 100%)",
       position:"relative", overflow:"hidden",
     }}>
-      {/* Soft decorative blobs */}
-      <div style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:"-12%",right:"-8%",width:380,height:380,borderRadius:"50%",background:"radial-gradient(circle,rgba(37,99,235,0.10) 0%,transparent 65%)"}}/>
-        <div style={{position:"absolute",bottom:"-8%",left:"-6%",width:320,height:320,borderRadius:"50%",background:"radial-gradient(circle,rgba(59,130,246,0.08) 0%,transparent 65%)"}}/>
-      </div>
+      {/* Construction site background */}
+      <svg style={{position:"absolute",inset:0,width:"100%",height:"100%"}} viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="lsky" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="#0a1628"/>
+            <stop offset="35%"  stopColor="#0f2754"/>
+            <stop offset="65%"  stopColor="#1a4a9e"/>
+            <stop offset="85%"  stopColor="#3a7ac7"/>
+            <stop offset="100%" stopColor="#7ab4dc"/>
+          </linearGradient>
+          <linearGradient id="lground" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#0d1a2e"/>
+            <stop offset="100%" stopColor="#070d18"/>
+          </linearGradient>
+          <radialGradient id="lhorizon" cx="50%" cy="85%" r="50%">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.3"/>
+            <stop offset="60%" stopColor="#2563eb" stopOpacity="0.1"/>
+            <stop offset="100%" stopColor="#2563eb" stopOpacity="0"/>
+          </radialGradient>
+          <linearGradient id="loginCard" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.22)"/>
+            <stop offset="100%" stopColor="rgba(255,255,255,0.10)"/>
+          </linearGradient>
+        </defs>
+        <rect width="390" height="844" fill="url(#lsky)"/>
+        <rect width="390" height="844" fill="url(#lhorizon)"/>
+        <rect x="280" y="450" width="16" height="150" fill="#0c1e3a" opacity="0.9"/>
+        <rect x="300" y="470" width="12" height="130" fill="#0c1e3a" opacity="0.8"/>
+        <rect x="318" y="440" width="20" height="160" fill="#0a1628" opacity="0.95"/>
+        <rect x="342" y="460" width="14" height="140" fill="#0c1e3a" opacity="0.85"/>
+        <rect x="360" y="475" width="30" height="125" fill="#0a1628"/>
+        <rect x="55" y="370" width="115" height="210" fill="#0e2040" opacity="0.95"/>
+        {[385,365,345,325,305,285,265].map((y,i)=>(
+          <rect key={i} x="55" y={y} width="115" height="1" fill="rgba(100,160,255,0.18)"/>
+        ))}
+        {[65,95,125,155].map((x,i)=>(
+          <rect key={i} x={x} y="370" width="3" height="210" fill="rgba(100,160,255,0.12)"/>
+        ))}
+        <rect x="28" y="130" width="5" height="450" fill="#162d52" opacity="0.9"/>
+        <rect x="28" y="130" width="120" height="4" fill="#162d52" opacity="0.85"/>
+        <line x1="88"  y1="130" x2="75"  y2="210" stroke="#1a3a6e" strokeWidth="1.5" opacity="0.6"/>
+        <line x1="128" y1="133" x2="113" y2="230" stroke="#1a3a6e" strokeWidth="1.5" opacity="0.5"/>
+        {[[68,378],[86,378],[104,378],[126,378],[146,378],
+          [68,400],[86,400],[104,400],[126,400],[146,400],
+          [68,422],[86,422],[104,422],[126,422],[146,422]].map(([x,y],i)=>(
+          <rect key={i} x={x} y={y} width="11" height="14"
+            fill={i%3===0?"rgba(245,200,80,0.55)":i%5===0?"rgba(100,180,255,0.45)":"rgba(30,70,130,0.35)"} rx="1"/>
+        ))}
+        <rect x="0" y="580" width="390" height="264" fill="url(#lground)"/>
+        <ellipse cx="195" cy="595" rx="130" ry="10" fill="rgba(37,99,235,0.1)"/>
+        <rect x="150" y="590" width="5" height="90" fill="rgba(245,170,50,0.1)" rx="2"/>
+        <rect x="192" y="590" width="4" height="110" fill="rgba(100,160,255,0.08)" rx="2"/>
+      </svg>
+
+      {/* Dark overlay for card readability */}
+      <div style={{position:"absolute",inset:0,background:"rgba(5,12,28,0.45)"}}/>
 
       {/* Language toggle */}
-      <div style={{position:"relative",zIndex:10,padding:"14px 18px",display:"flex",justifyContent:"flex-end",gap:6}}>
+      <div style={{position:"relative",zIndex:10,padding:"16px 18px",display:"flex",justifyContent:"flex-end",gap:6}}>
         {[["en","EN"],["es","ES"]].map(([code,label])=>(
           <button key={code} onClick={()=>{setLang(code);localStorage.setItem("bsc_lang",code);}} style={{
             padding:"5px 14px",borderRadius:999,fontFamily:"'Inter',sans-serif",
-            border:`1.5px solid ${lang===code?"var(--blue)":"var(--border)"}`,
-            background:lang===code?"var(--blue)":"rgba(255,255,255,0.7)",
-            color:lang===code?"#fff":"var(--text3)",
+            border:`1.5px solid ${lang===code?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.25)"}`,
+            background:lang===code?"rgba(255,255,255,0.20)":"rgba(255,255,255,0.07)",
+            color:lang===code?"#ffffff":"rgba(255,255,255,0.5)",
             fontSize:12,cursor:"pointer",fontWeight:700,transition:"all 0.15s",
+            backdropFilter:"blur(8px)",
           }}>{label}</button>
         ))}
       </div>
 
       {/* Main content */}
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"12px 16px 40px",position:"relative",zIndex:5}}>
-        <div style={{width:"100%",maxWidth:400}}>
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 18px 32px",position:"relative",zIndex:5}}>
+        <div style={{width:"100%",maxWidth:380}}>
 
           {/* Brand header */}
-          <div className="fade-up" style={{textAlign:"center",marginBottom:28}}>
-            <div style={{
-              width:72,height:72,borderRadius:20,margin:"0 auto 18px",
-              background:"var(--blue)",
-              display:"flex",alignItems:"center",justifyContent:"center",
-              boxShadow:"0 12px 36px rgba(37,99,235,0.35),0 4px 12px rgba(37,99,235,0.2)",
-              animation:"loginLogoFloat 4s ease-in-out infinite",
-            }}>
-              <Icon name="hard_hat" size={36} color="white"/>
+          <div className="login-card-anim" style={{textAlign:"center",marginBottom:24}}>
+            {/* Pin logo */}
+            <div style={{marginBottom:14,display:"flex",justifyContent:"center"}}>
+              <svg width="64" height="72" viewBox="0 0 100 110" style={{
+                filter:"drop-shadow(0 8px 20px rgba(37,99,235,0.7))",
+                animation:"pinFloat 3s ease-in-out infinite",
+              }}>
+                <defs>
+                  <linearGradient id="lpinGrad" x1="0.2" y1="0" x2="0.8" y2="1">
+                    <stop offset="0%"  stopColor="#60a5fa"/>
+                    <stop offset="40%" stopColor="#2563eb"/>
+                    <stop offset="100%" stopColor="#1e40af"/>
+                  </linearGradient>
+                  <radialGradient id="lpinInner" cx="40%" cy="35%" r="50%">
+                    <stop offset="0%"   stopColor="rgba(255,255,255,0.95)"/>
+                    <stop offset="100%" stopColor="rgba(200,220,255,0.7)"/>
+                  </radialGradient>
+                </defs>
+                <path d="M50 5 C28 5 12 21 12 43 C12 66 50 105 50 105 C50 105 88 66 88 43 C88 21 72 5 50 5Z" fill="url(#lpinGrad)"/>
+                <path d="M50 5 C28 5 12 21 12 43 C12 66 50 105 50 105 C50 105 88 66 88 43 C88 21 72 5 50 5Z" fill="rgba(255,255,255,0.15)"/>
+                <circle cx="50" cy="42" r="22" fill="url(#lpinInner)"/>
+                <g transform="translate(37,31)" fill="rgba(30,64,175,0.8)">
+                  <rect x="3" y="7" width="20" height="12" rx="1"/>
+                  <rect x="6" y="4" width="14" height="5" rx="1"/>
+                  <rect x="0" y="17" width="26" height="3" rx="1"/>
+                </g>
+              </svg>
             </div>
-            <h1 style={{fontSize:24,fontWeight:800,color:"var(--text)",letterSpacing:"-0.02em",marginBottom:5}}>
-              Bright Sky Construction
+            <h1 style={{fontSize:34,fontWeight:900,color:"#ffffff",letterSpacing:"-0.025em",lineHeight:1,marginBottom:4,textShadow:"0 2px 16px rgba(0,0,0,0.5)"}}>
+              Tracker
             </h1>
-            <p style={{color:"var(--text3)",fontSize:13,fontWeight:400,letterSpacing:"0.02em"}}>
-              Employee Time Tracking System
+            <p style={{fontSize:13,fontWeight:500,color:"rgba(255,255,255,0.65)",letterSpacing:"0.04em",textShadow:"0 1px 6px rgba(0,0,0,0.4)"}}>
+              Bright Sky Construction
             </p>
           </div>
 
-          {/* Card */}
+          {/* Glassmorphism login card */}
           <div className="login-card-anim" style={{
-            background:"rgba(255,255,255,0.92)",
-            border:"1px solid rgba(255,255,255,0.9)",
-            borderRadius:18,
-            padding:"26px 24px 22px",
-            boxShadow:"0 20px 60px rgba(37,99,235,0.12),0 6px 20px rgba(0,0,0,0.06)",
-            backdropFilter:"blur(20px)",
-            WebkitBackdropFilter:"blur(20px)",
+            background:"rgba(255,255,255,0.12)",
+            border:"1px solid rgba(255,255,255,0.22)",
+            borderRadius:22, padding:"24px 22px 20px",
+            backdropFilter:"blur(28px)",
+            WebkitBackdropFilter:"blur(28px)",
+            boxShadow:"0 20px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.2)",
           }}>
-            <div style={{marginBottom:20}}>
-              <h2 style={{fontSize:17,fontWeight:700,color:"var(--text)",letterSpacing:"-0.01em",marginBottom:3}}>
-                {useEmail?"Admin Sign In":"Employee Sign In"}
+            {/* Welcome text */}
+            <div style={{marginBottom:20,textAlign:"center"}}>
+              <h2 style={{fontSize:20,fontWeight:800,color:"#ffffff",letterSpacing:"-0.01em",marginBottom:4,textShadow:"0 1px 8px rgba(0,0,0,0.3)"}}>
+                Welcome Back!
               </h2>
-              <p style={{color:"var(--text3)",fontSize:13}}>
-                {useEmail?"Enter your email and password":`Enter your 4-character ${t.userId}`}
-              </p>
+              <p style={{color:"rgba(255,255,255,0.55)",fontSize:13}}>Please sign in to continue</p>
             </div>
 
-            <form onSubmit={handle} style={{display:"flex",flexDirection:"column",gap:16}}>
-              {/* User ID / Email */}
+            {/* Login As toggle */}
+            <div style={{marginBottom:18}}>
+              <div style={{
+                display:"flex",borderRadius:12,overflow:"hidden",
+                border:"1px solid rgba(255,255,255,0.15)",
+                background:"rgba(0,0,0,0.2)",
+              }}>
+                <button
+                  type="button"
+                  onClick={()=>{setUseEmail(false);setUserId("");setPassword("");setError("");}}
+                  style={{
+                    flex:1,padding:"10px 8px",border:"none",cursor:"pointer",
+                    background:!useEmail?"rgba(255,255,255,0.18)":"transparent",
+                    color:!useEmail?"#ffffff":"rgba(255,255,255,0.45)",
+                    fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:!useEmail?700:500,
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                    transition:"all 0.2s",borderRadius:!useEmail?"11px":"0",
+                    boxShadow:!useEmail?"inset 0 1px 0 rgba(255,255,255,0.2)":"none",
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
+                  Employee
+                </button>
+                <button
+                  type="button"
+                  onClick={()=>{setUseEmail(true);setUserId("");setPassword("");setError("");}}
+                  style={{
+                    flex:1,padding:"10px 8px",border:"none",cursor:"pointer",
+                    background:useEmail?"rgba(255,255,255,0.18)":"transparent",
+                    color:useEmail?"#ffffff":"rgba(255,255,255,0.45)",
+                    fontFamily:"'Inter',sans-serif",fontSize:13,fontWeight:useEmail?700:500,
+                    display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                    transition:"all 0.2s",borderRadius:useEmail?"11px":"0",
+                    boxShadow:useEmail?"inset 0 1px 0 rgba(255,255,255,0.2)":"none",
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  </svg>
+                  Manager / Admin
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handle} style={{display:"flex",flexDirection:"column",gap:14}}>
+              {/* User ID / Email field */}
               <div className="login-field-1">
-                <label style={{fontSize:11.5,color:"var(--text3)",fontWeight:600,letterSpacing:"0.05em",textTransform:"uppercase",display:"block",marginBottom:7}}>
+                <label style={{fontSize:12,color:"rgba(255,255,255,0.6)",fontWeight:600,letterSpacing:"0.04em",display:"block",marginBottom:7}}>
                   {useEmail?"Email Address":t.userId}
                 </label>
-                {useEmail?(
+                <div style={{position:"relative"}}>
+                  <div style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
+                    {useEmail
+                      ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                      : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    }
+                  </div>
                   <input
-                    type="email" value={userId}
-                    onChange={e=>{setUserId(e.target.value);setError("");}}
-                    onFocus={()=>setFocusedField("id")} onBlur={()=>setFocusedField(null)}
-                    placeholder="your@email.com" autoComplete="off"
-                    style={{fontSize:16,width:"100%",padding:"12px 14px"}} required
+                    type={useEmail?"email":"text"}
+                    value={userId}
+                    onChange={e=>{const v=useEmail?e.target.value:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,4);setUserId(v);setError("");}}
+                    placeholder={useEmail?"employee@brightsky.com":"· · · ·"}
+                    autoComplete="off"
+                    inputMode={useEmail?"email":"text"}
+                    maxLength={useEmail?undefined:4}
+                    style={{
+                      width:"100%",padding:"13px 14px 13px 40px",
+                      background:"rgba(255,255,255,0.10)",
+                      border:"1.5px solid rgba(255,255,255,0.18)",
+                      borderRadius:12,color:"#ffffff",
+                      fontFamily:"'Inter',sans-serif",
+                      fontSize:useEmail?15:22,
+                      fontWeight:useEmail?400:700,
+                      letterSpacing:useEmail?"normal":"0.35em",
+                      textAlign:useEmail?"left":"center",
+                      paddingLeft:useEmail?40:14,
+                      outline:"none",
+                      transition:"border-color 0.2s,box-shadow 0.2s",
+                    }}
+                    onFocus={e=>{e.target.style.borderColor="rgba(96,165,250,0.8)";e.target.style.boxShadow="0 0 0 3px rgba(37,99,235,0.25)";}}
+                    onBlur={e=>{e.target.style.borderColor="rgba(255,255,255,0.18)";e.target.style.boxShadow="none";}}
+                    required
                   />
-                ):(
-                  <input
-                    type="text" value={userId}
-                    onChange={e=>{const v=e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,4);setUserId(v);setError("");}}
-                    onFocus={()=>setFocusedField("id")} onBlur={()=>setFocusedField(null)}
-                    placeholder="· · · ·" maxLength={4} autoComplete="off" inputMode="text"
-                    style={{fontSize:28,letterSpacing:"0.4em",textAlign:"center",width:"100%",padding:"12px 14px",fontWeight:700}} required
-                  />
-                )}
+                </div>
               </div>
 
-              {/* Password */}
+              {/* Password field */}
               <div className="login-field-2">
-                <label style={{fontSize:11.5,color:"var(--text3)",fontWeight:600,letterSpacing:"0.05em",textTransform:"uppercase",display:"block",marginBottom:7}}>
+                <label style={{fontSize:12,color:"rgba(255,255,255,0.6)",fontWeight:600,letterSpacing:"0.04em",display:"block",marginBottom:7}}>
                   {t.password}
                 </label>
                 <div style={{position:"relative"}}>
+                  <div style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  </div>
                   <input
-                    type={showPass?"text":"password"} value={password}
+                    type={showPass?"text":"password"}
+                    value={password}
                     onChange={e=>{const v=useEmail?e.target.value:e.target.value.replace(/\D/g,"").slice(0,4);setPassword(v);setError("");}}
-                    onFocus={()=>setFocusedField("pw")} onBlur={()=>setFocusedField(null)}
-                    placeholder={useEmail?"••••••••":"· · · ·"} autoComplete="off"
-                    inputMode={useEmail?"text":"numeric"} maxLength={useEmail?undefined:4}
+                    placeholder={useEmail?"••••••••":"· · · ·"}
+                    autoComplete="off"
+                    inputMode={useEmail?"text":"numeric"}
+                    maxLength={useEmail?undefined:4}
                     style={{
-                      fontSize:useEmail?16:28,letterSpacing:useEmail?"normal":"0.4em",
+                      width:"100%",padding:"13px 48px 13px 40px",
+                      background:"rgba(255,255,255,0.10)",
+                      border:"1.5px solid rgba(255,255,255,0.18)",
+                      borderRadius:12,color:"#ffffff",
+                      fontFamily:"'Inter',sans-serif",
+                      fontSize:useEmail?15:22,
+                      fontWeight:useEmail?400:700,
+                      letterSpacing:useEmail?"normal":"0.35em",
                       textAlign:useEmail?"left":"center",
-                      width:"100%",padding:"12px 14px",paddingRight:52,paddingLeft:useEmail?14:52,
-                      fontWeight:useEmail?400:700
-                    }} required
+                      paddingLeft:useEmail?40:14,
+                      outline:"none",
+                      transition:"border-color 0.2s,box-shadow 0.2s",
+                    }}
+                    onFocus={e=>{e.target.style.borderColor="rgba(96,165,250,0.8)";e.target.style.boxShadow="0 0 0 3px rgba(37,99,235,0.25)";}}
+                    onBlur={e=>{e.target.style.borderColor="rgba(255,255,255,0.18)";e.target.style.boxShadow="none";}}
+                    required
                   />
                   <button type="button" onClick={()=>setShowPass(s=>!s)} style={{
                     position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",
-                    background:"var(--bg3)",border:"1px solid var(--border)",
-                    color:"var(--text3)",cursor:"pointer",padding:6,
+                    background:"rgba(255,255,255,0.10)",border:"1px solid rgba(255,255,255,0.15)",
+                    color:"rgba(255,255,255,0.55)",cursor:"pointer",padding:6,
                     display:"flex",alignItems:"center",justifyContent:"center",
-                    borderRadius:"var(--radius-sm)",minWidth:34,minHeight:34,
+                    borderRadius:8,minWidth:32,minHeight:32,
                   }}>
-                    <Icon name={showPass?"eyeOff":"eye"} size={16} color="var(--text3)"/>
+                    <Icon name={showPass?"eyeOff":"eye"} size={15} color="rgba(255,255,255,0.55)"/>
                   </button>
                 </div>
               </div>
@@ -994,25 +1407,27 @@ function LoginPage({onLogin,lang,setLang}){
               {error&&(
                 <div className="shake" style={{
                   display:"flex",alignItems:"center",gap:8,padding:"10px 14px",
-                  borderRadius:"var(--radius)",background:"var(--red-light)",
-                  border:"1.5px solid rgba(220,38,38,0.2)",
+                  borderRadius:10,background:"rgba(220,38,38,0.2)",
+                  border:"1px solid rgba(220,38,38,0.35)",
                 }}>
-                  <Icon name="alert" size={14} color="var(--red)"/>
-                  <span style={{fontSize:13,color:"var(--red)",fontWeight:450}}>{error}</span>
+                  <Icon name="alert" size={14} color="#fca5a5"/>
+                  <span style={{fontSize:13,color:"#fca5a5",fontWeight:450}}>{error}</span>
                 </div>
               )}
 
-              {/* Sign In button */}
-              <div className="login-field-btn" style={{marginTop:2}}>
+              {/* Login button */}
+              <div className="login-field-btn" style={{marginTop:4}}>
                 <button type="submit" disabled={loading} style={{
-                  width:"100%",padding:"13px 20px",borderRadius:"var(--radius)",
-                  border:"none",cursor:loading?"not-allowed":"pointer",
-                  background:loading?"rgba(37,99,235,0.55)":"var(--blue)",
-                  color:"#fff",fontSize:15,fontWeight:700,
-                  letterSpacing:"0.01em",fontFamily:"'Inter',sans-serif",
-                  boxShadow:loading?"none":"0 6px 20px rgba(37,99,235,0.35)",
-                  display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-                  transition:"all 0.18s",opacity:loading?0.75:1,
+                  width:"100%",padding:"14px 20px",borderRadius:13,border:"none",
+                  cursor:loading?"not-allowed":"pointer",
+                  background:loading
+                    ?"rgba(37,99,235,0.5)"
+                    :"linear-gradient(135deg,#3b82f6 0%,#2563eb 50%,#1d4ed8 100%)",
+                  color:"#fff",fontSize:16,fontWeight:800,
+                  fontFamily:"'Inter',sans-serif",letterSpacing:"0.02em",
+                  boxShadow:loading?"none":"0 8px 24px rgba(37,99,235,0.5),0 3px 8px rgba(0,0,0,0.3)",
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+                  transition:"all 0.2s",opacity:loading?0.7:1,
                 }}>
                   {loading?(
                     <>
@@ -1021,42 +1436,34 @@ function LoginPage({onLogin,lang,setLang}){
                     </>
                   ):(
                     <>
-                      <Icon name="login" size={16} color="white"/>
-                      {t.signIn}
+                      Login
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                     </>
                   )}
                 </button>
               </div>
             </form>
 
-            {/* Toggle */}
-            <div style={{marginTop:18,paddingTop:16,borderTop:"1px solid var(--border)",textAlign:"center"}}>
-              <button onClick={()=>{setUseEmail(e=>!e);setUserId("");setPassword("");setError("");}} style={{
-                background:"none",border:"none",color:"var(--blue)",
-                fontSize:13,cursor:"pointer",fontWeight:500,fontFamily:"'Inter',sans-serif",
-              }}>
-                {useEmail?t.useUserId:t.adminLogin}
-              </button>
+            {/* Security note */}
+            <div style={{marginTop:16,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <p style={{fontSize:12,color:"rgba(255,255,255,0.35)",margin:0}}>Your data is secure with us</p>
             </div>
           </div>
 
           {/* Helper hint */}
           <div style={{
-            marginTop:14,padding:"11px 16px",borderRadius:12,
-            background:"var(--blue-light)",border:"1.5px solid var(--blue-mid)",
+            marginTop:12,padding:"11px 16px",borderRadius:12,
+            background:"rgba(37,99,235,0.25)",border:"1px solid rgba(96,165,250,0.25)",
             display:"flex",gap:10,alignItems:"flex-start",
+            backdropFilter:"blur(8px)",
           }}>
-            <Icon name="alert" size={13} color="var(--blue)" style={{marginTop:1,flexShrink:0}}/>
-            <div style={{fontSize:12.5,color:"var(--blue)",lineHeight:1.55}}>
-              Use your <strong>4-character Employee ID</strong> and <strong>4-digit password</strong>. Contact your admin if you need help.
+            <Icon name="alert" size={13} color="rgba(147,197,253,0.85)" style={{marginTop:1,flexShrink:0}}/>
+            <div style={{fontSize:12,color:"rgba(147,197,253,0.8)",lineHeight:1.55}}>
+              Employees use a <strong style={{color:"#93c5fd"}}>4-character ID</strong> + <strong style={{color:"#93c5fd"}}>4-digit PIN</strong>. Admins use email.
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Footer */}
-      <div style={{position:"relative",zIndex:5,padding:"12px",textAlign:"center",borderTop:"1px solid rgba(37,99,235,0.1)"}}>
-        <p style={{fontSize:11.5,color:"var(--text4)"}}>Bright Sky Construction · Secure Login</p>
       </div>
     </div>
   );
