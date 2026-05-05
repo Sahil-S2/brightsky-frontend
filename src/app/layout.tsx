@@ -1,22 +1,28 @@
 import type { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
-  title: "Bright Sky Construction",
-  description: "Employee Time Tracking System",
+  title: "BSC Tracker — Bright Sky Construction",
+  description: "Employee time tracking and management system for Bright Sky Construction.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
-    title: "BrightSky",
+    statusBarStyle: "default",
+    title: "BSC Tracker",
   },
   icons: {
-    icon: "/icons/icon.svg",
-    apple: "/icons/icon.svg",
+    icon: [
+      { url: "/icons/icon-32x32.png",  sizes: "32x32",  type: "image/png" },
+      { url: "/icons/icon-96x96.png",  sizes: "96x96",  type: "image/png" },
+      { url: "/icons/icon-192x192.png",sizes: "192x192", type: "image/png" },
+    ],
+    apple: [
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f59e0b",
+  themeColor: "#2563eb",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -31,14 +37,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <link rel="manifest" href="/manifest.json"/>
-        <link rel="apple-touch-icon" href="/icons/icon.svg"/>
-        <meta name="mobile-web-app-capable" content="yes"/>
-        <meta name="apple-mobile-web-app-capable" content="yes"/>
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-        <meta name="apple-mobile-web-app-title" content="BrightSky"/>
-        <meta name="application-name" content="BrightSky"/>
-        <meta name="theme-color" content="#f59e0b"/>
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="BSC Tracker" />
+        <meta name="application-name" content="BSC Tracker" />
       </head>
       <body>{children}</body>
     </html>

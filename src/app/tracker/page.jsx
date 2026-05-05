@@ -110,6 +110,69 @@ const safeJson = async (res) => {
   }
 };
 
+
+// ─── PWA HEAD TAG INJECTION ───────────────────────────────────────────────────
+// Sets favicon, theme-color, apple-touch-icon, and inline manifest so the
+// installed PWA / APK shows the correct blue-and-white icon.
+const BSC_ICON_192 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAAEmElEQVR4nO3d2XHcRgBFUYzKIZgZWE5MDstMzHQGcg7yh4oqLrNgafT2zvkXyRq8i8ZQZHFZINil9Rdwzddv33+0/ho4x8vzU1eba/7FGDsto2jyiY2eW2rHUPWTGT5r1QqhyicxfPY6O4RTP7jhU8pZIZzyQQ2fs5QO4UvJD7Ysxs+5Su+rWE2GT20lToMiJ4Dx00KJ3R0OwPhp6ej+DgVg/PTgyA53B2D89GTvHncFYPz0aM8uNwdg/PRs6z43BWD8jGDLTlcHYPyMZO1eVwVg/IxozW6L/ygEjORhAO7+jOzRfu8GYPzM4N6OPQIR7WYA7v7M5NaenQBEuxqAuz8zurZrJwDRPgXg7s/MPu7bCUC0dwG4+5Pg7c6dAEQTANF+BeDxhySve3cCEE0ARBMA0X5r/QXM6p+/fy/68f7867+iH4+fLsviDfBepUe+lzj2E8AGvQz+EUGsJ4A7Rhn8I4K4TQAfzDL6W8TwngCW+Ud/ixjCA0gd/kfJIUQGYPjXJYYQFYDhr5MUQkQAhr9PQghTB2D4ZcwcwpQBGP45Zgxhuh+GM/7zzPjaThXAjBeoN7O9xlM8As12UUYxwyPR8CeA8bczw2s/dAAzXIDRjX4Nhg1g9Bd+JiNfiyEDGPkFn9Wo12S4AEZ9oROMeG2GCmDEFzjNaNdomABGe2GTjXSthgkAzjBEACPdUfhplGvWfQCjvJB8NsK16z4AOFPXAYxwB+G+3q9h1wHA2boNoPc7B+v1fC27DQBq6DKAnu8Y7NPrNe0yAKilyW+E7b0b/Dv2L67F+OPpsuvftfgNs6p/IKPXY5A+vO6jZgjVHoGMn7VqbqVKAMbPVrU2400w0U5/E+zuzxFnvx9wAhBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRTg9ghj+jQxs1tuMEIFqVAJwCbFVrM9VOABGwVs2tDPVL8cytxU1yir8TDHt5E0w0ARBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRBEA0ARBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRBEA0ARBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRBEA0ARBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRBEA0ARBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRBEA0ARBNAEQTANEEQLQvy7IsL89Pl9ZfCNT28vx0cQIQTQBEEwDRBEC0XwF4I0yS1707AYgmAKK9C8BjEAne7twJQLRPATgFmNnHfTsBiHY1AKcAM7q2aycA0W4G4BRgJrf27AQg2t0AnALM4N6OH54AImBkj/brEYhoqwJwCjCiNbtdfQKIgJGs3eumRyARMIItO938HkAE9GzrPne9CRYBPdqzy93fBRIBPdm7x0PfBhUBPTiyw8P/DyACWjq6vyL/ESYCWiixu+LD/frt+4/SHxPeKnnDLf6jEE4DzlR6X6eO1WlAKWfdWKvcrYXAXmc/UVR9XBECa9V6lG7yvC4Ebqn9HrL5G1Yx0PIbJ80DuEYU8+rtu4T/Aw8KYT14nPZfAAAAAElFTkSuQmCC";
+const BSC_ICON_512 = "data:image/png;base64,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";
+const BSC_ICON_MASK_192 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAAEmElEQVR4nO3d2XHcRgBFUYzKIZgZWE5MDstMzHQGcg7yh4oqLrNgafT2zvkXyRq8i8ZQZHFZINil9Rdwzddv33+0/ho4x8vzU1eba/7FGDsto2jyiY2eW2rHUPWTGT5r1QqhyicxfPY6O4RTP7jhU8pZIZzyQQ2fs5QO4UvJD7Ysxs+5Su+rWE2GT20lToMiJ4Dx00KJ3R0OwPhp6ej+DgVg/PTgyA53B2D89GTvHncFYPz0aM8uNwdg/PRs6z43BWD8jGDLTlcHYPyMZO1eVwVg/IxozW6L/ygEjORhAO7+jOzRfu8GYPzM4N6OPQIR7WYA7v7M5NaenQBEuxqAuz8zurZrJwDRPgXg7s/MPu7bCUC0dwG4+5Pg7c6dAEQTANF+BeDxhySve3cCEE0ARBMA0X5r/QXM6p+/fy/68f7867+iH4+fLsviDfBepUe+lzj2E8AGvQz+EUGsJ4A7Rhn8I4K4TQAfzDL6W8TwngCW+Ud/ixjCA0gd/kfJIUQGYPjXJYYQFYDhr5MUQkQAhr9PQghTB2D4ZcwcwpQBGP45Zgxhuh+GM/7zzPjaThXAjBeoN7O9xlM8As12UUYxwyPR8CeA8bczw2s/dAAzXIDRjX4Nhg1g9Bd+JiNfiyEDGPkFn9Wo12S4AEZ9oROMeG2GCmDEFzjNaNdomABGe2GTjXSthgkAzjBEACPdUfhplGvWfQCjvJB8NsK16z4AOFPXAYxwB+G+3q9h1wHA2boNoPc7B+v1fC27DQBq6DKAnu8Y7NPrNe0yAKilyW+E7b0b/Dv2L67F+OPpsuvftfgNs6p/IKPXY5A+vO6jZgjVHoGMn7VqbqVKAMbPVrU2400w0U5/E+zuzxFnvx9wAhBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRTg9ghj+jQxs1tuMEIFqVAJwCbFVrM9VOABGwVs2tDPVL8cytxU1yir8TDHt5E0w0ARBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRBEA0ARBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRBEA0ARBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRBEA0ARBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRBEA0ARBNAEQTANEEQDQBEE0ARBMA0QRANAEQTQBEEwDRBEA0ARBNAEQTANEEQLQvy7IsL89Pl9ZfCNT28vx0cQIQTQBEEwDRBEC0XwF4I0yS1707AYgmAKK9C8BjEAne7twJQLRPATgFmNnHfTsBiHY1AKcAM7q2aycA0W4G4BRgJrf27AQg2t0AnALM4N6OH54AImBkj/brEYhoqwJwCjCiNbtdfQKIgJGs3eumRyARMIItO938HkAE9GzrPne9CRYBPdqzy93fBRIBPdm7x0PfBhUBPTiyw8P/DyACWjq6vyL/ESYCWiixu+LD/frt+4/SHxPeKnnDLf6jEE4DzlR6X6eO1WlAKWfdWKvcrYXAXmc/UVR9XBECa9V6lG7yvC4Ebqn9HrL5G1Yx0PIbJ80DuEYU8+rtu4T/Aw8KYT14nPZfAAAAAElFTkSuQmCC";
+const BSC_ICON_MASK_512 = "data:image/png;base64,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";
+const BSC_FAV32    = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAs0lEQVR4nO2XTRaDIAyEJ7weQY/QXqweSy9WewO9Q13hQ0UgCqSLzC4Kmc/8LCR49HxPP9/zHBqHltx4E5Q0PgMxEuauH0mYuzLxI4UBJL8eAB7cC5++Cb5/dTMrH6VWIGZ8FSQKwDXmggSH8K55Sg7xLfAOoaX+ZloQm8/XjsMM5Ch7SHsI8RYcALh7zFFSC2rr/1qgAAqgAAqgANUB9v9q1QEkzVcAqSqMQ0vGDWqbA8AC4HI85KgGqu4AAAAASUVORK5CYII=";
+
+function injectPWAHead() {
+  if(typeof document === "undefined") return;
+  const setMeta = (sel, attr, val) => {
+    let el = document.querySelector(sel);
+    if(!el){ el = document.createElement(sel.includes("link")?"link":"meta"); document.head.appendChild(el); }
+    Object.entries({...attr}).forEach(([k,v])=>el.setAttribute(k,v));
+    if(val !== undefined) el.setAttribute("content", val);
+  };
+  const setLink = (attrs) => {
+    const rel = attrs.rel;
+    let el = document.querySelector(`link[rel="${rel}"]`);
+    if(!el){ el = document.createElement("link"); document.head.appendChild(el); }
+    Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,v));
+  };
+  // Favicon
+  setLink({ rel:"icon", type:"image/png", sizes:"32x32", href:BSC_FAV32 });
+  setLink({ rel:"shortcut icon", href:BSC_FAV32 });
+  // Apple touch icon (iOS PWA)
+  setLink({ rel:"apple-touch-icon", sizes:"192x192", href:BSC_ICON_192 });
+  // Theme color
+  let tcMeta = document.querySelector('meta[name="theme-color"]');
+  if(!tcMeta){ tcMeta=document.createElement("meta"); document.head.appendChild(tcMeta); }
+  tcMeta.setAttribute("name","theme-color"); tcMeta.setAttribute("content","#2563eb");
+  // Status bar (iOS)
+  let sbMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+  if(!sbMeta){ sbMeta=document.createElement("meta"); document.head.appendChild(sbMeta); }
+  sbMeta.setAttribute("name","apple-mobile-web-app-status-bar-style"); sbMeta.setAttribute("content","default");
+  let awaMeta = document.querySelector('meta[name="apple-mobile-web-app-capable"]');
+  if(!awaMeta){ awaMeta=document.createElement("meta"); document.head.appendChild(awaMeta); }
+  awaMeta.setAttribute("name","apple-mobile-web-app-capable"); awaMeta.setAttribute("content","yes");
+  // Inline Web App Manifest
+  const manifest = {
+    name:"Bright Sky Construction",short_name:"BSC Tracker",
+    description:"Employee time tracking and management for Bright Sky Construction.",
+    start_url:"/tracker",display:"standalone",
+    background_color:"#2563eb",theme_color:"#2563eb",
+    orientation:"portrait",scope:"/",lang:"en",version:"2.1.0",
+    icons:[
+      {src:BSC_ICON_192,      sizes:"192x192",type:"image/png",purpose:"any"},
+      {src:BSC_ICON_MASK_192, sizes:"192x192",type:"image/png",purpose:"maskable"},
+      {src:BSC_ICON_512,      sizes:"512x512",type:"image/png",purpose:"any"},
+      {src:BSC_ICON_MASK_512, sizes:"512x512",type:"image/png",purpose:"maskable"},
+    ]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], {type:"application/manifest+json"});
+  const url  = URL.createObjectURL(blob);
+  let mLink = document.querySelector('link[rel="manifest"]');
+  if(!mLink){ mLink = document.createElement("link"); document.head.appendChild(mLink); }
+  mLink.setAttribute("rel","manifest"); mLink.setAttribute("href",url);
+  // Document title
+  document.title = "BSC Tracker — Bright Sky Construction";
+}
+
 const GlobalStyle = () => (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -162,30 +225,16 @@ const GlobalStyle = () => (
     .pin-dot{width:13px;height:13px;border-radius:50%;background:var(--blue);display:inline-block;flex-shrink:0;transition:all 0.2s;box-shadow:0 0 0 3px var(--blue-mid);}
     .pin-dot.empty{background:transparent;border:2px solid var(--border2);box-shadow:none;}
 
-    /* ── Splash & Login premium animations ───────────────────── */
-    @keyframes splashLogoIn{0%{opacity:0;transform:scale(0.55) rotateY(-25deg) rotateX(10deg);filter:blur(8px);}60%{opacity:1;transform:scale(1.06) rotateY(4deg) rotateX(-2deg);filter:blur(0);}80%{transform:scale(0.97) rotateY(-1deg);}100%{opacity:1;transform:scale(1) rotateY(0deg) rotateX(0deg);filter:blur(0);}}
-    @keyframes splashTextIn{0%{opacity:0;transform:translateY(22px) scale(0.96);}100%{opacity:1;transform:translateY(0) scale(1);}}
-    @keyframes splashSubIn{0%{opacity:0;transform:translateY(14px);}100%{opacity:1;transform:translateY(0);}}
-    @keyframes splashRingPulse{0%{transform:scale(0.7);opacity:0.7;}100%{transform:scale(2.4);opacity:0;}}
-    @keyframes splashRingPulse2{0%{transform:scale(0.8);opacity:0.5;}100%{transform:scale(2.0);opacity:0;}}
-    @keyframes splashFadeOut{0%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(1.03);}}
-    @keyframes loginCardIn{0%{opacity:0;transform:translateY(28px) scale(0.97);}100%{opacity:1;transform:translateY(0) scale(1);}}
-    @keyframes loginBgShift{0%{background-position:0% 50%;}50%{background-position:100% 50%;}100%{background-position:0% 50%;}}
-    @keyframes loginLogoFloat{0%,100%{transform:translateY(0px) rotate(-1deg);}50%{transform:translateY(-5px) rotate(1deg);}}
-    @keyframes shimmer{0%{transform:translateX(-100%);}100%{transform:translateX(200%);}}
+    /* ── Login animations ───────────────────────────────────── */
+    @keyframes loginCardIn{0%{opacity:0;transform:translateY(22px) scale(0.97);}100%{opacity:1;transform:translateY(0) scale(1);}}
+    @keyframes loginLogoFloat{0%,100%{transform:translateY(0px);}50%{transform:translateY(-5px);}}
+    @keyframes loginFadeUp{0%{opacity:0;transform:translateY(14px);}100%{opacity:1;transform:translateY(0);}}
     @keyframes orb1{0%,100%{transform:translate(0,0) scale(1);}33%{transform:translate(40px,-30px) scale(1.1);}66%{transform:translate(-20px,25px) scale(0.92);}}
     @keyframes orb2{0%,100%{transform:translate(0,0) scale(1);}33%{transform:translate(-35px,25px) scale(0.88);}66%{transform:translate(30px,-20px) scale(1.08);}}
-    @keyframes loginFadeUp{0%{opacity:0;transform:translateY(18px);}100%{opacity:1;transform:translateY(0);}}
-    @keyframes inputGlow{0%{box-shadow:0 0 0 0 rgba(251,191,36,0);}50%{box-shadow:0 0 0 4px rgba(251,191,36,0.2);}100%{box-shadow:0 0 0 0 rgba(251,191,36,0);}}
-
-    .splash-logo-anim{animation:splashLogoIn 0.8s cubic-bezier(0.16,1,0.3,1) 0.15s both;perspective:1000px;transform-style:preserve-3d;}
-    .splash-text-anim{animation:splashTextIn 0.65s cubic-bezier(0.16,1,0.3,1) 0.7s both;}
-    .splash-sub-anim{animation:splashSubIn 0.55s cubic-bezier(0.16,1,0.3,1) 1.05s both;}
-    .splash-exit{animation:splashFadeOut 0.45s cubic-bezier(0.4,0,1,1) both;}
-    .login-card-anim{animation:loginCardIn 0.55s cubic-bezier(0.16,1,0.3,1) 0.08s both;}
-    .login-field-1{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.18s both;}
-    .login-field-2{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.28s both;}
-    .login-field-btn{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.38s both;}
+    .login-card-anim{animation:loginCardIn 0.5s cubic-bezier(0.16,1,0.3,1) 0.05s both;}
+    .login-field-1{animation:loginFadeUp 0.4s cubic-bezier(0.16,1,0.3,1) 0.14s both;}
+    .login-field-2{animation:loginFadeUp 0.4s cubic-bezier(0.16,1,0.3,1) 0.22s both;}
+    .login-field-btn{animation:loginFadeUp 0.4s cubic-bezier(0.16,1,0.3,1) 0.30s both;}
   `}</style>
 );
 
@@ -452,12 +501,12 @@ function SidebarProfile({currentUser,handleLogout,lang,setLang}){
 export default function App(){
   const[currentUser,setCurrentUser]=useState(null);
   const[mounted,setMounted]=useState(false);
-  const[showSplash,setShowSplash]=useState(true);
   const[lang,setLang]=useState("en");
   useEffect(()=>{
     try{const s=localStorage.getItem("bsc_session");if(s)setCurrentUser(JSON.parse(s));}catch{}
     try{const l=localStorage.getItem("bsc_lang");if(l)setLang(l);}catch{}
     localStorage.removeItem("bsc_settings");setMounted(true);
+    injectPWAHead();
   },[]);
   const t=T[lang]||T.en;
   const[page,setPage]=useState("dashboard");
@@ -694,16 +743,7 @@ useEffect(() => {
   ]:[];
 
   if(!mounted)return null;
-  if(!currentUser)return(
-    <>
-      <GlobalStyle/>
-      {showSplash
-        ? <SplashScreen onDone={()=>setShowSplash(false)}/>
-        : <LoginPage onLogin={handleLogin} lang={lang} setLang={setLang}/>
-      }
-      <Toast toasts={toasts} removeToast={removeToast}/>
-    </>
-  );
+  if(!currentUser)return(<><GlobalStyle/><LoginPage onLogin={handleLogin} lang={lang} setLang={setLang}/><Toast toasts={toasts} removeToast={removeToast}/></>);
 
   return(
     <>
@@ -810,132 +850,6 @@ function AdminLocationBar({userLat,userLon,worksites,distanceFt,addToast,t,onWor
   );
 }
 
-
-// ─── SPLASH SCREEN ────────────────────────────────────────────────────────────
-function SplashScreen({ onDone }) {
-  const [exiting, setExiting] = useState(false);
-  // FIX: capture onDone in a ref so the effect never re-runs when the parent
-  // re-renders (which would reset the timers and keep the app stuck forever).
-  const onDoneRef = useRef(onDone);
-  useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
-
-  useEffect(() => {
-    // Empty dep-array → runs exactly once on mount, no re-start on re-renders.
-    const exitTimer = setTimeout(() => setExiting(true), 2200);
-    const doneTimer = setTimeout(() => { onDoneRef.current?.(); }, 2650);
-    return () => { clearTimeout(exitTimer); clearTimeout(doneTimer); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <div
-      className={exiting ? "splash-exit" : ""}
-      style={{
-        position: "fixed", inset: 0, zIndex: 9999,
-        background: "linear-gradient(160deg, #1e3a8a 0%, #1d4ed8 45%, #2563eb 75%, #3b82f6 100%)",
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        overflow: "hidden",
-      }}
-    >
-      {/* Ambient glow rings */}
-      <div style={{ position: "absolute", inset: 0, pointerEvents: "none", overflow: "hidden" }}>
-        <div style={{
-          position: "absolute", top: "50%", left: "50%",
-          width: 500, height: 500,
-          transform: "translate(-50%, -50%)",
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 65%)",
-        }}/>
-        <div style={{
-          position: "absolute", top: "-15%", right: "-10%", width: 420, height: 420,
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(96,165,250,0.18) 0%, transparent 65%)",
-          animation: "orb1 10s ease-in-out infinite",
-        }}/>
-        <div style={{
-          position: "absolute", bottom: "-10%", left: "-8%", width: 380, height: 380,
-          borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(30,58,138,0.4) 0%, transparent 65%)",
-          animation: "orb2 12s ease-in-out infinite",
-        }}/>
-      </div>
-
-      {/* Pulse rings */}
-      <div style={{ position: "relative", marginBottom: 32 }}>
-        <div style={{
-          position: "absolute", inset: -28, borderRadius: "50%",
-          border: "1.5px solid rgba(255,255,255,0.2)",
-          animation: "splashRingPulse 2.4s cubic-bezier(0.4,0,0.6,1) 0.9s infinite",
-        }}/>
-        <div style={{
-          position: "absolute", inset: -14, borderRadius: "50%",
-          border: "1px solid rgba(255,255,255,0.15)",
-          animation: "splashRingPulse2 2.4s cubic-bezier(0.4,0,0.6,1) 1.3s infinite",
-        }}/>
-
-        {/* Logo block */}
-        <div className="splash-logo-anim">
-          <div style={{
-            width: 108, height: 108, borderRadius: 30,
-            background: "rgba(255,255,255,0.15)",
-            border: "1.5px solid rgba(255,255,255,0.3)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: "0 24px 60px rgba(0,0,0,0.25), 0 8px 20px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.35)",
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-            position: "relative", overflow: "hidden",
-            animation: "loginLogoFloat 4s ease-in-out 1.2s infinite",
-          }}>
-            <div style={{
-              position: "absolute", top: 0, left: 0, right: 0, height: "50%",
-              background: "linear-gradient(to bottom, rgba(255,255,255,0.2), transparent)",
-              borderRadius: "30px 30px 0 0",
-            }}/>
-            <div style={{
-              position: "absolute", top: 0, bottom: 0, width: "35%",
-              background: "linear-gradient(105deg, transparent 0%, rgba(255,255,255,0.12) 50%, transparent 100%)",
-              animation: "shimmer 3s ease-in-out 1.5s infinite",
-            }}/>
-            <Icon name="hard_hat" size={54} color="white"/>
-          </div>
-        </div>
-      </div>
-
-      {/* Company name */}
-      <div className="splash-text-anim" style={{ textAlign: "center" }}>
-        <h1 style={{
-          fontSize: 30, fontWeight: 800, letterSpacing: "-0.025em",
-          color: "#ffffff", lineHeight: 1.15, marginBottom: 6,
-          textShadow: "0 2px 16px rgba(0,0,0,0.2)",
-        }}>
-          Bright Sky
-          <span style={{ display: "block", color: "rgba(255,255,255,0.85)", fontWeight: 700 }}>Construction</span>
-        </h1>
-      </div>
-
-      <div className="splash-sub-anim" style={{ marginTop: 6 }}>
-        <p style={{
-          fontSize: 12, fontWeight: 600, letterSpacing: "0.14em",
-          textTransform: "uppercase", color: "rgba(255,255,255,0.55)",
-        }}>
-          Employee Management System
-        </p>
-      </div>
-
-      {/* Progress bar */}
-      <div style={{
-        position: "absolute", bottom: 60, left: "50%", transform: "translateX(-50%)",
-        width: 120, height: 3, borderRadius: 3,
-        background: "rgba(255,255,255,0.15)", overflow: "hidden",
-      }}>
-        <div style={{
-          height: "100%", borderRadius: 3, width: "100%",
-          background: "rgba(255,255,255,0.7)",
-          animation: "shimmer 1.6s ease-out 0.3s 1 forwards",
-        }}/>
-      </div>
-    </div>
-  );
-}
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 function LoginPage({onLogin,lang,setLang}){
