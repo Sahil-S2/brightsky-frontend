@@ -228,6 +228,7 @@ const GlobalStyle = () => (
     .pin-dot{width:13px;height:13px;border-radius:50%;background:var(--blue);display:inline-block;flex-shrink:0;transition:all 0.2s;box-shadow:0 0 0 3px var(--blue-mid);}
     .pin-dot.empty{background:transparent;border:2px solid var(--border2);box-shadow:none;}
 
+    @keyframes shimmer{0%{transform:translateX(-100%);}100%{transform:translateX(200%);}}
     /* ── Splash & Login animations ──────────────────────────── */
     @keyframes splashLogoIn{0%{opacity:0;transform:translateY(-40px) scale(0.7);}60%{opacity:1;transform:translateY(6px) scale(1.04);}100%{opacity:1;transform:translateY(0) scale(1);}}
     @keyframes pinFloat{0%,100%{transform:translateY(0px);}50%{transform:translateY(-7px);}}
@@ -511,15 +512,10 @@ export default function App(){
     try{const l=localStorage.getItem("bsc_lang");if(l)setLang(l);}catch{}
     localStorage.removeItem("bsc_settings");setMounted(true);
     injectPWAHead();
-    // Play audio greeting — pass saved name if session exists
-    try {
-      const s = localStorage.getItem("bsc_session");
-      const savedName = s ? JSON.parse(s)?.name?.split(" ")[0] || null : null;
-      playGreeting(savedName);
-    } catch { playGreeting(null); }
   },[]);
   const t=T[lang]||T.en;
   const[page,setPage]=useState("dashboard");
+  const[welcomeMsg,setWelcomeMsg]=useState(null); // {name, role} shown after login
   const[appTitle,setAppTitle]=useState("BSC Tracker");
   const[sidebarOpen,setSidebarOpen]=useState(false);
   const[toasts,setToasts]=useState([]);
@@ -736,7 +732,9 @@ useEffect(() => {
       const data=await res.json();
       if(!res.ok){addToast(data.error||"Invalid credentials.","error");vibrate([100,50,100]);return;}
       localStorage.setItem("accessToken",data.accessToken);localStorage.setItem("bsc_session",JSON.stringify(data.user));localStorage.removeItem("bsc_settings");
-      setCurrentUser(data.user);addToast(`${t.welcomeBack}, ${data.user.name.split(" ")[0]}!`,"success");vibrate([50]);setPage("dashboard");
+      setCurrentUser(data.user);
+      setWelcomeMsg({name:data.user.name,role:data.user.role});
+      vibrate([50]);setPage("dashboard");
     }catch{addToast("Cannot connect to server.","error");}
   };
   const handleLogout=async()=>{
@@ -803,6 +801,7 @@ useEffect(() => {
 </header>
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {/* AdminLocationBar removed */}
+            {welcomeMsg&&<WelcomeBanner msg={welcomeMsg} onDone={()=>setWelcomeMsg(null)}/>}
             {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} setAppTitle={setAppTitle} worksites={worksites} onJobSiteSelect={setAppSelectedSiteId}/>)}
             {page==="fuel"&&<FuelEntryPage currentUser={currentUser} t={t} addToast={addToast} assignedJobSites={employeeJobSites} allJobSites={worksites} onMount={()=>setAppTitle("BSC Fuel Entry")} onUnmount={()=>setAppTitle("BSC Tracker")}/>}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
@@ -864,31 +863,110 @@ function AdminLocationBar({userLat,userLon,worksites,distanceFt,addToast,t,onWor
 
 
 
-// ─── AUDIO GREETING ───────────────────────────────────────────────────────────
-// Uses Web Speech API (available in all modern Android WebViews and PWAs).
-// Plays once per cold launch. Falls back silently if TTS is unavailable.
-function playGreeting(userName) {
-  try {
-    if (typeof speechSynthesis === "undefined") return;
-    // Cancel any in-progress speech
-    speechSynthesis.cancel();
-    const text = userName
-      ? `Hello, ${userName}. Welcome back to Bright Sky Construction.`
-      : "Welcome to Bright Sky Construction. Please sign in to continue.";
-    const msg = new SpeechSynthesisUtterance(text);
-    msg.lang    = "en-US";
-    msg.rate    = 0.92;   // slightly slower — warm, professional
-    msg.pitch   = 1.05;
-    msg.volume  = 0.85;
-    // Prefer a natural-sounding voice when available
-    const voices = speechSynthesis.getVoices();
-    const preferred = voices.find(v =>
-      /samantha|karen|daniel|google us|en-us/i.test(v.name) && v.lang.startsWith("en")
-    ) || voices.find(v => v.lang.startsWith("en")) || null;
-    if (preferred) msg.voice = preferred;
-    // Small delay so the animation has started before audio begins
-    setTimeout(() => { try { speechSynthesis.speak(msg); } catch {} }, 400);
-  } catch {}
+
+// ─── WELCOME BANNER ──────────────────────────────────────────────────────────
+// Shown once on the dashboard immediately after a successful login.
+// Disappears automatically after 5 s or on manual dismiss.
+function WelcomeBanner({ msg, onDone }) {
+  const [visible, setVisible] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const firstName = msg?.name?.split(" ")[0] || "there";
+  const isAdmin   = msg?.role === "admin" || msg?.role === "manager";
+
+  const getGreeting = () => {
+    const h = new Date().getHours();
+    if (h < 12) return "Good morning";
+    if (h < 17) return "Good afternoon";
+    return "Good evening";
+  };
+
+  const roleMsg = isAdmin
+    ? "Your team's activity is ready for review."
+    : "Ready to clock in? Have a great shift!";
+
+  const dismiss = () => {
+    setLeaving(true);
+    setTimeout(() => onDone(), 480);
+  };
+
+  useEffect(() => {
+    // Slide in after a brief paint delay
+    const t1 = setTimeout(() => setVisible(true), 80);
+    // Auto-dismiss after 5 s
+    const t2 = setTimeout(() => dismiss(), 5000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, []); // eslint-disable-line
+
+  return (
+    <div style={{
+      marginBottom: 16,
+      opacity:  leaving ? 0 : (visible ? 1 : 0),
+      transform: leaving
+        ? "translateY(-12px) scale(0.97)"
+        : visible ? "translateY(0) scale(1)" : "translateY(-12px) scale(0.97)",
+      transition: "opacity 0.45s cubic-bezier(0.16,1,0.3,1), transform 0.45s cubic-bezier(0.16,1,0.3,1)",
+      pointerEvents: leaving ? "none" : "auto",
+    }}>
+      <div style={{
+        background: "linear-gradient(135deg, #1e40af 0%, #2563eb 55%, #3b82f6 100%)",
+        borderRadius: "var(--radius-lg)",
+        padding: "16px 18px",
+        display: "flex", alignItems: "center", gap: 14,
+        boxShadow: "0 6px 24px rgba(37,99,235,0.30), 0 2px 8px rgba(0,0,0,0.08)",
+        position: "relative", overflow: "hidden",
+      }}>
+        {/* Shimmer overlay */}
+        <div style={{
+          position: "absolute", inset: 0,
+          background: "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.07) 50%, transparent 70%)",
+          animation: "shimmer 3s ease-in-out 0.5s 1",
+          pointerEvents: "none",
+        }}/>
+
+        {/* Avatar circle */}
+        <div style={{
+          width: 46, height: 46, borderRadius: "50%", flexShrink: 0,
+          background: "rgba(255,255,255,0.18)",
+          border: "2px solid rgba(255,255,255,0.35)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 20, fontWeight: 800, color: "#ffffff",
+          letterSpacing: "-0.02em",
+        }}>
+          {firstName[0].toUpperCase()}
+        </div>
+
+        {/* Text */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: 16, fontWeight: 800, color: "#ffffff",
+            letterSpacing: "-0.01em", lineHeight: 1.25, marginBottom: 3,
+          }}>
+            {getGreeting()}, {firstName}! 👋
+          </div>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.78)", lineHeight: 1.4 }}>
+            {roleMsg}
+          </div>
+        </div>
+
+        {/* Dismiss button */}
+        <button
+          onClick={dismiss}
+          style={{
+            flexShrink: 0, width: 28, height: 28,
+            background: "rgba(255,255,255,0.15)",
+            border: "1px solid rgba(255,255,255,0.25)",
+            borderRadius: "50%", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "rgba(255,255,255,0.7)", fontSize: 16, lineHeight: 1,
+            transition: "background 0.15s",
+          }}
+          aria-label="Dismiss"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ─── SPLASH SCREEN ────────────────────────────────────────────────────────────
@@ -899,14 +977,14 @@ function SplashScreen({ onDone }) {
   useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
 
   useEffect(() => {
-    // Phase timeline: logo-in → tagline → exit  (total ≈ 2.6 s)
-    const t1 = setTimeout(() => setPhase(1), 700);   // tagline slides up
-    const t2 = setTimeout(() => setPhase(2), 2200);  // start fade-out
-    const t3 = setTimeout(() => onDoneRef.current?.(), 2650); // done
-    // Progress bar fills in 2.0 s
+    // Phase timeline: logo-in → tagline → exit  (total ≈ 3.5 s)
+    const t1 = setTimeout(() => setPhase(1), 800);   // tagline slides up
+    const t2 = setTimeout(() => setPhase(2), 3000);  // start fade-out
+    const t3 = setTimeout(() => onDoneRef.current?.(), 3500); // done
+    // Progress bar fills in 2.8 s
     let start = null;
     let raf;
-    const DURATION = 2000;
+    const DURATION = 2800;
     const tick = (ts) => {
       if (!start) start = ts;
       const pct = Math.min(((ts - start) / DURATION) * 100, 100);
@@ -9487,3 +9565,4 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJob
     </div>
   );
 }
+
