@@ -511,6 +511,12 @@ export default function App(){
     try{const l=localStorage.getItem("bsc_lang");if(l)setLang(l);}catch{}
     localStorage.removeItem("bsc_settings");setMounted(true);
     injectPWAHead();
+    // Play audio greeting — pass saved name if session exists
+    try {
+      const s = localStorage.getItem("bsc_session");
+      const savedName = s ? JSON.parse(s)?.name?.split(" ")[0] || null : null;
+      playGreeting(savedName);
+    } catch { playGreeting(null); }
   },[]);
   const t=T[lang]||T.en;
   const[page,setPage]=useState("dashboard");
@@ -857,6 +863,34 @@ function AdminLocationBar({userLat,userLon,worksites,distanceFt,addToast,t,onWor
 }
 
 
+
+// ─── AUDIO GREETING ───────────────────────────────────────────────────────────
+// Uses Web Speech API (available in all modern Android WebViews and PWAs).
+// Plays once per cold launch. Falls back silently if TTS is unavailable.
+function playGreeting(userName) {
+  try {
+    if (typeof speechSynthesis === "undefined") return;
+    // Cancel any in-progress speech
+    speechSynthesis.cancel();
+    const text = userName
+      ? `Hello, ${userName}. Welcome back to Bright Sky Construction.`
+      : "Welcome to Bright Sky Construction. Please sign in to continue.";
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.lang    = "en-US";
+    msg.rate    = 0.92;   // slightly slower — warm, professional
+    msg.pitch   = 1.05;
+    msg.volume  = 0.85;
+    // Prefer a natural-sounding voice when available
+    const voices = speechSynthesis.getVoices();
+    const preferred = voices.find(v =>
+      /samantha|karen|daniel|google us|en-us/i.test(v.name) && v.lang.startsWith("en")
+    ) || voices.find(v => v.lang.startsWith("en")) || null;
+    if (preferred) msg.voice = preferred;
+    // Small delay so the animation has started before audio begins
+    setTimeout(() => { try { speechSynthesis.speak(msg); } catch {} }, 400);
+  } catch {}
+}
+
 // ─── SPLASH SCREEN ────────────────────────────────────────────────────────────
 function SplashScreen({ onDone }) {
   const [phase, setPhase] = useState(0); // 0=logo-in 1=tagline-in 2=exit
@@ -865,14 +899,14 @@ function SplashScreen({ onDone }) {
   useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
 
   useEffect(() => {
-    // Phase timeline: logo animates → tagline → progress fills → exit
-    const t1 = setTimeout(() => setPhase(1), 900);
-    const t2 = setTimeout(() => setPhase(2), 2800);
-    const t3 = setTimeout(() => onDoneRef.current?.(), 3350);
-    // Progress bar fill over 2.4s starting at 200ms
+    // Phase timeline: logo-in → tagline → exit  (total ≈ 2.6 s)
+    const t1 = setTimeout(() => setPhase(1), 700);   // tagline slides up
+    const t2 = setTimeout(() => setPhase(2), 2200);  // start fade-out
+    const t3 = setTimeout(() => onDoneRef.current?.(), 2650); // done
+    // Progress bar fills in 2.0 s
     let start = null;
     let raf;
-    const DURATION = 2400;
+    const DURATION = 2000;
     const tick = (ts) => {
       if (!start) start = ts;
       const pct = Math.min(((ts - start) / DURATION) * 100, 100);
@@ -1289,9 +1323,9 @@ function LoginPage({onLogin,lang,setLang}){
                   }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                    <rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
-                  Employee
+                  ID &amp; PIN
                 </button>
                 <button
                   type="button"
@@ -1307,9 +1341,9 @@ function LoginPage({onLogin,lang,setLang}){
                   }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
                   </svg>
-                  Manager / Admin
+                  Email &amp; Password
                 </button>
               </div>
             </div>
