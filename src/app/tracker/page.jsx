@@ -531,6 +531,7 @@ export default function App(){
   const[overtimeMins,setOvertimeMins]=useState(0);
   const toastCounter=useRef(0);
   const missedWarned=useRef(false);
+  const [missedSession, setMissedSession] = useState(null);
 
   const [now, setNow] = useState(new Date());
 
@@ -580,7 +581,8 @@ useEffect(() => {
           radiusFeet: parseFloat(d.radius_feet),
           workStart: d.working_hours_start?.slice(0, 5) || "07:00",
           workEnd: d.working_hours_end?.slice(0, 5) || "17:00",
-          clockInWithCameraEnabled: d.clockInWithCameraEnabled ?? true, // 👈 add this
+          clockInWithCameraEnabled: d.clockInWithCameraEnabled ?? true,
+          autoClockOutEnabled: d.autoClockOutEnabled ?? true,
         });
       }
     }
@@ -596,7 +598,9 @@ useEffect(() => {
     const r = await authFetch("/api/attendance/me/today");
     if (r.ok) {
       const d = await r.json();
-      setTodayData(d);
+      const { missedSession: ms, ...todayOnly } = d;
+      setTodayData(todayOnly);
+      setMissedSession(ms || null);
     }
   } catch { }
 }, [currentUser]);
@@ -802,7 +806,7 @@ useEffect(() => {
           <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {/* AdminLocationBar removed */}
             {welcomeMsg&&<WelcomeBanner msg={welcomeMsg} onDone={()=>setWelcomeMsg(null)}/>}
-            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} setAppTitle={setAppTitle} worksites={worksites} onJobSiteSelect={setAppSelectedSiteId}/>)}
+            {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} setAppTitle={setAppTitle} worksites={worksites} onJobSiteSelect={setAppSelectedSiteId} missedSession={missedSession} autoClockOutEnabled={settings.autoClockOutEnabled??true} onMissedResolved={()=>setMissedSession(null)}/>)}
             {page==="fuel"&&<FuelEntryPage currentUser={currentUser} t={t} addToast={addToast} assignedJobSites={employeeJobSites} allJobSites={worksites} onMount={()=>setAppTitle("BSC Fuel Entry")} onUnmount={()=>setAppTitle("BSC Tracker")}/>}
             {page==="my_attendance"&&<MyAttendance t={t}/>}
             {page==="my_profile"&&<MyProfile user={currentUser} addToast={addToast} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} t={t} onViewTaskHistory={() => setPage("task_history")}/>}
@@ -867,6 +871,117 @@ function AdminLocationBar({userLat,userLon,worksites,distanceFt,addToast,t,onWor
 // ─── WELCOME BANNER ──────────────────────────────────────────────────────────
 // Shown once on the dashboard immediately after a successful login.
 // Disappears automatically after 5 s or on manual dismiss.
+// ─── MISSED CLOCK-OUT MODAL ────────────────────────────────────────────────────
+// Shown when employee has a previous-day active session (forgot to clock out).
+// Lets them enter the correct clock-out time retroactively.
+function MissedClockOutModal({ session, onResolved, onDismiss }) {
+  const [clockOutTime, setClockOutTime] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  // Default to schedule end of that day (18:00 fallback)
+  const workDate = session?.work_date
+    ? new Date(session.work_date).toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"short", year:"numeric" })
+    : "previous day";
+
+  const clockInTime = session?.clock_in_time
+    ? new Date(session.clock_in_time).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" })
+    : "—";
+
+  const handleSubmit = async () => {
+    setErr("");
+    if (!clockOutTime) { setErr("Please enter a clock-out time."); return; }
+    // Combine work_date + time into a full datetime
+    const base = session.work_date
+      ? session.work_date.slice(0, 10)   // "YYYY-MM-DD"
+      : new Date().toISOString().slice(0, 10);
+    // Allow clock-out up to midnight next day (overnight shifts)
+    let fullDT = new Date(`${base}T${clockOutTime}:00`);
+    const clockIn = new Date(session.clock_in_time);
+    if (fullDT <= clockIn) {
+      // Try adding one day (overnight shift clocking out next morning)
+      fullDT = new Date(fullDT.getTime() + 86400000);
+    }
+    if (fullDT <= clockIn) { setErr("Clock-out must be after clock-in time."); return; }
+    setSaving(true);
+    try {
+      const res = await authFetch("/api/attendance/clock-out-previous", {
+        method: "POST",
+        body: JSON.stringify({ sessionId: session.id, clockOutTime: fullDT.toISOString() }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setErr(d.error || "Failed to save. Try again."); return; }
+      onResolved();
+    } catch {
+      setErr("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:9999,
+      display:"flex", alignItems:"center", justifyContent:"center", padding:16,
+    }}>
+      <div style={{
+        background:"var(--bg)", borderRadius:"var(--radius-lg)", width:"100%", maxWidth:400,
+        boxShadow:"0 24px 64px rgba(0,0,0,0.22)", overflow:"hidden",
+      }}>
+        {/* Header */}
+        <div style={{ background:"linear-gradient(135deg,#dc2626,#b91c1c)", padding:"18px 20px", display:"flex", alignItems:"center", gap:12 }}>
+          <div style={{ width:36, height:36, borderRadius:"50%", background:"rgba(255,255,255,0.18)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+            <span style={{ fontSize:18 }}>⏰</span>
+          </div>
+          <div>
+            <div style={{ fontSize:15, fontWeight:700, color:"#fff" }}>Missing Clock-Out</div>
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.8)", marginTop:1 }}>Enter the time you finished work</div>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding:"20px" }}>
+          {/* Info row */}
+          <div style={{ background:"var(--red-light)", border:"1px solid rgba(220,38,38,0.2)", borderRadius:"var(--radius)", padding:"10px 14px", marginBottom:16, fontSize:13 }}>
+            <div style={{ fontWeight:600, color:"var(--red)", marginBottom:4 }}>⚠ Session not closed</div>
+            <div style={{ color:"var(--text3)" }}>
+              <strong>{workDate}</strong> — clocked in at <strong>{clockInTime}</strong> with no clock-out recorded.
+            </div>
+          </div>
+
+          {/* Time input */}
+          <label style={{ fontSize:12, fontWeight:600, color:"var(--text2)", display:"block", marginBottom:6 }}>
+            What time did you finish? *
+          </label>
+          <input
+            type="time"
+            value={clockOutTime}
+            onChange={e => { setClockOutTime(e.target.value); setErr(""); }}
+            style={{ fontSize:18, fontWeight:600, width:"100%", padding:"10px 12px", borderRadius:"var(--radius)", border:"1.5px solid var(--border)", background:"var(--bg2)", color:"var(--text)", marginBottom:4 }}
+          />
+          <div style={{ fontSize:11.5, color:"var(--text4)", marginBottom: err ? 6 : 16 }}>
+            For overnight shifts, enter the time on the following morning — the system will adjust the date automatically.
+          </div>
+          {err && <div style={{ color:"var(--red)", fontSize:12.5, marginBottom:12, fontWeight:500 }}>{err}</div>}
+
+          {/* Actions */}
+          <div style={{ display:"flex", gap:10 }}>
+            <Btn onClick={handleSubmit} loading={saving} size="md" style={{ flex:1 }}>
+              Save Clock-Out
+            </Btn>
+            {onDismiss && (
+              <Btn onClick={onDismiss} variant="secondary" size="md" style={{ flex:1 }}>
+                Later
+              </Btn>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function WelcomeBanner({ msg, onDone }) {
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -1971,6 +2086,9 @@ function EmployeeDashboard({
   handleClockOut, handleBreakStart, handleBreakEnd,
   t, addToast, refreshTodayData, onNavigateToRoute,
   setAppTitle, worksites = [], onJobSiteSelect,
+  missedSession = null,
+  autoClockOutEnabled = true,
+  onMissedResolved,
 }) {
   // --- existing state declarations (unchanged) ---
   const [now, setNow] = useState(new Date());
@@ -2015,6 +2133,16 @@ function EmployeeDashboard({
   const [outingsPage, setOutingsPage] = useState(1);
   const [outingsTotal, setOutingsTotal] = useState(0);
   const [selectedOuting, setSelectedOuting] = useState(null);
+
+  // --- Missed clock-out modal state ---
+  const [showMissedModal, setShowMissedModal] = useState(false);
+
+  // Auto-open missed modal on mount if unresolved + auto-clock-out disabled + on-site mode
+  useEffect(() => {
+    if (missedSession && !autoClockOutEnabled && user?.work_mode !== "offsite") {
+      setShowMissedModal(true);
+    }
+  }, [missedSession, autoClockOutEnabled, user?.work_mode]); // eslint-disable-line
 
   // --- Warning Clock-In state ---
   const [showWarnModal, setShowWarnModal] = useState(false);
@@ -2397,6 +2525,69 @@ function EmployeeDashboard({
   // --- renderTimeCard (includes the new Project Outing section) ---
   const renderTimeCard = () => (
     <>
+      {/* ── Missed clock-out warning banner ── */}
+      {missedSession && (
+        <div style={{
+          background: "var(--red-light)",
+          border: "1.5px solid rgba(220,38,38,0.3)",
+          borderRadius: "var(--radius)",
+          padding: "12px 14px",
+          display: "flex", flexDirection: "column", gap: 8,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 16 }}>⏰</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--red)" }}>Missing Clock-Out Detected</div>
+              <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+                {new Date(missedSession.work_date).toLocaleDateString("en-GB", { weekday:"short", day:"numeric", month:"short" })}
+                {" · Clocked in at "}
+                {missedSession.clock_in_time ? new Date(missedSession.clock_in_time).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }) : "—"}
+                {" — no clock-out recorded."}
+              </div>
+            </div>
+          </div>
+          {/* If auto-clock-out disabled + on-site mode: block clock-in and show entry button */}
+          {!autoClockOutEnabled && user?.work_mode !== "offsite" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 12, color: "var(--red)", fontWeight: 500 }}>
+                ⚠ Clock-in is disabled until you enter yesterday's clock-out time.
+              </div>
+              <Btn
+                onClick={() => setShowMissedModal(true)}
+                variant="danger"
+                size="sm"
+                style={{ width: "100%" }}
+              >
+                Enter Missing Clock-Out Time
+              </Btn>
+            </div>
+          )}
+          {/* Off-site or auto-clock-out enabled: offer manual entry without blocking */}
+          {(autoClockOutEnabled || user?.work_mode === "offsite") && (
+            <Btn
+              onClick={() => setShowMissedModal(true)}
+              variant="secondary"
+              size="sm"
+              style={{ width: "100%", borderColor: "rgba(220,38,38,0.4)", color: "var(--red)" }}
+            >
+              Enter Missing Clock-Out Time
+            </Btn>
+          )}
+        </div>
+      )}
+
+      {/* ── Missed clock-out modal ── */}
+      {showMissedModal && missedSession && (
+        <MissedClockOutModal
+          session={missedSession}
+          onResolved={() => {
+            setShowMissedModal(false);
+            if (onMissedResolved) onMissedResolved();
+          }}
+          onDismiss={(!autoClockOutEnabled && user?.work_mode !== "offsite") ? null : () => setShowMissedModal(false)}
+        />
+      )}
+
       {/* Compact Time Summary */}
       <div style={{ display: "flex", gap: 16, justifyContent: "space-between", background: "var(--bg2)", borderRadius: "var(--radius)", padding: "10px 16px", border: "1px solid var(--border)" }}>
         <div style={{ flex: 1 }}>
@@ -2423,20 +2614,29 @@ function EmployeeDashboard({
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {empStatus === "clocked_out" && (
             <>
-              <Btn
-                onClick={handleClockIn}
-                disabled={clockInButtonLoading}
-                loading={clockInButtonLoading}
-                size="lg"
-                style={{ width: "100%", ...(onSite ? {} : { background:"var(--amber)", borderColor:"var(--amber)" }) }}
-              >
-                <Icon name={onSite ? "camera" : "alert"} size={16} color="white" />
-                {onSite ? t.clockIn : "⚠ Warning Clock-In"}
-              </Btn>
-              {!onSite && displayWS?.latitude != null && userLat != null && (
-                <div style={{ fontSize:12, color:"var(--amber)", textAlign:"center", fontWeight:500, marginTop:-4 }}>
-                  You are outside your assigned job site — tap to proceed with a warning
+              {/* Block clock-in when missed session + auto-clock-out OFF + on-site mode */}
+              {missedSession && !autoClockOutEnabled && user?.work_mode !== "offsite" ? (
+                <div style={{ padding:"12px 14px", background:"var(--red-light)", borderRadius:"var(--radius)", border:"1px solid rgba(220,38,38,0.2)", textAlign:"center", fontSize:13, color:"var(--red)", fontWeight:500 }}>
+                  Enter your missing clock-out time above to enable clock-in.
                 </div>
+              ) : (
+                <>
+                  <Btn
+                    onClick={handleClockIn}
+                    disabled={clockInButtonLoading}
+                    loading={clockInButtonLoading}
+                    size="lg"
+                    style={{ width: "100%", ...(onSite ? {} : { background:"var(--amber)", borderColor:"var(--amber)" }) }}
+                  >
+                    <Icon name={onSite ? "camera" : "alert"} size={16} color="white" />
+                    {onSite ? t.clockIn : "⚠ Warning Clock-In"}
+                  </Btn>
+                  {!onSite && displayWS?.latitude != null && userLat != null && (
+                    <div style={{ fontSize:12, color:"var(--amber)", textAlign:"center", fontWeight:500, marginTop:-4 }}>
+                      You are outside your assigned job site — tap to proceed with a warning
+                    </div>
+                  )}
+                </>
               )}
             </>
           )}
@@ -6870,96 +7070,127 @@ function ReportsPage({t}){
 // ─── SETTINGS ─────────────────────────────────────────────────────────────────
 function SettingsPage({ settings, addToast, refreshSettings, t }) {
   const [saving, setSaving] = useState(false);
-  const [cameraEnabled, setCameraEnabled] = useState(settings.clockInWithCameraEnabled ?? true);
+  const [cameraEnabled, setCameraEnabled]         = useState(settings.clockInWithCameraEnabled ?? true);
+  const [autoClockOutEnabled, setAutoClockOutEnabled] = useState(settings.autoClockOutEnabled ?? true);
 
+  // Keep local state in sync when settings prop refreshes
   useEffect(() => {
-  setCameraEnabled(settings.clockInWithCameraEnabled ?? true);
-}, [settings]);
+    setCameraEnabled(settings.clockInWithCameraEnabled ?? true);
+    setAutoClockOutEnabled(settings.autoClockOutEnabled ?? true);
+  }, [settings]);
 
   const companyRef = useRef(null);
-  const startRef = useRef(null);
-  const endRef = useRef(null);
+  const startRef   = useRef(null);
+  const endRef     = useRef(null);
 
   const handleSave = async () => {
     setSaving(true);
-    const res = await authFetch("/api/settings", {
-      method: "PUT",
-      body: JSON.stringify({
-        companyName: companyRef.current?.value,
-        siteName: settings.siteName,
-        latitude: settings.latitude,
-        longitude: settings.longitude,
-        radiusFeet: settings.radiusFeet,
-        workingHoursStart: startRef.current?.value,
-        workingHoursEnd: endRef.current?.value,
-        clockInWithCameraEnabled: cameraEnabled, // new field
-        // remove other automation booleans
-      }),
-    });
-    const d = await res.json();
-    if (!res.ok) {
-      addToast(d.error || "Failed.", "error");
-      setSaving(false);
-      return;
-    }
-    localStorage.removeItem("bsc_settings");
-    await refreshSettings();
-    addToast("Settings saved.", "success");
-    setSaving(false);
+    try {
+      const res = await authFetch("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          companyName:              companyRef.current?.value,
+          siteName:                 settings.siteName,
+          latitude:                 settings.latitude,
+          longitude:                settings.longitude,
+          radiusFeet:               settings.radiusFeet,
+          workingHoursStart:        startRef.current?.value,
+          workingHoursEnd:          endRef.current?.value,
+          clockInWithCameraEnabled: cameraEnabled,
+          autoClockOutEnabled:      autoClockOutEnabled,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) { addToast(d.error || "Failed to save settings.", "error"); return; }
+      localStorage.removeItem("bsc_settings");
+      await refreshSettings();
+      addToast("Settings saved successfully.", "success");
+    } catch { addToast("Network error. Please try again.", "error"); }
+    finally  { setSaving(false); }
   };
 
-  const Toggle = ({ label, value, onChange, desc }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0", borderBottom: "1px solid var(--border)" }}>
-      <div style={{ flex: 1, paddingRight: 16 }}>
-        <div style={{ fontSize: 14, color: "var(--text)", fontWeight: 500 }}>{label}</div>
-        {desc && <div style={{ fontSize: 12.5, color: "var(--text3)", marginTop: 3, lineHeight: 1.5, fontWeight: 400 }}>{desc}</div>}
+  /* ── Reusable toggle row ── */
+  const SettingsToggle = ({ label, value, onChange, desc, accent = "var(--blue)", icon }) => (
+    <div style={{
+      display: "flex", justifyContent: "space-between", alignItems: "center",
+      padding: "14px 0", borderBottom: "1px solid var(--border)",
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flex: 1, paddingRight: 16 }}>
+        {icon && (
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: `${accent}18`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+            <span style={{ fontSize: 14 }}>{icon}</span>
+          </div>
+        )}
+        <div>
+          <div style={{ fontSize: 14, color: "var(--text)", fontWeight: 500, lineHeight: 1.3 }}>{label}</div>
+          {desc && <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 3, lineHeight: 1.5 }}>{desc}</div>}
+        </div>
       </div>
       <button
         onClick={() => onChange(!value)}
+        aria-pressed={value}
         style={{
-          width: 48, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
-          background: value ? "var(--blue)" : "var(--border2)", position: "relative",
-          transition: "background 0.2s", flexShrink: 0, minWidth: 48,
-          boxShadow: value ? "0 1px 4px rgba(37,99,235,0.3)" : "none"
+          width: 50, height: 28, borderRadius: 14, border: "none", cursor: "pointer",
+          background: value ? accent : "var(--border2)",
+          position: "relative", transition: "background 0.2s",
+          flexShrink: 0, minWidth: 50,
+          boxShadow: value ? `0 1px 6px ${accent}55` : "none",
         }}
       >
         <div style={{
-          width: 22, height: 22, borderRadius: "50%", background: "white", position: "absolute", top: 3,
-          left: value ? 23 : 3, transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.15)"
+          width: 22, height: 22, borderRadius: "50%", background: "white",
+          position: "absolute", top: 3,
+          left: value ? 25 : 3,
+          transition: "left 0.2s ease",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
         }} />
       </button>
+    </div>
+  );
+
+  /* ── Section header row ── */
+  const SectionRow = ({ icon, label, color = "var(--blue)", bg = "var(--blue-light)", border = "var(--blue-mid)" }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+      <div style={{ width: 32, height: 32, borderRadius: "var(--radius-sm)", background: bg, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${border}`, flexShrink: 0 }}>
+        <Icon name={icon} size={15} color={color} />
+      </div>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", margin: 0 }}>{label}</h3>
     </div>
   );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionHeader title={t.settings} subtitle="Company information and automation rules" />
-      <div style={{ padding: "12px 16px", borderRadius: "var(--radius-lg)", background: "var(--blue-light)", border: "1.5px solid var(--blue-mid)", display: "flex", gap: 10, alignItems: "flex-start" }}>
-        <Icon name="pin" size={15} color="var(--blue)" style={{ marginTop: 1, flexShrink: 0 }} />
-        <div style={{ fontSize: 13, color: "var(--blue)", lineHeight: 1.5, fontWeight: 450 }}>
-          Job site locations are managed in the <strong>Job Sites</strong> section. Each employee can be assigned to one or more job sites with individual geofence settings.
+
+      {/* Info banner */}
+      <div style={{ padding: "11px 14px", borderRadius: "var(--radius-lg)", background: "var(--blue-light)", border: "1.5px solid var(--blue-mid)", display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <Icon name="pin" size={14} color="var(--blue)" style={{ marginTop: 2, flexShrink: 0 }} />
+        <div style={{ fontSize: 12.5, color: "var(--blue)", lineHeight: 1.55 }}>
+          Job site locations are managed in the <strong>Job Sites</strong> section.
+          Each employee can be assigned one or more job sites with individual geofence settings.
         </div>
       </div>
 
+      {/* ── Company ── */}
       <Card>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-          <div style={{ width: 30, height: 30, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--blue-mid)" }}>
-            <Icon name="building" size={15} color="var(--blue)" />
-          </div>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Company</h3>
-        </div>
+        <SectionRow icon="building" label="Company" />
         <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Company Name</label>
-        <input type="text" ref={companyRef} defaultValue={settings.companyName || ""} placeholder="Company name" style={{ fontSize: 16 }} autoCorrect="off" />
+        <input
+          type="text"
+          ref={companyRef}
+          defaultValue={settings.companyName || ""}
+          placeholder="Enter company name"
+          style={{ fontSize: 15 }}
+          autoCorrect="off"
+        />
       </Card>
 
+      {/* ── Default Work Schedule ── */}
       <Card>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-          <div style={{ width: 30, height: 30, borderRadius: "var(--radius-sm)", background: "var(--blue-light)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--blue-mid)" }}>
-            <Icon name="clock" size={15} color="var(--blue)" />
-          </div>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Default Work Schedule</h3>
-        </div>
-        <p style={{ fontSize: 13, color: "var(--text3)", marginBottom: 14, fontWeight: 400 }}>Default for all employees. Override individually in the Employees section.</p>
+        <SectionRow icon="clock" label="Default Work Schedule" />
+        <p style={{ fontSize: 12.5, color: "var(--text3)", marginBottom: 14, lineHeight: 1.5 }}>
+          Applied to all employees unless overridden individually in the <strong>Employees</strong> section.
+        </p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div>
             <label style={{ fontSize: 12, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Start Time</label>
@@ -6970,25 +7201,73 @@ function SettingsPage({ settings, addToast, refreshSettings, t }) {
             <input type="time" ref={endRef} defaultValue={settings.workEnd || "17:00"} style={{ fontSize: 16 }} />
           </div>
         </div>
-      </Card>
-
-      <Card>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          <div style={{ width: 30, height: 30, borderRadius: "var(--radius-sm)", background: "var(--green-light)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(5,150,105,0.2)" }}>
-            <Icon name="camera" size={15} color="var(--green)" />
-          </div>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>Clock‑in Requirements</h3>
+        <div style={{ marginTop: 10, padding: "8px 12px", background: "var(--bg3)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", fontSize: 12, color: "var(--text3)", lineHeight: 1.5 }}>
+          ℹ️ Time worked before shift start or after shift end is counted as <strong>overtime</strong>.
         </div>
-        <Toggle
-  label="Clock In with Camera"
-  value={cameraEnabled}
-  onChange={setCameraEnabled}
-  desc="Require employees to take a selfie when clocking in at the job site."
-/>
       </Card>
 
+      {/* ── Clock-In Requirements ── */}
+      <Card>
+        <SectionRow icon="camera" label="Clock-In Requirements" color="var(--green)" bg="var(--green-light)" border="rgba(5,150,105,0.2)" />
+        <SettingsToggle
+          label="Clock In with Camera"
+          value={cameraEnabled}
+          onChange={setCameraEnabled}
+          accent="var(--green)"
+          icon="📷"
+          desc="Require employees to take a selfie photo when clocking in. Applies to both on-site and off-site clock-ins."
+        />
+        {/* Remove bottom border on last item */}
+        <div style={{ marginTop: 2 }} />
+      </Card>
+
+      {/* ── Auto Clock-Out ── */}
+      <Card>
+        <SectionRow icon="clock" label="Auto Clock-Out" color="var(--orange)" bg="rgba(234,88,12,0.08)" border="rgba(234,88,12,0.2)" />
+        <SettingsToggle
+          label="Enable Auto Clock-Out"
+          value={autoClockOutEnabled}
+          onChange={setAutoClockOutEnabled}
+          accent="var(--orange)"
+          icon="⏱️"
+          desc={autoClockOutEnabled
+            ? "System will automatically clock out on-site employees when their shift ends and they are outside the geofence."
+            : "Auto clock-out is OFF. If an employee forgets to clock out, they will be warned the next time they open the app and must enter the missing time before clocking in again."}
+        />
+        <div style={{ marginTop: 2 }} />
+
+        {/* Contextual explainer based on toggle state */}
+        <div style={{
+          marginTop: 8, padding: "10px 12px", borderRadius: "var(--radius-sm)",
+          background: autoClockOutEnabled ? "rgba(234,88,12,0.07)" : "var(--red-light)",
+          border: `1px solid ${autoClockOutEnabled ? "rgba(234,88,12,0.2)" : "rgba(220,38,38,0.2)"}`,
+          fontSize: 12, color: "var(--text3)", lineHeight: 1.55,
+        }}>
+          {autoClockOutEnabled ? (
+            <>
+              <strong style={{ color: "var(--orange)" }}>Auto Clock-Out is ON.</strong> Conditions checked on each heartbeat:
+              <ul style={{ margin: "6px 0 0 0", paddingLeft: 16, display: "flex", flexDirection: "column", gap: 3 }}>
+                <li>Shift end time has passed (per employee schedule)</li>
+                <li>Employee is outside the geofence</li>
+                <li>Does <em>not</em> apply to off-site (warning) clock-in sessions</li>
+              </ul>
+            </>
+          ) : (
+            <>
+              <strong style={{ color: "var(--red)" }}>Auto Clock-Out is OFF.</strong> When a missed clock-out is detected:
+              <ul style={{ margin: "6px 0 0 0", paddingLeft: 16, display: "flex", flexDirection: "column", gap: 3 }}>
+                <li>A warning is shown next time the employee opens the app</li>
+                <li>On-site employees cannot clock in until they enter the missing time</li>
+                <li>Off-site employees can clock out for the previous day manually</li>
+              </ul>
+            </>
+          )}
+        </div>
+      </Card>
+
+      {/* ── Save button ── */}
       <Btn onClick={handleSave} loading={saving} size="lg" style={{ width: "100%" }}>
-        <Icon name="check" size={15} color="white" /> {t.save} Settings
+        <Icon name="check" size={15} color="white" /> Save Settings
       </Btn>
     </div>
   );
@@ -9596,3 +9875,4 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJob
     </div>
   );
 }
+
