@@ -239,6 +239,17 @@ const GlobalStyle = () => (
     .login-field-1{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.15s both;}
     .login-field-2{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.25s both;}
     .login-field-btn{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.34s both;}
+    /* ── Desktop / Tablet responsive layout ────────────────── */
+    @media (min-width: 900px) {
+      .bsc-sidebar { transform: translateX(0) !important; box-shadow: none !important; }
+      .bsc-overlay { display: none !important; }
+      .bsc-main-wrap { margin-left: 272px; }
+      .bsc-hamburger { display: none !important; }
+      .bsc-main { max-width: 1200px !important; padding: 24px 32px !important; }
+    }
+    @media (min-width: 1280px) {
+      .bsc-main { max-width: 1440px !important; padding: 28px 48px !important; }
+    }
   `}</style>
 );
 
@@ -782,8 +793,8 @@ useEffect(() => {
     <>
       <GlobalStyle/>
       <div style={{display:"flex",minHeight:"100vh",position:"relative",background:"var(--bg)"}}>
-        {sidebarOpen&&<div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(17,24,39,0.3)",zIndex:200,backdropFilter:"blur(3px)"}}/>}
-        <aside style={{position:"fixed",top:0,left:0,height:"100vh",zIndex:300,width:272,transform:sidebarOpen?"translateX(0)":"translateX(-100%)",background:"var(--bg2)",borderRight:"1px solid var(--border)",transition:"transform 0.25s cubic-bezier(.4,0,.2,1)",display:"flex",flexDirection:"column",overflowY:"auto",boxShadow:sidebarOpen?"var(--shadow-lg)":"none"}}>
+        {sidebarOpen&&<div className="bsc-overlay" onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(17,24,39,0.3)",zIndex:200,backdropFilter:"blur(3px)"}}/>}
+        <aside className="bsc-sidebar" style={{position:"fixed",top:0,left:0,height:"100vh",zIndex:300,width:272,transform:sidebarOpen?"translateX(0)":"translateX(-100%)",background:"var(--bg2)",borderRight:"1px solid var(--border)",transition:"transform 0.25s cubic-bezier(.4,0,.2,1)",display:"flex",flexDirection:"column",overflowY:"auto",boxShadow:sidebarOpen?"var(--shadow-lg)":"none"}}>
           <div style={{padding:"20px 16px 16px",borderBottom:"1px solid var(--border)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -807,9 +818,9 @@ useEffect(() => {
           </nav>
           <SidebarProfile currentUser={currentUser} handleLogout={handleLogout} lang={lang} setLang={setLang}/>
         </aside>
-        <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,width:"100%"}}>
+        <div className="bsc-main-wrap" style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,width:"100%"}}>
           <header style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"0 16px",display:"flex",alignItems:"center",gap:10,position:"sticky",top:0,zIndex:100,height:56,boxShadow:"var(--shadow-sm)"}}>
-  <button onClick={()=>setSidebarOpen(true)} style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",padding:7,borderRadius:"var(--radius-sm)",display:"flex",cursor:"pointer",minWidth:36,minHeight:36,alignItems:"center",justifyContent:"center"}}><Icon name="menu" size={18}/></button>
+  <button className="bsc-hamburger" onClick={()=>setSidebarOpen(true)} style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",padding:7,borderRadius:"var(--radius-sm)",display:"flex",cursor:"pointer",minWidth:36,minHeight:36,alignItems:"center",justifyContent:"center"}}><Icon name="menu" size={18}/></button>
 
   <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
     <div style={{width:28,height:28,borderRadius:"var(--radius-sm)",background:appTitle==="BSC Fuel Entry"?"#1e3a5f":"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background 0.25s"}}>
@@ -822,7 +833,7 @@ useEffect(() => {
   </div>
 
 </header>
-          <main style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
+          <main className="bsc-main" style={{flex:1,padding:"20px 16px",maxWidth:900,width:"100%",margin:"0 auto"}}>
             {/* AdminLocationBar removed */}
             {welcomeMsg&&<WelcomeBanner msg={welcomeMsg} onDone={()=>setWelcomeMsg(null)}/>}
             {page==="dashboard"&&(isAdmin?<AdminDashboard adminData={adminData} refreshAdminData={refreshAdminData} isOvertime={isOvertime} t={t} addToast={addToast} currentUser={currentUser} worksites={worksites}/>:<EmployeeDashboard user={currentUser} todayData={todayData} empStatus={empStatus} onSite={onSite} settings={settings} punchLoading={punchLoading} gpsLoading={gpsLoading} userLat={userLat} userLon={userLon} isOvertime={isOvertime} overtimeMins={overtimeMins} employeeWorksite={employeeWorksite} employeeJobSites={employeeJobSites} handleClockOut={handleClockOut} handleBreakStart={handleBreakStart} handleBreakEnd={handleBreakEnd} t={t} addToast={addToast} refreshTodayData={refreshTodayData} setAppTitle={setAppTitle} worksites={worksites} onJobSiteSelect={setAppSelectedSiteId} missedSession={missedSession} autoClockOutEnabled={settings.autoClockOutEnabled??true} onMissedResolved={()=>setMissedSession(null)}/>)}
