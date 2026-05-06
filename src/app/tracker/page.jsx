@@ -254,7 +254,7 @@ function distanceFeet(lat1,lon1,lat2,lon2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-const DEFAULT_SETTINGS={companyName:"Bright Sky Construction",siteName:"",latitude:null,longitude:null,radiusFeet:null,workStart:"07:00",workEnd:"17:00",autoClockInEnabled:true,autoBreakOnExitEnabled:true,autoCorrectionEnabled:true};
+const DEFAULT_SETTINGS={companyName:"Bright Sky Construction",siteName:"",latitude:null,longitude:null,radiusFeet:null,workStart:"07:00",workEnd:"17:00",autoClockInEnabled:true,autoBreakOnExitEnabled:true,autoCorrectionEnabled:true,clockInWithCameraEnabled:true,autoClockOutEnabled:true};
 
 // ─── UI PRIMITIVES ────────────────────────────────────────────────────────────
 const StatusBadge=({status})=>{
@@ -552,7 +552,7 @@ useEffect(() => {
   const[userLon,setUserLon]=useState(null);
   // Explicit site selection from employee's FuelJobSiteSelector (drives top-right badge)
   const[appSelectedSiteId,setAppSelectedSiteId]=useState(null);
-  const appSelectedSite=worksites.find(s=>s.id===appSelectedSiteId)||employeeJobSites.find(s=>s.id===appSelectedSiteId)||null;
+  const appSelectedSite=worksites.find(s=>String(s.id)===String(appSelectedSiteId))||employeeJobSites.find(s=>String(s.id)===String(appSelectedSiteId))||null;
   const geoTarget=appSelectedSite||(settings.latitude!=null?{latitude:settings.latitude,longitude:settings.longitude,radius_feet:settings.radiusFeet}:null);
   let onSite=false,distanceFt=null;
   if(userLat!=null&&geoTarget?.latitude!=null){
@@ -2516,7 +2516,8 @@ function EmployeeDashboard({
     }
   }
 
-  const displayWS = employeeWorksite || { latitude: settings.latitude, longitude: settings.longitude, radius_feet: settings.radiusFeet, name: settings.siteName };
+  // Use the site the employee actually selected in the dropdown; fall back to their first assigned site, then global settings
+  const displayWS = (selectedTimeJobSiteId ? employeeJobSites.find(s=>String(s.id)===String(selectedTimeJobSiteId)) : null) || employeeWorksite || { latitude: settings.latitude, longitude: settings.longitude, radius_feet: settings.radiusFeet, name: settings.siteName };
   // Compute local distance for the Warning Clock-In modal (distanceFt is outer-scope only)
   const distanceFt = (userLat != null && userLon != null && displayWS?.latitude != null && displayWS?.longitude != null)
     ? distanceFeet(userLat, userLon, displayWS.latitude, displayWS.longitude)
@@ -2628,7 +2629,7 @@ function EmployeeDashboard({
                     size="lg"
                     style={{ width: "100%", ...(onSite ? {} : { background:"var(--amber)", borderColor:"var(--amber)" }) }}
                   >
-                    <Icon name={onSite ? "camera" : "alert"} size={16} color="white" />
+                    <Icon name={!onSite ? "alert" : (settings.clockInWithCameraEnabled ?? true) ? "camera" : "check"} size={16} color="white" />
                     {onSite ? t.clockIn : "⚠ Warning Clock-In"}
                   </Btn>
                   {!onSite && displayWS?.latitude != null && userLat != null && (
@@ -7531,7 +7532,7 @@ function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, is
   const [gpsError, setGpsError] = useState(null);
   const [distanceDisplay, setDistanceDisplay] = useState(null); // e.g. "328 ft" or "1.2 mi"
 
-  const selectedSite = jobSites.find(s => s.id === selectedJobSite);
+  const selectedSite = jobSites.find(s => String(s.id) === String(selectedJobSite));
 
   // Haversine distance in feet
   const distanceFeet = (lat1, lon1, lat2, lon2) => {
@@ -7586,7 +7587,7 @@ function FuelJobSiteSelector({ jobSites, selectedJobSite, setSelectedJobSite, is
     setDistanceDisplay(null);
     setGpsError(null);
     if (!siteId || siteId === "__other__") return;
-    const site = jobSites.find(s => s.id === siteId);
+    const site = jobSites.find(s => String(s.id) === String(siteId));
     if (!site) return;
     // If we already have GPS, compute immediately
     if (gpsForDistance && site.latitude && site.longitude) {
@@ -9875,4 +9876,3 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJob
     </div>
   );
 }
-
