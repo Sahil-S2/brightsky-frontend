@@ -593,7 +593,11 @@ useEffect(() => {
         }));
       }
     }
-  } catch {}
+  } catch (err) {
+    // If this fails, camera/auto-clock-out toggles won't work.
+    // Most likely cause: missing DB columns — run the migration SQL files.
+    console.error("[BSC] refreshSettings failed:", err);
+  }
 }, []);
   const refreshTodayData = useCallback(async (newData = null) => {
   if (!currentUser) return;
@@ -2126,12 +2130,22 @@ function EmployeeDashboard({
   const [workflowCollapsed, setWorkflowCollapsed] = useState(false);
   const [worksiteExpanded, setWorksiteExpanded] = useState(false);
   // Job Site selector state for Time Tracker (mirrors Fuel Entry's selector)
-  const [selectedTimeJobSiteId, setSelectedTimeJobSiteId] = useState(null);
+  // Initialise from localStorage so the selection survives page refresh / tab navigation.
+  const siteStorageKey = `bsc_site_${user?.id}`;
+  const [selectedTimeJobSiteId, setSelectedTimeJobSiteId] = useState(() => {
+    try { return localStorage.getItem(`bsc_site_${user?.id}`) || null; } catch { return null; }
+  });
   const [isOnSiteTime, setIsOnSiteTime] = useState(null);
   const [gpsForDistanceTime, setGpsForDistanceTime] = useState(null);
 
-  // Auto-select the employee's primary site so displayWS is correct immediately —
-  // before the employee manually picks a site from the dropdown.
+  // On mount: if we restored a site from localStorage, push it up to App so
+  // the top-level onSite / geoTarget computation uses the right coordinates.
+  useEffect(() => {
+    if (selectedTimeJobSiteId && onJobSiteSelect) onJobSiteSelect(selectedTimeJobSiteId);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-select the employee's primary site the first time sites load AND
+  // nothing was persisted in localStorage yet.
   useEffect(() => {
     if (selectedTimeJobSiteId === null) {
       const defaultSite = employeeJobSites[0] || employeeWorksite;
@@ -2139,6 +2153,7 @@ function EmployeeDashboard({
         const id = String(defaultSite.id);
         setSelectedTimeJobSiteId(id);
         if (onJobSiteSelect) onJobSiteSelect(id);
+        try { localStorage.setItem(siteStorageKey, id); } catch {}
       }
     }
   }, [employeeJobSites.length, employeeWorksite?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -3024,7 +3039,15 @@ function EmployeeDashboard({
           geofence_radius_ft: s.geofence_radius_ft || s.radius_feet || 1000,
         }))}
         selectedJobSite={selectedTimeJobSiteId}
-        setSelectedJobSite={(id) => { setSelectedTimeJobSiteId(id); if(onJobSiteSelect) onJobSiteSelect(id); }}
+        setSelectedJobSite={(id) => {
+          setSelectedTimeJobSiteId(id);
+          if (onJobSiteSelect) onJobSiteSelect(id);
+          // Persist so the selection survives page refresh / tab navigation
+          try {
+            if (id && id !== "__other__") localStorage.setItem(siteStorageKey, String(id));
+            else localStorage.removeItem(siteStorageKey);
+          } catch {}
+        }}
         isOnSite={isOnSiteTime}
         setIsOnSite={setIsOnSiteTime}
         gpsForDistance={gpsForDistanceTime}
