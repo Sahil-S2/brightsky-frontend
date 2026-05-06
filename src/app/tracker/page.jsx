@@ -553,7 +553,10 @@ useEffect(() => {
   // Explicit site selection from employee's FuelJobSiteSelector (drives top-right badge)
   const[appSelectedSiteId,setAppSelectedSiteId]=useState(null);
   const appSelectedSite=worksites.find(s=>String(s.id)===String(appSelectedSiteId))||employeeJobSites.find(s=>String(s.id)===String(appSelectedSiteId))||null;
-  const geoTarget=appSelectedSite||(settings.latitude!=null?{latitude:settings.latitude,longitude:settings.longitude,radius_feet:settings.radiusFeet}:null);
+  // Prefer the explicitly-selected site, then the employee's primary site (employeeWorksite),
+  // then fall back to global site_settings. This prevents onSite from being computed
+  // against the wrong coordinates when no site has been picked yet.
+  const geoTarget=appSelectedSite||(employeeWorksite?.latitude!=null?employeeWorksite:null)||(settings.latitude!=null?{latitude:settings.latitude,longitude:settings.longitude,radius_feet:settings.radiusFeet}:null);
   let onSite=false,distanceFt=null;
   if(userLat!=null&&geoTarget?.latitude!=null){
     distanceFt=distanceFeet(userLat,userLon,geoTarget.latitude,geoTarget.longitude);
@@ -573,7 +576,10 @@ useEffect(() => {
     if (res.ok) {
       const d = await res.json();
       if (d) {
-        setSettings({
+        // Merge into previous state so DEFAULT_SETTINGS values for any field
+        // not returned by the API (e.g. autoClockInEnabled) are preserved.
+        setSettings(prev => ({
+          ...prev,
           companyName: d.company_name,
           siteName: d.site_name,
           latitude: parseFloat(d.latitude),
@@ -581,9 +587,10 @@ useEffect(() => {
           radiusFeet: parseFloat(d.radius_feet),
           workStart: d.working_hours_start?.slice(0, 5) || "07:00",
           workEnd: d.working_hours_end?.slice(0, 5) || "17:00",
-          clockInWithCameraEnabled: d.clockInWithCameraEnabled ?? true,
-          autoClockOutEnabled: d.autoClockOutEnabled ?? true,
-        });
+          // Use explicit boolean comparison — never let undefined bypass the toggle
+          clockInWithCameraEnabled: typeof d.clockInWithCameraEnabled === "boolean" ? d.clockInWithCameraEnabled : true,
+          autoClockOutEnabled: typeof d.autoClockOutEnabled === "boolean" ? d.autoClockOutEnabled : true,
+        }));
       }
     }
   } catch {}
@@ -632,6 +639,14 @@ useEffect(() => {
       }
     }catch{}
   },[currentUser]);
+  // Auto-select the employee's primary site for geofence computation as soon as
+  // sites are loaded. The employee can override by choosing a different site in
+  // the Time Tracker dropdown, which calls onJobSiteSelect/setAppSelectedSiteId.
+  useEffect(()=>{
+    if(appSelectedSiteId===null&&employeeWorksite?.id!=null){
+      setAppSelectedSiteId(String(employeeWorksite.id));
+    }
+  },[employeeWorksite]);// eslint-disable-line react-hooks/exhaustive-deps
   const checkOvertime=useCallback(async()=>{if(!currentUser)return;try{const r=await authFetch(`/api/employees/${currentUser.id}/overtime`);if(r.ok){const d=await r.json();setIsOvertime(d.isOvertime||false);setOvertimeMins(d.overtimeMins||0);}}catch{}},[currentUser]);
 
   useEffect(()=>{
@@ -2115,6 +2130,19 @@ function EmployeeDashboard({
   const [isOnSiteTime, setIsOnSiteTime] = useState(null);
   const [gpsForDistanceTime, setGpsForDistanceTime] = useState(null);
 
+  // Auto-select the employee's primary site so displayWS is correct immediately —
+  // before the employee manually picks a site from the dropdown.
+  useEffect(() => {
+    if (selectedTimeJobSiteId === null) {
+      const defaultSite = employeeJobSites[0] || employeeWorksite;
+      if (defaultSite?.id != null) {
+        const id = String(defaultSite.id);
+        setSelectedTimeJobSiteId(id);
+        if (onJobSiteSelect) onJobSiteSelect(id);
+      }
+    }
+  }, [employeeJobSites.length, employeeWorksite?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Sync app header title when tab changes
   useEffect(() => {
     if (setAppTitle) {
@@ -2411,7 +2439,8 @@ function EmployeeDashboard({
     setClockInLoading(true);
     try {
       const { latitude, longitude } = getLocationPayload();
-      const body = { latitude, longitude, photo: photoData };
+      // Send the selected site ID so the backend checks geofence against the right site
+      const body = { latitude, longitude, photo: photoData, siteId: selectedTimeJobSiteId ?? null };
       if (forceOutside) {
         body.forceOutside = true;
         body.estimatedMinutes = estimatedMinutes;
@@ -2459,7 +2488,7 @@ function EmployeeDashboard({
         const { latitude, longitude } = getLocationPayload();
         const res = await authFetch("/api/attendance/clock-in", {
           method: "POST",
-          body: JSON.stringify({ latitude, longitude }),
+          body: JSON.stringify({ latitude, longitude, siteId: selectedTimeJobSiteId ?? null }),
         });
         const d = await res.json();
         if (!res.ok) {
@@ -9845,16 +9874,18 @@ function FuelEntryForm({ equipment, entryType, currentUser, jobSites, defaultJob
               <button onClick={() => fileRef1.current?.click()} style={{ width: "100%", padding: "20px 16px", border: "2px dashed rgba(5,150,105,0.4)", borderRadius: "var(--radius)", background: "var(--green-light)", color: "var(--green)", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 14, fontWeight: 600 }}>
                 <Icon name="camera" size={22} color="var(--green)"/>
                 <span>Tap to take fuel proof photo</span>
-                <span style={{ fontSize: 12, fontWeight: 400, color: "var(--text3)" }}>Required for end-of-day verification</span>
               </button>
             )}
           </div>
-          {/* Supervisor note */}
+        </>)}
+
+        {/* Supervisor note — EOD only */}
+        {type === "eod" && (
           <div>
-            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Supervisor Note (optional)</label>
+            <label style={{ fontSize: 12.5, color: "var(--text2)", display: "block", marginBottom: 6, fontWeight: 600 }}>Supervisor Note</label>
             <textarea value={supervisorNote} onChange={e => setSupervisorNote(e.target.value)} placeholder="Any notes for the supervisor…" rows={2} style={{ fontSize: 14, resize: "vertical", minHeight: 64 }}/>
           </div>
-        </>)}
+        )}
 
         {/* Common remarks */}
         <div>
