@@ -241,10 +241,17 @@ const GlobalStyle = () => (
     .login-field-btn{animation:loginFadeUp 0.45s cubic-bezier(0.16,1,0.3,1) 0.34s both;}
     /* ── Desktop / Tablet responsive layout ────────────────── */
     @media (min-width: 900px) {
-      .bsc-sidebar { transform: translateX(0) !important; box-shadow: none !important; }
+      /* Sidebar visible by default; hidden only when .bsc-sidebar--hidden is set */
+      .bsc-sidebar { transform: translateX(0); box-shadow: none !important; }
+      .bsc-sidebar.bsc-sidebar--hidden { transform: translateX(-100%); }
+      /* Overlay never needed on desktop */
       .bsc-overlay { display: none !important; }
-      .bsc-main-wrap { margin-left: 272px; }
+      /* Main content offset tracks sidebar; transition matches sidebar animation */
+      .bsc-main-wrap { margin-left: 272px; transition: margin-left 0.25s cubic-bezier(.4,0,.2,1); }
+      .bsc-main-wrap.bsc-sidebar--closed { margin-left: 0; }
+      /* Hamburger hidden when sidebar open, visible when closed */
       .bsc-hamburger { display: none !important; }
+      .bsc-hamburger.bsc-sidebar--closed { display: flex !important; }
       .bsc-main { max-width: 1200px !important; padding: 24px 32px !important; }
     }
     @media (min-width: 1280px) {
@@ -528,7 +535,7 @@ export default function App(){
   const[page,setPage]=useState("dashboard");
   const[welcomeMsg,setWelcomeMsg]=useState(null); // {name, role} shown after login
   const[appTitle,setAppTitle]=useState("BSC Tracker");
-  const[sidebarOpen,setSidebarOpen]=useState(false);
+  const[sidebarOpen,setSidebarOpen]=useState(()=>typeof window!=='undefined'&&window.innerWidth>=900);
   const[toasts,setToasts]=useState([]);
   const[settings,setSettings]=useState(DEFAULT_SETTINGS);
   const[todayData,setTodayData]=useState(null);
@@ -794,7 +801,7 @@ useEffect(() => {
       <GlobalStyle/>
       <div style={{display:"flex",minHeight:"100vh",position:"relative",background:"var(--bg)"}}>
         {sidebarOpen&&<div className="bsc-overlay" onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(17,24,39,0.3)",zIndex:200,backdropFilter:"blur(3px)"}}/>}
-        <aside className="bsc-sidebar" style={{position:"fixed",top:0,left:0,height:"100vh",zIndex:300,width:272,transform:sidebarOpen?"translateX(0)":"translateX(-100%)",background:"var(--bg2)",borderRight:"1px solid var(--border)",transition:"transform 0.25s cubic-bezier(.4,0,.2,1)",display:"flex",flexDirection:"column",overflowY:"auto",boxShadow:sidebarOpen?"var(--shadow-lg)":"none"}}>
+        <aside className={`bsc-sidebar${sidebarOpen?"":" bsc-sidebar--hidden"}`} style={{position:"fixed",top:0,left:0,height:"100vh",zIndex:300,width:272,transform:sidebarOpen?"translateX(0)":"translateX(-100%)",background:"var(--bg2)",borderRight:"1px solid var(--border)",transition:"transform 0.25s cubic-bezier(.4,0,.2,1)",display:"flex",flexDirection:"column",overflowY:"auto",boxShadow:sidebarOpen?"var(--shadow-lg)":"none"}}>
           <div style={{padding:"20px 16px 16px",borderBottom:"1px solid var(--border)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -818,9 +825,9 @@ useEffect(() => {
           </nav>
           <SidebarProfile currentUser={currentUser} handleLogout={handleLogout} lang={lang} setLang={setLang}/>
         </aside>
-        <div className="bsc-main-wrap" style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,width:"100%"}}>
+        <div className={`bsc-main-wrap${sidebarOpen?"":" bsc-sidebar--closed"}`} style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,width:"100%"}}>
           <header style={{background:"var(--bg2)",borderBottom:"1px solid var(--border)",padding:"0 16px",display:"flex",alignItems:"center",gap:10,position:"sticky",top:0,zIndex:100,height:56,boxShadow:"var(--shadow-sm)"}}>
-  <button className="bsc-hamburger" onClick={()=>setSidebarOpen(true)} style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",padding:7,borderRadius:"var(--radius-sm)",display:"flex",cursor:"pointer",minWidth:36,minHeight:36,alignItems:"center",justifyContent:"center"}}><Icon name="menu" size={18}/></button>
+  <button className={`bsc-hamburger${sidebarOpen?"":" bsc-sidebar--closed"}`} onClick={()=>setSidebarOpen(true)} style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",padding:7,borderRadius:"var(--radius-sm)",display:"flex",cursor:"pointer",minWidth:36,minHeight:36,alignItems:"center",justifyContent:"center"}}><Icon name="menu" size={18}/></button>
 
   <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
     <div style={{width:28,height:28,borderRadius:"var(--radius-sm)",background:appTitle==="BSC Fuel Entry"?"#1e3a5f":"var(--blue)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"background 0.25s"}}>
